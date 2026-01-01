@@ -1,0 +1,196 @@
+# post_to_telegram.py
+import os
+import sys
+import requests
+from datetime import datetime
+
+# Настройки из переменных окружения GitHub
+BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+PUBLIC_CHANNEL = "@vlesstrojan"
+PRIVATE_CHANNEL = os.environ.get('TELEGRAM_PRIVATE_CHANNEL')  # -100xxx
+
+WORK_DIR = os.path.dirname(os.path.abspath(__file__))
+RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
+COVER_IMAGE = os.path.join(WORK_DIR, "cover.jpg")
+
+def send_photo_with_file(channel_id, photo_path, file_path, caption=""):
+    """Отправка фото, затем файла в один пост"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}"
+    
+    try:
+        # 1. Отправляем фото с подписью
+        with open(photo_path, 'rb') as photo:
+            files = {'photo': photo}
+            data = {
+                'chat_id': channel_id,
+                'caption': caption,
+                'parse_mode': 'HTML'
+            }
+            r = requests.post(f"{url}/sendPhoto", data=data, files=files)
+            photo_result = r.json()
+        
+        # 2. Отправляем файл (reply к фото)
+        if photo_result.get('ok'):
+            message_id = photo_result['result']['message_id']
+            
+            with open(file_path, 'rb') as doc:
+                files = {'document': doc}
+                data = {
+                    'chat_id': channel_id,
+                    'reply_to_message_id': message_id
+                }
+                r = requests.post(f"{url}/sendDocument", data=data, files=files)
+                return r.json()
+        
+        return photo_result
+        
+    except Exception as e:
+        print(f"❌ Ошибка отправки: {e}")
+        return None
+
+def split_file_to_chunks(file_path, chunk_size=100):
+    """Разделение файла на части"""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    # Пропускаем комментарии
+    keys = [l for l in lines if l.strip() and not l.startswith('#')]
+    
+    chunks = []
+    for i in range(0, len(keys), chunk_size):
+        chunk = keys[i:i+chunk_size]
+        chunks.append(chunk)
+    
+    return chunks, len(keys)
+
+def create_chunk_file(lines, index, total_keys, prefix="verified"):
+    """Создание файла части"""
+    date_str = datetime.now().strftime('%Y%m%d_%H%M')
+    filename = f"{prefix}_part{index+1}_{date_str}.txt"
+    filepath = os.path.join(RESULTS_FOLDER, filename)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"# Channel: @vlesstrojan\n")
+        f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        f.write(f"# Part: {index+1}\n")
+        f.write(f"# Keys in this part: {len(lines)}\n")
+        f.write(f"# Total verified: {total_keys}\n\n")
+        f.writelines(lines)
+    
+    return filepath
+
+def main():
+    if not BOT_TOKEN:
+        print("❌ TELEGRAM_BOT_TOKEN не установлен")
+        return 1
+    
+    print("\n" + "="*70)
+    print(" " * 20 + "📤 TELEGRAM POSTER")
+    print("="*70 + "\n")
+    
+    # Проверка cover.jpg
+    if not os.path.exists(COVER_IMAGE):
+        print(f"⚠️  Файл {COVER_IMAGE} не найден")
+        print("   Скачайте картинку и сохраните как cover.jpg\n")
+    
+    # Находим последний файл с результатами
+    verified_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith("verified_") and f.endswith(".txt")]
+    
+    if not verified_files:
+        print("❌ Нет файлов с результатами")
+        return 1
+    
+    latest_file = max(verified_files, key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f)))
+    file_path = os.path.join(RESULTS_FOLDER, latest_file)
+    
+    print(f"📁 Файл: {latest_file}")
+    
+    # Разделяем на части по 100
+    chunks, total_keys = split_file_to_chunks(file_path, chunk_size=100)
+    
+    print(f"📦 Всего ключей: {total_keys}")
+    print(f"📑 Частей по 100: {len(chunks)}\n")
+    
+    # ========== ПУБЛИЧНЫЙ КАНАЛ @vlesstrojan ==========
+    print("="*70)
+    print(f"📢 ПУБЛИЧНЫЙ КАНАЛ: {PUBLIC_CHANNEL}")
+    print("="*70 + "\n")
+    
+    for i, chunk in enumerate(chunks):
+        chunk_file = create_chunk_file(chunk, i, total_keys, prefix="public")
+        
+        # Текст поста
+        caption = f"🔥 <b>Проверенные прокси-ключи</b>\n\n"
+        caption += f"📅 Дата: <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
+        caption += f"📦 Часть: <b>{i+1}</b> из {len(chunks)}\n"
+        caption += f"✅ Ключей в части: <b>{len(chunk)}</b>\n"
+        caption += f"🎯 Всего проверено: <b>{total_keys}</b>\n\n"
+        caption += f"🔐 Метод: <i>XRAY-CORE реальная проверка</i>\n"
+        caption += f"💬 Канал: {PUBLIC_CHANNEL}"
+        
+        # Отправка: фото + файл
+        if os.path.exists(COVER_IMAGE):
+            result = send_photo_with_file(PUBLIC_CHANNEL, COVER_IMAGE, chunk_file, caption)
+        else:
+            # Если нет картинки - только файл с текстом
+            result = send_photo_with_file(PUBLIC_CHANNEL, None, chunk_file, caption)
+        
+        if result and result.get('ok'):
+            print(f"  ✅ Часть {i+1}/{len(chunks)} отправлена в {PUBLIC_CHANNEL}")
+        else:
+            print(f"  ❌ Ошибка части {i+1}: {result}")
+        
+        # Удаляем временный файл
+        try:
+            os.remove(chunk_file)
+        except:
+            pass
+        
+        # Пауза между постами
+        if i < len(chunks) - 1:
+            import time
+            time.sleep(2)
+    
+    # ========== ПРИВАТНЫЙ КАНАЛ ==========
+    if PRIVATE_CHANNEL:
+        print("\n" + "="*70)
+        print(f"🔒 ПРИВАТНЫЙ КАНАЛ: {PRIVATE_CHANNEL}")
+        print("="*70 + "\n")
+        
+        for i, chunk in enumerate(chunks):
+            chunk_file = create_chunk_file(chunk, i, total_keys, prefix="private")
+            
+            # Текст для VIP
+            caption = f"🔐 <b>VIP Проверенные прокси</b>\n\n"
+            caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
+            caption += f"📦 Часть <b>{i+1}/{len(chunks)}</b>\n"
+            caption += f"✅ Ключей: <b>{len(chunk)}</b> из <b>{total_keys}</b>\n\n"
+            caption += f"🎯 Только рабочие | Проверено xray-core"
+            
+            # Отправка: фото + файл
+            if os.path.exists(COVER_IMAGE):
+                result = send_photo_with_file(PRIVATE_CHANNEL, COVER_IMAGE, chunk_file, caption)
+            else:
+                result = send_photo_with_file(PRIVATE_CHANNEL, None, chunk_file, caption)
+            
+            if result and result.get('ok'):
+                print(f"  ✅ VIP часть {i+1}/{len(chunks)} отправлена")
+            else:
+                print(f"  ❌ Ошибка VIP части {i+1}")
+            
+            try:
+                os.remove(chunk_file)
+            except:
+                pass
+            
+            if i < len(chunks) - 1:
+                import time
+                time.sleep(2)
+    
+    print("\n" + "="*70)
+    print("✅ ПОСТИНГ ЗАВЕРШЕН!")
+    print("="*70 + "\n")
+    return 0
+
+if __name__ == "__main__":
+    exit(main())
