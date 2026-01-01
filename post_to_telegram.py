@@ -5,18 +5,17 @@ import requests
 from datetime import datetime
 
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
-BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')  # Бот для @vlesstrojan
-BOT_TOKEN_PRIVATE = os.environ.get('TELEGRAM_BOT_TOKEN')        # Бот для закрытого
-PRIVATE_CHANNEL = os.environ.get('TELEGRAM_PRIVATE_CHANNEL')   # ID закрытого (-100...)
+BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
+BOT_TOKEN_PRIVATE = os.environ.get('TELEGRAM_BOT_TOKEN')
+PRIVATE_CHANNEL = os.environ.get('TELEGRAM_PRIVATE_CHANNEL')
 
 PUBLIC_CHANNEL = "@vlesstrojan"
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 
-# ДВЕ РАЗНЫЕ КАРТИНКИ
-COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")   # Для @vlesstrojan
-COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")  # Для закрытого
+COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
+COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
     """Отправка фото с подписью, затем файла"""
@@ -53,39 +52,40 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
         print(f"❌ Ошибка отправки: {e}")
         return None
 
-def split_file_to_chunks(file_path, chunk_size=100):
-    """Разделение файла на части по 100 ключей"""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    
-    # Только ключи, без комментариев
-    keys = [l for l in lines if l.strip() and not l.startswith('#')]
-    
-    chunks = []
-    for i in range(0, len(keys), chunk_size):
-        chunk = keys[i:i+chunk_size]
-        chunks.append(chunk)
-    
-    return chunks, len(keys)
-
-def create_chunk_file(lines, index, total_keys, prefix="verified"):
-    """Создание временного файла с частью ключей"""
+def create_public_file(all_keys):
+    """Создать файл с первыми 100 ключами для публичного канала"""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
-    filename = f"{prefix}_part{index+1}_{date_str}.txt"
+    filename = f"public_top100_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
+    
+    top_keys = all_keys[:100]
     
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"# Channel: @vlesstrojan\n")
-        f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-        f.write(f"# Part: {index+1}\n")
-        f.write(f"# Keys in this part: {len(lines)}\n")
-        f.write(f"# Total verified: {total_keys}\n\n")
-        f.writelines(lines)
+        f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
+        f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
+        f.write(f"# Total: {len(all_keys)}\n\n")
+        f.writelines(top_keys)
     
-    return filepath
+    return filepath, len(top_keys)
+
+def create_private_file(all_keys):
+    """Создать файл со ВСЕМИ остальными ключами для закрытого канала"""
+    date_str = datetime.now().strftime('%Y%m%d_%H%M')
+    filename = f"private_remaining_{date_str}.txt"
+    filepath = os.path.join(RESULTS_FOLDER, filename)
+    
+    remaining_keys = all_keys[100:]
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
+        f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
+        f.write(f"# Keys: {len(remaining_keys)} / {len(all_keys)}\n\n")
+        f.writelines(remaining_keys)
+    
+    return filepath, len(remaining_keys)
 
 def main():
-    # Проверка секретов
     if not BOT_TOKEN_PUBLIC:
         print("❌ TELEGRAM_BOT_TOKEN_PUBLIC не установлен")
         return 1
@@ -98,14 +98,12 @@ def main():
     print(" " * 20 + "📤 TELEGRAM POSTER")
     print("="*70 + "\n")
     
-    # Проверка картинок
     if not os.path.exists(COVER_PUBLIC):
         print(f"⚠️  Файл {COVER_PUBLIC} не найден")
     
     if not os.path.exists(COVER_PRIVATE):
         print(f"⚠️  Файл {COVER_PRIVATE} не найден")
     
-    # Поиск файла с результатами
     verified_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith("verified_") and f.endswith(".txt")]
     
     if not verified_files:
@@ -117,103 +115,93 @@ def main():
     
     print(f"📁 Файл: {latest_file}")
     
-    # Разделение на части
-    chunks, total_keys = split_file_to_chunks(file_path, chunk_size=100)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
     
-    print(f"📦 Всего ключей: {total_keys}")
-    print(f"📑 Частей по 100: {len(chunks)}\n")
+    all_keys = [l for l in lines if l.strip() and not l.startswith('#')]
+    total_keys = len(all_keys)
     
-    # ========== ПУБЛИЧНЫЙ КАНАЛ @vlesstrojan ==========
+    print(f"📦 Всего ключей: {total_keys}\n")
+    
+    if total_keys == 0:
+        print("❌ Нет ключей для постинга")
+        return 1
+    
+    # ========== ПУБЛИЧНЫЙ КАНАЛ ==========
     print("="*70)
     print(f"📢 ПУБЛИЧНЫЙ КАНАЛ: {PUBLIC_CHANNEL}")
     print("="*70 + "\n")
     
-    for i, chunk in enumerate(chunks):
-        chunk_file = create_chunk_file(chunk, i, total_keys, prefix="public")
-        
-        # Текст поста
-        caption = f"🔥 <b>Проверенные прокси-ключи</b>\n\n"
-        caption += f"📅 Дата: <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-        caption += f"📦 Часть: <b>{i+1}</b> из {len(chunks)}\n"
-        caption += f"✅ Ключей в части: <b>{len(chunk)}</b>\n"
-        caption += f"🎯 Всего проверено: <b>{total_keys}</b>\n\n"
-        caption += f"🔐 Метод: <i>XRAY-CORE реальная проверка</i>\n"
-        caption += f"💬 Канал: {PUBLIC_CHANNEL}"
-        
-        # Отправка с ПУБЛИЧНОЙ картинкой
-        if os.path.exists(COVER_PUBLIC):
-            result = send_photo_with_file(
-                PUBLIC_CHANNEL, 
-                COVER_PUBLIC,  # ← Картинка для публичного
-                chunk_file, 
-                caption, 
-                bot_token=BOT_TOKEN_PUBLIC
-            )
-        else:
-            print(f"  ⚠️  Нет картинки для публичного канала")
-            result = {'ok': False, 'description': 'No cover image'}
+    public_file, public_count = create_public_file(all_keys)
+    
+    caption = f"🔥 <b>Проверенные прокси-ключи</b>\n\n"
+    caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
+    caption += f"✅ Лучших: <b>{public_count}</b>\n"
+    caption += f"📊 Всего проверено: <b>{total_keys}</b>\n\n"
+    caption += f"🔍 Двойная проверка: TCP + XRAY\n"
+    caption += f"📡 VLESS | VMess | Trojan | SS\n\n"
+    caption += f"💬 {PUBLIC_CHANNEL}"
+    
+    if os.path.exists(COVER_PUBLIC):
+        result = send_photo_with_file(
+            PUBLIC_CHANNEL, 
+            COVER_PUBLIC,
+            public_file, 
+            caption, 
+            bot_token=BOT_TOKEN_PUBLIC
+        )
         
         if result and result.get('ok'):
-            print(f"  ✅ Часть {i+1}/{len(chunks)} отправлена в {PUBLIC_CHANNEL}")
+            print(f"✅ Пост отправлен в {PUBLIC_CHANNEL}")
         else:
-            print(f"  ❌ Ошибка части {i+1}: {result.get('description', 'Unknown error')}")
-        
-        # Удаляем временный файл
-        try:
-            os.remove(chunk_file)
-        except:
-            pass
-        
-        # Пауза между постами
-        if i < len(chunks) - 1:
-            import time
-            time.sleep(2)
+            print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
+    else:
+        print(f"⚠️  Нет картинки")
+    
+    try:
+        os.remove(public_file)
+    except:
+        pass
     
     # ========== ПРИВАТНЫЙ КАНАЛ ==========
-    if PRIVATE_CHANNEL:
+    if PRIVATE_CHANNEL and total_keys > 100:
         print("\n" + "="*70)
         print(f"🔒 ПРИВАТНЫЙ КАНАЛ: {PRIVATE_CHANNEL}")
         print("="*70 + "\n")
         
-        for i, chunk in enumerate(chunks):
-            chunk_file = create_chunk_file(chunk, i, total_keys, prefix="private")
-            
-            # Текст для VIP
-            caption = f"🔐 <b>VIP Проверенные прокси</b>\n\n"
-            caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-            caption += f"📦 Часть <b>{i+1}/{len(chunks)}</b>\n"
-            caption += f"✅ Ключей: <b>{len(chunk)}</b> из <b>{total_keys}</b>\n\n"
-            caption += f"🎯 Только рабочие | Проверено xray-core"
-            
-            # Отправка с ПРИВАТНОЙ картинкой
-            if os.path.exists(COVER_PRIVATE):
-                result = send_photo_with_file(
-                    PRIVATE_CHANNEL, 
-                    COVER_PRIVATE,  # ← Картинка для приватного
-                    chunk_file, 
-                    caption, 
-                    bot_token=BOT_TOKEN_PRIVATE
-                )
-            else:
-                print(f"  ⚠️  Нет картинки для приватного канала")
-                result = {'ok': False, 'description': 'No cover image'}
+        private_file, private_count = create_private_file(all_keys)
+        
+        caption = f"🔐 <b>Остальные ключи</b>\n\n"
+        caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
+        caption += f"📦 Ключей: <b>{private_count}</b> из {total_keys}\n\n"
+        caption += f"🔍 Двойная проверка: TCP + XRAY\n"
+        caption += f"📡 VLESS | VMess | Trojan | SS"
+        
+        if os.path.exists(COVER_PRIVATE):
+            result = send_photo_with_file(
+                PRIVATE_CHANNEL, 
+                COVER_PRIVATE,
+                private_file, 
+                caption, 
+                bot_token=BOT_TOKEN_PRIVATE
+            )
             
             if result and result.get('ok'):
-                print(f"  ✅ VIP часть {i+1}/{len(chunks)} отправлена")
+                print(f"✅ Пост отправлен")
             else:
-                print(f"  ❌ Ошибка VIP части {i+1}: {result.get('description', 'Unknown error')}")
-            
-            try:
-                os.remove(chunk_file)
-            except:
-                pass
-            
-            if i < len(chunks) - 1:
-                import time
-                time.sleep(2)
+                print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
+        else:
+            print(f"⚠️  Нет картинки")
+        
+        try:
+            os.remove(private_file)
+        except:
+            pass
+    elif total_keys <= 100:
+        print("\n⚠️  Меньше 100 ключей - только публичный пост")
     
     print("\n" + "="*70)
-    print("✅ ПОСТИНГ ЗАВЕРШЕН!")
+    print("✅ ГОТОВО")
     print("="*70 + "\n")
     return 0
 
