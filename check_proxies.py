@@ -10,6 +10,7 @@ import requests
 import base64
 import json
 import random
+import concurrent.futures
 from datetime import datetime
 from urllib.parse import quote, unquote, urlparse, parse_qs, urlencode, urlunparse
 
@@ -40,8 +41,11 @@ MY_CHANNEL = "@vlesstrojan"
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 FINAL_FILE = os.path.join(RESULTS_FOLDER, f"verified_{timestamp}.txt")
 
-checked = [0]
-live = [0]
+# Счетчики
+stage1_checked = [0]
+stage1_live = [0]
+stage2_checked = [0]
+stage2_live = [0]
 total = [0]
 
 def log(msg):
@@ -87,7 +91,6 @@ def setup_xray():
         
         os.remove(zip_path)
         
-        # Права на выполнение для Linux
         if system != "windows":
             os.chmod(exe_path, 0o755)
         
@@ -98,9 +101,91 @@ def setup_xray():
         log(f"❌ Ошибка установки xray: {e}")
         return None
 
+# ------------------ ИЗВЛЕЧЕНИЕ HOST:PORT ------------------
+def extract_host_port(key):
+    """Универсальное извлечение host:port из любого ключа"""
+    try:
+        # Удаляем префикс протокола
+        for prefix in ["vless://", "vmess://", "trojan://", "ss://"]:
+            if key.lower().startswith(prefix):
+                key = key[len(prefix):]
+                break
+        
+        # Для VMess (base64)
+        if not "@" in key and not ":" in key:
+            try:
+                padding = len(key) % 4
+                if padding:
+                    key += '=' * (4 - padding)
+                decoded = base64.b64decode(key).decode('utf-8')
+                data = json.loads(decoded)
+                return data.get("add"), int(data.get("port", 443))
+            except:
+                return None, None
+        
+        # Для остальных (vless/trojan/ss)
+        if "@" in key:
+            key = key.split("@", 1)[1]
+        
+        if "?" in key:
+            key = key.split("?")[0]
+        
+        if "#" in key:
+            key = key.split("#")[0]
+        
+        if ":" in key:
+            host, port = key.rsplit(":", 1)
+            return host, int(port)
+        
+        return None, None
+    except:
+        return None, None
+
+# ------------------ СТУПЕНЬ 1: БЫСТРАЯ TCP ПРОВЕРКА ------------------
+def stage1_tcp_check(key):
+    """Быстрая TCP проверка - отсеиваем мусор"""
+    stage1_checked[0] += 1
+    
+    if stage1_checked[0] % 100 == 0:
+        log(f"📊 Ступень 1: {stage1_checked[0]}/{total[0]} | Живых: {stage1_live[0]}")
+    
+    host, port = extract_host_port(key)
+    if not host or not port:
+        return None
+    
+    try:
+        # Определяем нужен ли TLS
+        use_tls = "tls" in key.lower() or key.lower().startswith("trojan://")
+        
+        with socket.create_connection((host, port), timeout=5) as sock:
+            if use_tls:
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                
+                with context.wrap_socket(sock, server_hostname=host) as ssock:
+                    ssock.sendall(b"GET / HTTP/1.1\r\nHost: " + host.encode() + b"\r\n\r\n")
+                    ssock.settimeout(3)
+                    response = ssock.recv(1024)
+                    
+                    if len(response) > 0:
+                        stage1_live[0] += 1
+                        return key
+            else:
+                sock.sendall(b"GET / HTTP/1.1\r\nHost: " + host.encode() + b"\r\n\r\n")
+                sock.settimeout(3)
+                response = sock.recv(1024)
+                
+                if len(response) > 0:
+                    stage1_live[0] += 1
+                    return key
+    except:
+        pass
+    
+    return None
+
 # ------------------ ПАРСЕРЫ ПРОТОКОЛОВ ------------------
 def parse_vless(key):
-    """Парсинг VLESS"""
     try:
         if not key.startswith("vless://"):
             return None
@@ -182,7 +267,6 @@ def parse_vless(key):
         return None
 
 def parse_vmess(key):
-    """Парсинг VMess"""
     try:
         if not key.startswith("vmess://"):
             return None
@@ -236,7 +320,6 @@ def parse_vmess(key):
         return None
 
 def parse_trojan(key):
-    """Парсинг Trojan"""
     try:
         if not key.startswith("trojan://"):
             return None
@@ -305,7 +388,6 @@ def parse_trojan(key):
         return None
 
 def parse_shadowsocks(key):
-    """Парсинг Shadowsocks"""
     try:
         if not key.startswith("ss://"):
             return None
@@ -370,7 +452,6 @@ def parse_shadowsocks(key):
         return None
 
 def parse_proxy_key(key):
-    """Универсальный парсер"""
     key_lower = key.lower()
     
     if key_lower.startswith("vless://"):
@@ -396,8 +477,13 @@ def create_xray_config(proxy_config, socks_port=10808):
         "outbounds": [proxy_config]
     }
 
-def test_key_with_xray(key, xray_exe):
-    checked[0] += 1
+# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА ------------------
+def stage2_xray_check(key, xray_exe):
+    """Глубокая проверка через xray"""
+    stage2_checked[0] += 1
+    
+    if stage2_checked[0] % 10 == 0:
+        log(f"🔥 Ступень 2: {stage2_checked[0]}/{stage1_live[0]} | Рабочих: {stage2_live[0]}")
     
     proxy_config, protocol = parse_proxy_key(key)
     if not proxy_config:
@@ -453,7 +539,7 @@ def test_key_with_xray(key, xray_exe):
             pass
         
         if success:
-            live[0] += 1
+            stage2_live[0] += 1
             quality = "good" if latency < 150 else "normal" if latency < 400 else "weak"
             
             if protocol in ["VLESS", "VMess"]:
@@ -463,7 +549,6 @@ def test_key_with_xray(key, xray_exe):
                 host = proxy_config["settings"]["servers"][0]["address"]
                 port = proxy_config["settings"]["servers"][0]["port"]
             
-            log(f"✅ {protocol} {host}:{port} | {latency}ms | {quality}")
             return (latency, quality, protocol, host, port, key)
         
         return None
@@ -500,6 +585,7 @@ def download_keys():
             except Exception as e:
                 log(f"  ❌ Ошибка: {e}")
     
+    # Удаляем дубли
     all_keys = list(set(all_keys))
     log(f"\n📦 Всего уникальных ключей: {len(all_keys)}")
     
@@ -515,7 +601,7 @@ def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> s
 
 def main():
     print("\n" + "="*70)
-    print(" " * 8 + "🔥 XRAY-BASED AUTO PROXY CHECKER 🔥")
+    print(" " * 5 + "🔥 DUAL-STAGE XRAY PROXY CHECKER 🔥")
     print("="*70 + "\n")
     
     xray_exe = setup_xray()
@@ -531,26 +617,45 @@ def main():
     total[0] = len(all_keys)
     
     print("\n" + "="*70)
-    log(f"⚡ Начинаем проверку {total[0]} ключей...")
-    log(f"🔧 Потоков: 20")
+    log("⚡ СТУПЕНЬ 1: Быстрая TCP проверка (отсев мусора)")
     print("="*70 + "\n")
     
     start_time = time.time()
+    stage1_results = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+        futures = {executor.submit(stage1_tcp_check, key): key for key in all_keys}
+        
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            if result:
+                stage1_results.append(result)
+    
+    stage1_time = time.time() - start_time
+    
+    log(f"\n✅ Ступень 1: {stage1_live[0]}/{total[0]} ({stage1_live[0]/total[0]*100:.1f}%)")
+    log(f"   Время: {stage1_time:.1f}с\n")
+    
+    if not stage1_results:
+        log("❌ Нет ключей после ступени 1")
+        return 1
+    
+    print("="*70)
+    log("⚡ СТУПЕНЬ 2: Проверка через xray")
+    print("="*70 + "\n")
+    
+    stage2_start = time.time()
     results = []
     
-    import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        futures = {executor.submit(test_key_with_xray, key, xray_exe): key for key in all_keys}
+        futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
         
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             if result:
                 results.append(result)
-            
-            if checked[0] % 10 == 0:
-                percent = (checked[0] / total[0] * 100)
-                log(f"📊 Прогресс: {checked[0]}/{total[0]} ({percent:.1f}%) | Рабочих: {live[0]}")
     
+    stage2_time = time.time() - stage2_start
     elapsed = time.time() - start_time
     
     if results:
@@ -560,7 +665,7 @@ def main():
             f.write(f"# Channel: {MY_CHANNEL}\n")
             f.write(f"# Date: {datetime.now()}\n")
             f.write(f"# Verified: {len(results)} / {total[0]}\n")
-            f.write(f"# Method: XRAY-CORE REAL TEST\n\n")
+            f.write(f"# Method: DUAL-STAGE (TCP + XRAY)\n\n")
             
             for latency, quality, protocol, host, port, key in results:
                 key_with_tag = add_comment_to_uri(key, latency, quality, protocol)
@@ -569,9 +674,10 @@ def main():
         print("\n" + "="*70)
         print("🎉 РЕЗУЛЬТАТЫ")
         print("="*70)
-        print(f"✅ Проверено: {checked[0]} / {total[0]}")
-        print(f"✅ Рабочих: {len(results)} ({len(results)/total[0]*100:.1f}%)")
-        print(f"⏱️  Время: {elapsed:.1f}с ({elapsed/60:.1f} мин)")
+        print(f"📊 Ступень 1 (TCP): {stage1_live[0]}/{total[0]} за {stage1_time:.1f}с")
+        print(f"📊 Ступень 2 (XRAY): {len(results)}/{stage1_live[0]} за {stage2_time:.1f}с")
+        print(f"✅ ФИНАЛ: {len(results)}/{total[0]} ({len(results)/total[0]*100:.1f}%)")
+        print(f"⏱️  Общее время: {elapsed:.1f}с ({elapsed/60:.1f} мин)")
         print(f"📁 Файл: {FINAL_FILE}")
         print("="*70)
         
