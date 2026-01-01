@@ -1,0 +1,46 @@
+name: Auto Proxy Checker
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # Каждые 12 часов (00:00 и 12:00 UTC)
+  workflow_dispatch:  # Ручной запуск через Actions
+
+jobs:
+  check-and-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 часа максимум
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Setup Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install requests[socks]
+    
+    - name: 🔍 Run proxy checker
+      run: |
+        python check_proxies.py
+      continue-on-error: false
+    
+    - name: 📤 Post to Telegram
+      if: success()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
+      run: |
+        python post_to_telegram.py
+    
+    - name: 📁 Upload results as artifact
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: verified-keys
+        path: results/verified_*.txt
+        retention-days: 7
