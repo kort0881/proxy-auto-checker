@@ -4,21 +4,23 @@ import sys
 import requests
 from datetime import datetime
 
-# Настройки из переменных окружения GitHub
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+# ВАШИ СЕКРЕТЫ ИЗ GITHUB
+BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')  # Бот для @vlesstrojan
+BOT_TOKEN_PRIVATE = os.environ.get('TELEGRAM_BOT_TOKEN')        # Бот для закрытого
+PRIVATE_CHANNEL = os.environ.get('TELEGRAM_PRIVATE_CHANNEL')   # ID закрытого (-100...)
+
 PUBLIC_CHANNEL = "@vlesstrojan"
-PRIVATE_CHANNEL = os.environ.get('TELEGRAM_PRIVATE_CHANNEL')  # -100xxx
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 COVER_IMAGE = os.path.join(WORK_DIR, "cover.jpg")
 
-def send_photo_with_file(channel_id, photo_path, file_path, caption=""):
-    """Отправка фото, затем файла в один пост"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}"
+def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
+    """Отправка фото с подписью, затем файла"""
+    url = f"https://api.telegram.org/bot{bot_token}"
     
     try:
-        # 1. Отправляем фото с подписью
+        # 1. Фото с подписью
         with open(photo_path, 'rb') as photo:
             files = {'photo': photo}
             data = {
@@ -29,7 +31,7 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption=""):
             r = requests.post(f"{url}/sendPhoto", data=data, files=files)
             photo_result = r.json()
         
-        # 2. Отправляем файл (reply к фото)
+        # 2. Файл как reply к фото
         if photo_result.get('ok'):
             message_id = photo_result['result']['message_id']
             
@@ -49,11 +51,11 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption=""):
         return None
 
 def split_file_to_chunks(file_path, chunk_size=100):
-    """Разделение файла на части"""
+    """Разделение файла на части по 100 ключей"""
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     
-    # Пропускаем комментарии
+    # Только ключи, без комментариев
     keys = [l for l in lines if l.strip() and not l.startswith('#')]
     
     chunks = []
@@ -64,7 +66,7 @@ def split_file_to_chunks(file_path, chunk_size=100):
     return chunks, len(keys)
 
 def create_chunk_file(lines, index, total_keys, prefix="verified"):
-    """Создание файла части"""
+    """Создание временного файла с частью ключей"""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
     filename = f"{prefix}_part{index+1}_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
@@ -80,7 +82,12 @@ def create_chunk_file(lines, index, total_keys, prefix="verified"):
     return filepath
 
 def main():
-    if not BOT_TOKEN:
+    # Проверка секретов
+    if not BOT_TOKEN_PUBLIC:
+        print("❌ TELEGRAM_BOT_TOKEN_PUBLIC не установлен")
+        return 1
+    
+    if not BOT_TOKEN_PRIVATE:
         print("❌ TELEGRAM_BOT_TOKEN не установлен")
         return 1
     
@@ -88,12 +95,12 @@ def main():
     print(" " * 20 + "📤 TELEGRAM POSTER")
     print("="*70 + "\n")
     
-    # Проверка cover.jpg
+    # Проверка картинки
     if not os.path.exists(COVER_IMAGE):
         print(f"⚠️  Файл {COVER_IMAGE} не найден")
-        print("   Скачайте картинку и сохраните как cover.jpg\n")
+        print("   Посты будут без картинки\n")
     
-    # Находим последний файл с результатами
+    # Поиск файла с результатами
     verified_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith("verified_") and f.endswith(".txt")]
     
     if not verified_files:
@@ -105,7 +112,7 @@ def main():
     
     print(f"📁 Файл: {latest_file}")
     
-    # Разделяем на части по 100
+    # Разделение на части
     chunks, total_keys = split_file_to_chunks(file_path, chunk_size=100)
     
     print(f"📦 Всего ключей: {total_keys}")
@@ -128,17 +135,22 @@ def main():
         caption += f"🔐 Метод: <i>XRAY-CORE реальная проверка</i>\n"
         caption += f"💬 Канал: {PUBLIC_CHANNEL}"
         
-        # Отправка: фото + файл
+        # Отправка
         if os.path.exists(COVER_IMAGE):
-            result = send_photo_with_file(PUBLIC_CHANNEL, COVER_IMAGE, chunk_file, caption)
+            result = send_photo_with_file(
+                PUBLIC_CHANNEL, 
+                COVER_IMAGE, 
+                chunk_file, 
+                caption, 
+                bot_token=BOT_TOKEN_PUBLIC
+            )
         else:
-            # Если нет картинки - только файл с текстом
-            result = send_photo_with_file(PUBLIC_CHANNEL, None, chunk_file, caption)
+            result = {'ok': False, 'description': 'No cover image'}
         
         if result and result.get('ok'):
             print(f"  ✅ Часть {i+1}/{len(chunks)} отправлена в {PUBLIC_CHANNEL}")
         else:
-            print(f"  ❌ Ошибка части {i+1}: {result}")
+            print(f"  ❌ Ошибка части {i+1}: {result.get('description', 'Unknown error')}")
         
         # Удаляем временный файл
         try:
@@ -167,16 +179,22 @@ def main():
             caption += f"✅ Ключей: <b>{len(chunk)}</b> из <b>{total_keys}</b>\n\n"
             caption += f"🎯 Только рабочие | Проверено xray-core"
             
-            # Отправка: фото + файл
+            # Отправка
             if os.path.exists(COVER_IMAGE):
-                result = send_photo_with_file(PRIVATE_CHANNEL, COVER_IMAGE, chunk_file, caption)
+                result = send_photo_with_file(
+                    PRIVATE_CHANNEL, 
+                    COVER_IMAGE, 
+                    chunk_file, 
+                    caption, 
+                    bot_token=BOT_TOKEN_PRIVATE
+                )
             else:
-                result = send_photo_with_file(PRIVATE_CHANNEL, None, chunk_file, caption)
+                result = {'ok': False, 'description': 'No cover image'}
             
             if result and result.get('ok'):
                 print(f"  ✅ VIP часть {i+1}/{len(chunks)} отправлена")
             else:
-                print(f"  ❌ Ошибка VIP части {i+1}")
+                print(f"  ❌ Ошибка VIP части {i+1}: {result.get('description', 'Unknown error')}")
             
             try:
                 os.remove(chunk_file)
@@ -194,3 +212,4 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
