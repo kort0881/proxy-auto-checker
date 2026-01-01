@@ -13,7 +13,10 @@ PUBLIC_CHANNEL = "@vlesstrojan"
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
-COVER_IMAGE = os.path.join(WORK_DIR, "cover.jpg")
+
+# ДВЕ РАЗНЫЕ КАРТИНКИ
+COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")   # Для @vlesstrojan
+COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")  # Для закрытого
 
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
     """Отправка фото с подписью, затем файла"""
@@ -95,10 +98,12 @@ def main():
     print(" " * 20 + "📤 TELEGRAM POSTER")
     print("="*70 + "\n")
     
-    # Проверка картинки
-    if not os.path.exists(COVER_IMAGE):
-        print(f"⚠️  Файл {COVER_IMAGE} не найден")
-        print("   Посты будут без картинки\n")
+    # Проверка картинок
+    if not os.path.exists(COVER_PUBLIC):
+        print(f"⚠️  Файл {COVER_PUBLIC} не найден")
+    
+    if not os.path.exists(COVER_PRIVATE):
+        print(f"⚠️  Файл {COVER_PRIVATE} не найден")
     
     # Поиск файла с результатами
     verified_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith("verified_") and f.endswith(".txt")]
@@ -135,16 +140,17 @@ def main():
         caption += f"🔐 Метод: <i>XRAY-CORE реальная проверка</i>\n"
         caption += f"💬 Канал: {PUBLIC_CHANNEL}"
         
-        # Отправка
-        if os.path.exists(COVER_IMAGE):
+        # Отправка с ПУБЛИЧНОЙ картинкой
+        if os.path.exists(COVER_PUBLIC):
             result = send_photo_with_file(
                 PUBLIC_CHANNEL, 
-                COVER_IMAGE, 
+                COVER_PUBLIC,  # ← Картинка для публичного
                 chunk_file, 
                 caption, 
                 bot_token=BOT_TOKEN_PUBLIC
             )
         else:
+            print(f"  ⚠️  Нет картинки для публичного канала")
             result = {'ok': False, 'description': 'No cover image'}
         
         if result and result.get('ok'):
@@ -179,16 +185,17 @@ def main():
             caption += f"✅ Ключей: <b>{len(chunk)}</b> из <b>{total_keys}</b>\n\n"
             caption += f"🎯 Только рабочие | Проверено xray-core"
             
-            # Отправка
-            if os.path.exists(COVER_IMAGE):
+            # Отправка с ПРИВАТНОЙ картинкой
+            if os.path.exists(COVER_PRIVATE):
                 result = send_photo_with_file(
                     PRIVATE_CHANNEL, 
-                    COVER_IMAGE, 
+                    COVER_PRIVATE,  # ← Картинка для приватного
                     chunk_file, 
                     caption, 
                     bot_token=BOT_TOKEN_PRIVATE
                 )
             else:
+                print(f"  ⚠️  Нет картинки для приватного канала")
                 result = {'ok': False, 'description': 'No cover image'}
             
             if result and result.get('ok'):
