@@ -171,7 +171,7 @@ def main():
         
         private_file, private_count = create_private_file(all_keys)
         
-        caption = f"🔐 <b>Остальные ключи</b>\n\n"
+        caption = f"🔐 <b>Полный список ключей</b>\n\n"
         caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
         caption += f"📦 Ключей: <b>{private_count}</b> из {total_keys}\n\n"
         caption += f"🔍 Двойная проверка: TCP + XRAY\n"
