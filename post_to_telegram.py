@@ -3,6 +3,7 @@ import os
 import sys
 import requests
 from datetime import datetime
+import html
 
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
@@ -32,23 +33,27 @@ CLIENTS = (
 TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
 
-def build_readable_post(keys):
-    """Человекочитаемый пост с максимум 15 ключами в код-блоках."""
-    keys = keys[:15]  # не больше 15
+def build_readable_post_html(keys):
+    """Человекочитаемый пост с максимум 15 ключами, HTML <pre>."""
+    keys = keys[:15]
 
     blocks = []
     for i, key in enumerate(keys, start=1):
         emoji = EMOJIS[(i - 1) % len(EMOJIS)]
-        blocks.append(f"{emoji} Ключ {i}:\n```\n{key}\n```")
+        safe_key = html.escape(key)
+        blocks.append(f"{emoji} Ключ {i}:\n<pre>{safe_key}</pre>")
+
+    safe_warning = html.escape(WARNING_TEXT)
+    safe_clients = html.escape(CLIENTS)
+    safe_tags = html.escape(TAGS)
 
     text = (
-        WARNING_TEXT
+        f"{safe_warning}"
         + "\n".join(blocks)
         + "\n\n"
-        + CLIENTS
-        + "\n"
-        + TAGS
-        + "\n\n— Peacedeath Bot"
+        + f"{safe_clients}\n"
+        + f"{safe_tags}\n\n"
+        + "— Peacedeath Bot"
     )
     return text
 
@@ -247,8 +252,8 @@ def main():
         else:
             print(f"⚠️  Нет картинки для приватного канала")
         
-        # 2) Отдельный пост: до 15 ключей в код-блоках, с разбиением по лимиту
-        readable_text = build_readable_post(all_keys)
+        # 2) Отдельный пост: до 15 ключей, HTML + разбиение
+        readable_text = build_readable_post_html(all_keys)
         parts = split_message(readable_text, limit=3500)
         for idx, part in enumerate(parts, start=1):
             try:
@@ -257,7 +262,7 @@ def main():
                     json={
                         "chat_id": PRIVATE_CHANNEL,
                         "text": part,
-                        "parse_mode": "Markdown",
+                        "parse_mode": "HTML",
                         "disable_web_page_preview": True,
                     },
                     timeout=15,
@@ -280,5 +285,6 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
 
 
