@@ -17,6 +17,42 @@ RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
+EMOJIS = ["⚙️", "🔒", "🚀", "✨", "💎", "🔥", "🌐", "🔑"]
+
+WARNING_TEXT = (
+    "Материал взят из открытых источников сети Интернет.\n"
+    "Информация предоставляется в ознакомительных целях.\n"
+    "Все данные получены легальными методами.\n\n"
+)
+
+CLIENTS = (
+    "Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket\n"
+)
+
+TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
+
+
+def build_readable_post(keys):
+    """Человекочитаемый пост с максимум 15 ключами в код-блоках."""
+    keys = keys[:15]  # не больше 15
+
+    blocks = []
+    for i, key in enumerate(keys, start=1):
+        emoji = EMOJIS[(i - 1) % len(EMOJIS)]
+        blocks.append(f"{emoji} Ключ {i}:\n```\n{key}\n```")
+
+    text = (
+        WARNING_TEXT
+        + "\n".join(blocks)
+        + "\n\n"
+        + CLIENTS
+        + "\n"
+        + TAGS
+        + "\n\n— Peacedeath Bot"
+    )
+    return text
+
+
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
     """Отправка фото с подписью, затем файла"""
     url = f"https://api.telegram.org/bot{bot_token}"
@@ -52,6 +88,7 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
         print(f"❌ Ошибка отправки: {e}")
         return None
 
+
 def create_public_file(all_keys):
     """Создать файл с первыми 100 ключами для публичного канала"""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
@@ -69,6 +106,7 @@ def create_public_file(all_keys):
     
     return filepath, len(top_keys)
 
+
 def create_private_file(all_keys):
     """Создать файл со ВСЕМИ остальными ключами для закрытого канала"""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
@@ -84,6 +122,7 @@ def create_private_file(all_keys):
         f.writelines(remaining_keys)
     
     return filepath, len(remaining_keys)
+
 
 def main():
     if not BOT_TOKEN_PUBLIC:
@@ -177,6 +216,7 @@ def main():
         caption += f"🔍 Двойная проверка: TCP + XRAY\n"
         caption += f"📡 VLESS | VMess | Trojan | SS"
         
+        # 1) Пост: картинка + файл (как раньше)
         if os.path.exists(COVER_PRIVATE):
             result = send_photo_with_file(
                 PRIVATE_CHANNEL, 
@@ -187,11 +227,28 @@ def main():
             )
             
             if result and result.get('ok'):
-                print(f"✅ Пост отправлен")
+                print(f"✅ Пост с файлом отправлен в приватный канал")
             else:
                 print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
         else:
-            print(f"⚠️  Нет картинки")
+            print(f"⚠️  Нет картинки для приватного канала")
+        
+        # 2) Отдельный пост: до 15 ключей в код-блоках
+        readable_text = build_readable_post(all_keys)
+        try:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
+                json={
+                    "chat_id": PRIVATE_CHANNEL,
+                    "text": readable_text,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": True,
+                },
+                timeout=15,
+            )
+            print(f"✅ Пост с 15 ключами отправлен: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"❌ Ошибка отправки форматированного поста: {e}")
         
         try:
             os.remove(private_file)
@@ -207,4 +264,5 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
 
