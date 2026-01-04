@@ -53,6 +53,20 @@ def build_readable_post(keys):
     return text
 
 
+def split_message(text, limit=3500):
+    """Режем длинный текст на части <= limit, стараясь резать по пустой строке."""
+    parts = []
+    while len(text) > limit:
+        cut_pos = text.rfind("\n\n", 0, limit)
+        if cut_pos == -1:
+            cut_pos = limit
+        parts.append(text[:cut_pos])
+        text = text[cut_pos:].lstrip()
+    if text:
+        parts.append(text)
+    return parts
+
+
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
     """Отправка фото с подписью, затем файла"""
     url = f"https://api.telegram.org/bot{bot_token}"
@@ -216,7 +230,7 @@ def main():
         caption += f"🔍 Двойная проверка: TCP + XRAY\n"
         caption += f"📡 VLESS | VMess | Trojan | SS"
         
-        # 1) Пост: картинка + файл (как раньше)
+        # 1) Пост: картинка + файл
         if os.path.exists(COVER_PRIVATE):
             result = send_photo_with_file(
                 PRIVATE_CHANNEL, 
@@ -233,22 +247,24 @@ def main():
         else:
             print(f"⚠️  Нет картинки для приватного канала")
         
-        # 2) Отдельный пост: до 15 ключей в код-блоках
+        # 2) Отдельный пост: до 15 ключей в код-блоках, с разбиением по лимиту
         readable_text = build_readable_post(all_keys)
-        try:
-            resp = requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
-                json={
-                    "chat_id": PRIVATE_CHANNEL,
-                    "text": readable_text,
-                    "parse_mode": "Markdown",
-                    "disable_web_page_preview": True,
-                },
-                timeout=15,
-            )
-            print(f"✅ Пост с 15 ключами отправлен: {resp.status_code} {resp.text}")
-        except Exception as e:
-            print(f"❌ Ошибка отправки форматированного поста: {e}")
+        parts = split_message(readable_text, limit=3500)
+        for idx, part in enumerate(parts, start=1):
+            try:
+                resp = requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
+                    json={
+                        "chat_id": PRIVATE_CHANNEL,
+                        "text": part,
+                        "parse_mode": "Markdown",
+                        "disable_web_page_preview": True,
+                    },
+                    timeout=15,
+                )
+                print(f"✅ Часть {idx}/{len(parts)} форматированного поста: {resp.status_code} {resp.text}")
+            except Exception as e:
+                print(f"❌ Ошибка отправки части {idx}: {e}")
         
         try:
             os.remove(private_file)
