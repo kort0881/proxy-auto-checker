@@ -150,7 +150,7 @@ def stage1_tcp_check(key):
         log(f"📊 Ступень 1: {stage1_checked[0]}/{total[0]} | Живых: {stage1_live[0]}")
     
     host, port = extract_host_port(key)
-    if not host or not port:
+   	if not host or not port:
         return None
     
     try:
@@ -477,9 +477,9 @@ def create_xray_config(proxy_config, socks_port=10808):
         "outbounds": [proxy_config]
     }
 
-# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА ------------------
+# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА + 3-я СТУПЕНЬ ------------------
 def stage2_xray_check(key, xray_exe):
-    """Глубокая проверка через xray"""
+    """Глубокая проверка через xray + двойной HTTP-чек (gstatic + Cloudflare)"""
     stage2_checked[0] += 1
     
     if stage2_checked[0] % 10 == 0:
@@ -503,10 +503,12 @@ def stage2_xray_check(key, xray_exe):
             stderr=subprocess.DEVNULL
         )
         
+        # даём xray подняться
         time.sleep(1.5)
         
         start = time.time()
         success = False
+        latency = None
         
         try:
             proxies = {
@@ -514,18 +516,33 @@ def stage2_xray_check(key, xray_exe):
                 'https': f'socks5://127.0.0.1:{socks_port}'
             }
             
-            response = requests.get(
+            # 2-я ступень (как была): gstatic 204
+            resp1 = requests.get(
                 'http://www.gstatic.com/generate_204',
                 proxies=proxies,
                 timeout=10,
                 allow_redirects=False
             )
-            
-            if response.status_code in [200, 204]:
-                latency = int((time.time() - start) * 1000)
-                success = True
+            if resp1.status_code not in [200, 204]:
+                success = False
+            else:
+                # 3-я ступень: второй HTTP-чек через тот же туннель (Cloudflare 204)
+                try:
+                    resp2 = requests.get(
+                        'https://cp.cloudflare.com/generate_204',
+                        proxies=proxies,
+                        timeout=10,
+                        allow_redirects=False
+                    )
+                    if resp2.status_code in [200, 204]:
+                        latency = int((time.time() - start) * 1000)
+                        success = True
+                    else:
+                        success = False
+                except:
+                    success = False
         except:
-            pass
+            success = False
         
         process.terminate()
         try:
@@ -641,7 +658,7 @@ def main():
         return 1
     
     print("="*70)
-    log("⚡ СТУПЕНЬ 2: Проверка через xray")
+    log("⚡ СТУПЕНЬ 2: Проверка через xray + 3-я ступень HTTP")
     print("="*70 + "\n")
     
     stage2_start = time.time()
@@ -665,7 +682,7 @@ def main():
             f.write(f"# Channel: {MY_CHANNEL}\n")
             f.write(f"# Date: {datetime.now()}\n")
             f.write(f"# Verified: {len(results)} / {total[0]}\n")
-            f.write(f"# Method: DUAL-STAGE (TCP + XRAY)\n\n")
+            f.write(f"# Method: TRIPLE-STAGE (TCP + XRAY + 2xHTTP)\n\n")
             
             for latency, quality, protocol, host, port, key in results:
                 key_with_tag = add_comment_to_uri(key, latency, quality, protocol)
@@ -675,7 +692,7 @@ def main():
         print("🎉 РЕЗУЛЬТАТЫ")
         print("="*70)
         print(f"📊 Ступень 1 (TCP): {stage1_live[0]}/{total[0]} за {stage1_time:.1f}с")
-        print(f"📊 Ступень 2 (XRAY): {len(results)}/{stage1_live[0]} за {stage2_time:.1f}с")
+        print(f"📊 Ступень 2+3 (XRAY + 2xHTTP): {len(results)}/{stage1_live[0]} за {stage2_time:.1f}с")
         print(f"✅ ФИНАЛ: {len(results)}/{total[0]} ({len(results)/total[0]*100:.1f}%)")
         print(f"⏱️  Общее время: {elapsed:.1f}с ({elapsed/60:.1f} мин)")
         print(f"📁 Файл: {FINAL_FILE}")
@@ -688,3 +705,4 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
