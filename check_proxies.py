@@ -112,7 +112,7 @@ def extract_host_port(key):
                 break
         
         # Для VMess (base64)
-        if not "@" in key and not ":" in key:
+        if "@" not in key and ":" not in key:
             try:
                 padding = len(key) % 4
                 if padding:
@@ -150,7 +150,7 @@ def stage1_tcp_check(key):
         log(f"📊 Ступень 1: {stage1_checked[0]}/{total[0]} | Живых: {stage1_live[0]}")
     
     host, port = extract_host_port(key)
-   	if not host or not port:
+    if not host or not port:
         return None
     
     try:
