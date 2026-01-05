@@ -3,7 +3,6 @@ import os
 import sys
 import requests
 from datetime import datetime
-import html
 
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
@@ -33,43 +32,33 @@ CLIENTS = (
 TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
 
-def build_readable_post_html(keys):
-    """Человекочитаемый пост с максимум 15 ключами, HTML <pre>."""
-    keys = keys[:15]
+def build_readable_chunks(keys, per_chunk=5):
+    """
+    Возвращает список текстов.
+    Каждый текст: дисклеймер + до per_chunk ключей в plain-тексте.
+    Без Markdown/HTML, чтобы вообще не было ошибок парсинга.
+    """
+    keys = keys[:15]  # максимум 15 ключей
+    chunks = []
 
-    blocks = []
-    for i, key in enumerate(keys, start=1):
-        emoji = EMOJIS[(i - 1) % len(EMOJIS)]
-        safe_key = html.escape(key)
-        blocks.append(f"{emoji} Ключ {i}:\n<pre>{safe_key}</pre>")
+    # разобьём список ключей на пачки по per_chunk
+    for offset in range(0, len(keys), per_chunk):
+        part = keys[offset:offset + per_chunk]
 
-    safe_warning = html.escape(WARNING_TEXT)
-    safe_clients = html.escape(CLIENTS)
-    safe_tags = html.escape(TAGS)
+        lines = [WARNING_TEXT]
+        for i, key in enumerate(part, start=offset + 1):
+            emoji = EMOJIS[(i - 1) % len(EMOJIS)]
+            # Один ключ — три строки: заголовок, сам ключ, пустая строка
+            lines.append(f"{emoji} Ключ {i}:\n{key}\n")
 
-    text = (
-        f"{safe_warning}"
-        + "\n".join(blocks)
-        + "\n\n"
-        + f"{safe_clients}\n"
-        + f"{safe_tags}\n\n"
-        + "— Peacedeath Bot"
-    )
-    return text
+        lines.append(CLIENTS)
+        lines.append(TAGS)
+        lines.append("— Peacedeath Bot")
 
+        text = "\n".join(lines)
+        chunks.append(text)
 
-def split_message(text, limit=3500):
-    """Режем длинный текст на части <= limit, стараясь резать по пустой строке."""
-    parts = []
-    while len(text) > limit:
-        cut_pos = text.rfind("\n\n", 0, limit)
-        if cut_pos == -1:
-            cut_pos = limit
-        parts.append(text[:cut_pos])
-        text = text[cut_pos:].lstrip()
-    if text:
-        parts.append(text)
-    return parts
+    return chunks
 
 
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
@@ -252,22 +241,20 @@ def main():
         else:
             print(f"⚠️  Нет картинки для приватного канала")
         
-        # 2) Отдельный пост: до 15 ключей, HTML + разбиение
-        readable_text = build_readable_post_html(all_keys)
-        parts = split_message(readable_text, limit=3500)
-        for idx, part in enumerate(parts, start=1):
+        # 2) Отдельные посты: до 15 ключей, plain text без parse_mode
+        chunks = build_readable_chunks(all_keys, per_chunk=5)
+        for idx, text in enumerate(chunks, start=1):
             try:
                 resp = requests.post(
                     f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
                     json={
                         "chat_id": PRIVATE_CHANNEL,
-                        "text": part,
-                        "parse_mode": "HTML",
+                        "text": text,
                         "disable_web_page_preview": True,
                     },
                     timeout=15,
                 )
-                print(f"✅ Часть {idx}/{len(parts)} форматированного поста: {resp.status_code} {resp.text}")
+                print(f"✅ Часть {idx}/{len(chunks)} форматированного поста: {resp.status_code} {resp.text}")
             except Exception as e:
                 print(f"❌ Ошибка отправки части {idx}: {e}")
         
