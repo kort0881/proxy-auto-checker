@@ -1,4 +1,3 @@
-# post_to_telegram.py
 import os
 import sys
 import requests
@@ -20,7 +19,7 @@ COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 EMOJIS = ["⚙️", "🔒", "🚀", "✨", "💎", "🔥", "🌐", "🔑"]
 
 WARNING_TEXT = (
-    "Материал взят из открытых источников сети Интернет.\n"
+    "⚠️ Материал взят из открытых источников сети Интернет.\n"
     "Информация предоставляется в ознакомительных целях.\n"
     "Все данные получены легальными методами.\n\n"
 )
@@ -32,31 +31,51 @@ CLIENTS = (
 TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
 
-def build_readable_chunks(keys, per_chunk=5):
+def clean_key(k: str) -> str:
+    """Немного укорачиваем ключи и убираем мусор."""
+    k = k.strip()
+    # если вдруг в строке после ключа комментарий/текст — режем по пробелу
+    if " " in k:
+        k = k.split(" ")[0]
+    return k
+
+
+def build_markdown_chunks(keys, per_chunk=5, max_total_keys=30, limit=3900):
     """
-    Возвращает список текстов.
-    Каждый текст: дисклеймер + до per_chunk ключей в plain-тексте.
-    Без Markdown/HTML, чтобы вообще не было ошибок парсинга.
+    Делает список markdown-сообщений.
+    В каждом: дисклеймер + до per_chunk ключей в ```код-блоках``` + хвост.
+    Следим за лимитом длины и избегаем бесконечных циклов.
     """
-    keys = keys[:15]  # максимум 15 ключей
+    keys = [clean_key(k) for k in keys[:max_total_keys]]
     chunks = []
+    offset = 0
 
-    # разобьём список ключей на пачки по per_chunk
-    for offset in range(0, len(keys), per_chunk):
-        part = keys[offset:offset + per_chunk]
+    while offset < len(keys):
+        # пробуем от per_chunk до 1 ключа в сообщении
+        for current_size in range(per_chunk, 0, -1):
+            part = keys[offset:offset + current_size]
+            if not part:
+                break
 
-        lines = [WARNING_TEXT]
-        for i, key in enumerate(part, start=offset + 1):
-            emoji = EMOJIS[(i - 1) % len(EMOJIS)]
-            # Один ключ — три строки: заголовок, сам ключ, пустая строка
-            lines.append(f"{emoji} Ключ {i}:\n{key}\n")
+            lines = [WARNING_TEXT]
+            for i, key in enumerate(part, start=offset + 1):
+                emoji = EMOJIS[(i - 1) % len(EMOJIS)]
+                safe_key = key.replace("```", "ʼʼʼ")
+                lines.append(f"{emoji} *Ключ {i}:*\n```{safe_key}```\n")
 
-        lines.append(CLIENTS)
-        lines.append(TAGS)
-        lines.append("— Peacedeath Bot")
+            lines.append(CLIENTS)
+            lines.append(TAGS)
+            lines.append("— Peacedeath Bot")
 
-        text = "\n".join(lines)
-        chunks.append(text)
+            text = "\n".join(lines)
+
+            if len(text) <= limit:
+                chunks.append(text)
+                offset += current_size
+                break
+        else:
+            # даже один ключ не влез — пропускаем его, чтобы не зациклиться
+            offset += 1
 
     return chunks
 
@@ -66,7 +85,6 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
     url = f"https://api.telegram.org/bot{bot_token}"
     
     try:
-        # 1. Фото с подписью
         with open(photo_path, 'rb') as photo:
             files = {'photo': photo}
             data = {
@@ -74,10 +92,9 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
                 'caption': caption,
                 'parse_mode': 'HTML'
             }
-            r = requests.post(f"{url}/sendPhoto", data=data, files=files)
+            r = requests.post(f"{url}/sendPhoto", data=data, files=files, timeout=30)
             photo_result = r.json()
         
-        # 2. Файл как reply к фото
         if photo_result.get('ok'):
             message_id = photo_result['result']['message_id']
             
@@ -87,11 +104,14 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
                     'chat_id': channel_id,
                     'reply_to_message_id': message_id
                 }
-                r = requests.post(f"{url}/sendDocument", data=data, files=files)
+                r = requests.post(f"{url}/sendDocument", data=data, files=files, timeout=60)
                 return r.json()
         
         return photo_result
         
+    except requests.Timeout:
+        print("❌ Таймаут при отправке")
+        return None
     except Exception as e:
         print(f"❌ Ошибка отправки: {e}")
         return None
@@ -241,8 +261,8 @@ def main():
         else:
             print(f"⚠️  Нет картинки для приватного канала")
         
-        # 2) Отдельные посты: до 15 ключей, plain text без parse_mode
-        chunks = build_readable_chunks(all_keys, per_chunk=5)
+        # 2) Отдельные посты с код-блоками
+        chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=30, limit=3900)
         for idx, text in enumerate(chunks, start=1):
             try:
                 resp = requests.post(
@@ -250,6 +270,7 @@ def main():
                     json={
                         "chat_id": PRIVATE_CHANNEL,
                         "text": text,
+                        "parse_mode": "Markdown",
                         "disable_web_page_preview": True,
                     },
                     timeout=15,
@@ -272,6 +293,7 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
 
 
 
