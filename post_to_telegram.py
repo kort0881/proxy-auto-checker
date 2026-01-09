@@ -1,3 +1,4 @@
+# post_to_telegram.py
 import os
 import sys
 import requests
@@ -34,7 +35,6 @@ TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 def clean_key(k: str) -> str:
     """Немного укорачиваем ключи и убираем мусор."""
     k = k.strip()
-    # если вдруг в строке после ключа комментарий/текст — режем по пробелу
     if " " in k:
         k = k.split(" ")[0]
     return k
@@ -92,7 +92,12 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
                 'caption': caption,
                 'parse_mode': 'HTML'
             }
-            r = requests.post(f"{url}/sendPhoto", data=data, files=files, timeout=30)
+            r = requests.post(
+                f"{url}/sendPhoto",
+                data=data,
+                files=files,
+                timeout=30
+            )
             photo_result = r.json()
         
         if photo_result.get('ok'):
@@ -104,7 +109,12 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
                     'chat_id': channel_id,
                     'reply_to_message_id': message_id
                 }
-                r = requests.post(f"{url}/sendDocument", data=data, files=files, timeout=60)
+                r = requests.post(
+                    f"{url}/sendDocument",
+                    data=data,
+                    files=files,
+                    timeout=60
+                )
                 return r.json()
         
         return photo_result
@@ -171,13 +181,19 @@ def main():
     if not os.path.exists(COVER_PRIVATE):
         print(f"⚠️  Файл {COVER_PRIVATE} не найден")
     
-    verified_files = [f for f in os.listdir(RESULTS_FOLDER) if f.startswith("verified_") and f.endswith(".txt")]
+    verified_files = [
+        f for f in os.listdir(RESULTS_FOLDER)
+        if f.startswith("verified_") and f.endswith(".txt")
+    ]
     
     if not verified_files:
         print("❌ Нет файлов с результатами")
         return 1
     
-    latest_file = max(verified_files, key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f)))
+    latest_file = max(
+        verified_files,
+        key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
+    )
     file_path = os.path.join(RESULTS_FOLDER, latest_file)
     
     print(f"📁 Файл: {latest_file}")
@@ -223,12 +239,34 @@ def main():
         else:
             print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
     else:
-        print(f"⚠️  Нет картинки")
+        print("⚠️  Нет картинки")
     
     try:
         os.remove(public_file)
     except:
         pass
+
+    # Донат-пост в публичный канал
+    donate_text = (
+        "Если хочешь поддержать автора — можно перевести:\n"
+        "Сбербанк: <code>4276 3801 7277 1425</code>\n"
+        "Не указывайте за что перевод. ✨\n"
+        "Спасибо за любую помощь! ❗️"
+    )
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
+            json={
+                "chat_id": PUBLIC_CHANNEL,
+                "text": donate_text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+            timeout=15,
+        )
+        print(f"✅ Донат-пост отправлен: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"❌ Ошибка отправки донат-поста: {e}")
     
     # ========== ПРИВАТНЫЙ КАНАЛ ==========
     if PRIVATE_CHANNEL and total_keys > 100:
@@ -255,11 +293,11 @@ def main():
             )
             
             if result and result.get('ok'):
-                print(f"✅ Пост с файлом отправлен в приватный канал")
+                print("✅ Пост с файлом отправлен в приватный канал")
             else:
                 print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
         else:
-            print(f"⚠️  Нет картинки для приватного канала")
+            print("⚠️  Нет картинки для приватного канала")
         
         # 2) Отдельные посты с код-блоками
         chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=30, limit=3900)
@@ -290,6 +328,7 @@ def main():
     print("✅ ГОТОВО")
     print("="*70 + "\n")
     return 0
+
 
 if __name__ == "__main__":
     exit(main())
