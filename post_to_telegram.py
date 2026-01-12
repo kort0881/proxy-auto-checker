@@ -3,7 +3,7 @@ import os
 import sys
 import requests
 from datetime import datetime
-import urllib.parse  # нужен для правки URL
+import urllib.parse  # импорт для разбора URL
 
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
@@ -43,10 +43,11 @@ def clean_key(k: str) -> str:
 
 def fix_universal(key: str) -> str:
     """
-    Универсальная правка VLESS:
-    - Hiddify Desktop не понимает type=xhttp, только tcp/udp/grpc/http.[web:39]
-    - Мобильные клиенты нормально работают с type=http.[web:37]
-    Поэтому просто меняем xhttp -> http, остальное не трогаем.
+    Делает VLESS-ключ универсальным:
+    - Hiddify Desktop не принимает type=xhttp, только tcp/udp/grpc/http.[web:39][web:55]
+    - Мобильные клиенты нормально работают с type=http.[web:63]
+    Поэтому, если есть type=xhttp, меняем только его на type=http.
+    Всё остальное (mode, extra, flow и т.д.) не трогаем.
     """
     key = key.strip()
     if not key.startswith("vless://") or "type=xhttp" not in key:
@@ -69,6 +70,7 @@ def fix_universal(key: str) -> str:
             parsed.fragment,
         ))
     except Exception:
+        # в случае чего возвращаем оригинал как есть
         return key
 
 
@@ -233,7 +235,7 @@ def main():
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     
-    # универсальная правка только для vless type=xhttp
+    # единственное изменение логики: делаем ключи универсальными
     all_keys = [fix_universal(l) for l in lines if l.strip() and not l.startswith('#')]
     total_keys = len(all_keys)
     
@@ -365,6 +367,7 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
 
 
 
