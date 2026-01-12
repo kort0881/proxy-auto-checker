@@ -1,9 +1,8 @@
-# post_to_telegram.py
 import os
 import sys
 import requests
 from datetime import datetime
-import urllib.parse  # импорт для разбора URL
+import urllib.parse
 
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
@@ -26,15 +25,12 @@ WARNING_TEXT = (
     "Все данные получены легальными методами.\n\n"
 )
 
-CLIENTS = (
-    "Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket\n"
-)
-
+CLIENTS = "Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket\n"
 TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
 
 def clean_key(k: str) -> str:
-    """Немного укорачиваем ключи и убираем мусор."""
+    """Убираем мусор из ключа."""
     k = k.strip()
     if " " in k:
         k = k.split(" ")[0]
@@ -44,10 +40,7 @@ def clean_key(k: str) -> str:
 def fix_universal(key: str) -> str:
     """
     Делает VLESS-ключ универсальным:
-    - Hiddify Desktop не принимает type=xhttp, только tcp/udp/grpc/http.[web:39][web:55]
-    - Мобильные клиенты нормально работают с type=http.[web:63]
-    Поэтому, если есть type=xhttp, меняем только его на type=http.
-    Всё остальное (mode, extra, flow и т.д.) не трогаем.
+    - Меняет type=xhttp на type=http для совместимости с Hiddify Desktop
     """
     key = key.strip()
     if not key.startswith("vless://") or "type=xhttp" not in key:
@@ -57,7 +50,7 @@ def fix_universal(key: str) -> str:
         parsed = urllib.parse.urlparse(key)
         query = urllib.parse.parse_qs(parsed.query)
 
-        if "type" in query and query["type"][0].lower() == "xhttp":
+        if query.get("type", [""])[0].lower() == "xhttp":
             query["type"] = ["http"]
 
         new_query = urllib.parse.urlencode(query, doseq=True)
@@ -70,22 +63,21 @@ def fix_universal(key: str) -> str:
             parsed.fragment,
         ))
     except Exception:
-        # в случае чего возвращаем оригинал как есть
         return key
 
 
 def build_markdown_chunks(keys, per_chunk=5, max_total_keys=30, limit=3900):
     """
-    Делает список markdown-сообщений.
-    В каждом: дисклеймер + до per_chunk ключей в ```код-блоках``` + хвост.
-    Следим за лимитом длины и избегаем бесконечных циклов.
+    Создаёт список markdown-сообщений.
+    В каждом: дисклеймер + до per_chunk ключей в код-блоках + хвост.
+    Каждый ключ в ОТДЕЛЬНОМ код-блоке (не склеенные).
     """
     keys = [clean_key(k) for k in keys[:max_total_keys]]
     chunks = []
     offset = 0
 
     while offset < len(keys):
-        # пробуем от per_chunk до 1 ключа в сообщении
+        added = False
         for current_size in range(per_chunk, 0, -1):
             part = keys[offset:offset + current_size]
             if not part:
@@ -94,8 +86,14 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=30, limit=3900):
             lines = [WARNING_TEXT]
             for i, key in enumerate(part, start=offset + 1):
                 emoji = EMOJIS[(i - 1) % len(EMOJIS)]
-                safe_key = key.replace("```", "ʼʼʼ")
-                lines.append(f"{emoji} *Ключ {i}:*\n```{safe_key}```\n")
+                # Заменяем ``` внутри ключа на безопасный вариант
+                safe_key = key.replace("```", "'''")
+                # Каждый ключ в отдельном код-блоке
+                lines.append(f"{emoji} *Ключ {i}:*")
+                lines.append(f"```")
+                lines.append(f"{safe_key}")
+                lines.append(f"```")
+                lines.append("")  # пустая строка между ключами
 
             lines.append(CLIENTS)
             lines.append(TAGS)
@@ -106,18 +104,20 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=30, limit=3900):
             if len(text) <= limit:
                 chunks.append(text)
                 offset += current_size
+                added = True
                 break
-        else:
-            # даже один ключ не влез — пропускаем его, чтобы не зациклиться
+
+        if not added:
+            # Пропускаем проблемный ключ
             offset += 1
 
     return chunks
 
 
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
-    """Отправка фото с подписью, затем файла"""
+    """Отправка фото с подписью, затем файла как ответ."""
     url = f"https://api.telegram.org/bot{bot_token}"
-    
+
     try:
         with open(photo_path, 'rb') as photo:
             files = {'photo': photo}
@@ -133,10 +133,10 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
                 timeout=30
             )
             photo_result = r.json()
-        
+
         if photo_result.get('ok'):
             message_id = photo_result['result']['message_id']
-            
+
             with open(file_path, 'rb') as doc:
                 files = {'document': doc}
                 data = {
@@ -150,9 +150,9 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
                     timeout=60
                 )
                 return r.json()
-        
+
         return photo_result
-        
+
     except requests.Timeout:
         print("❌ Таймаут при отправке")
         return None
@@ -162,96 +162,120 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
 
 
 def create_public_file(all_keys):
-    """Создать файл с первыми 100 ключами для публичного канала"""
+    """Создать файл с первыми 100 ключами для публичного канала."""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
     filename = f"public_top100_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
-    
+
     top_keys = all_keys[:100]
-    
+
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"# Channel: @vlesstrojan\n")
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
-        f.write(f"# Total: {len(all_keys)}\n\n")
-        f.writelines(top_keys)
-    
+        f.write(f"# Total: {len(top_keys)}\n\n")
+        for key in top_keys:
+            f.write(key + "\n")
+
     return filepath, len(top_keys)
 
 
 def create_private_file(all_keys):
-    """Создать файл со ВСЕМИ остальными ключами для закрытого канала"""
+    """Создать файл со ВСЕМИ ключами (кроме первых 30) для закрытого канала."""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
     filename = f"private_remaining_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
-    
-    remaining_keys = all_keys[100:]
-    
+
+    # Первые 30 идут в посты с код-блоками, остальные в файл
+    remaining_keys = all_keys[30:]
+
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
-        f.write(f"# Keys: {len(remaining_keys)} / {len(all_keys)}\n\n")
-        f.writelines(remaining_keys)
-    
+        f.write(f"# Keys in file: {len(remaining_keys)}\n")
+        f.write(f"# Keys in posts: 30\n")
+        f.write(f"# Total: {len(all_keys)}\n\n")
+        for key in remaining_keys:
+            f.write(key + "\n")
+
     return filepath, len(remaining_keys)
+
+
+def safe_remove(filepath: str):
+    """Безопасное удаление файла."""
+    try:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+    except OSError as e:
+        print(f"⚠️ Не удалось удалить {filepath}: {e}")
 
 
 def main():
     if not BOT_TOKEN_PUBLIC:
         print("❌ TELEGRAM_BOT_TOKEN_PUBLIC не установлен")
         return 1
-    
+
     if not BOT_TOKEN_PRIVATE:
         print("❌ TELEGRAM_BOT_TOKEN не установлен")
         return 1
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print(" " * 20 + "📤 TELEGRAM POSTER")
-    print("="*70 + "\n")
-    
+    print("=" * 70 + "\n")
+
     if not os.path.exists(COVER_PUBLIC):
-        print(f"⚠️  Файл {COVER_PUBLIC} не найден")
-    
+        print(f"⚠️ Файл {COVER_PUBLIC} не найден")
+
     if not os.path.exists(COVER_PRIVATE):
-        print(f"⚠️  Файл {COVER_PRIVATE} не найден")
-    
+        print(f"⚠️ Файл {COVER_PRIVATE} не найден")
+
+    if not os.path.exists(RESULTS_FOLDER):
+        print(f"❌ Папка {RESULTS_FOLDER} не существует")
+        return 1
+
     verified_files = [
         f for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("verified_") and f.endswith(".txt")
     ]
-    
+
     if not verified_files:
         print("❌ Нет файлов с результатами")
         return 1
-    
+
     latest_file = max(
         verified_files,
         key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
     )
     file_path = os.path.join(RESULTS_FOLDER, latest_file)
-    
+
     print(f"📁 Файл: {latest_file}")
-    
+
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-    
-    # единственное изменение логики: делаем ключи универсальными
-    all_keys = [fix_universal(l) for l in lines if l.strip() and not l.startswith('#')]
+
+    # Очищаем и делаем ключи универсальными
+    all_keys = []
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith('#'):
+            key = fix_universal(clean_key(line))
+            all_keys.append(key)
+
     total_keys = len(all_keys)
-    
+
     print(f"📦 Всего ключей: {total_keys}\n")
-    
+
     if total_keys == 0:
         print("❌ Нет ключей для постинга")
         return 1
-    
+
     # ========== ПУБЛИЧНЫЙ КАНАЛ ==========
-    print("="*70)
+    print("=" * 70)
     print(f"📢 ПУБЛИЧНЫЙ КАНАЛ: {PUBLIC_CHANNEL}")
-    print("="*70 + "\n")
-    
+    print("=" * 70 + "\n")
+
     public_file, public_count = create_public_file(all_keys)
-    
+
     caption = f"🔥 <b>Проверенные прокси-ключи</b>\n\n"
     caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
     caption += f"✅ Лучших: <b>{public_count}</b>\n"
@@ -259,27 +283,25 @@ def main():
     caption += f"🔍 Двойная проверка: TCP + XRAY\n"
     caption += f"📡 VLESS | VMess | Trojan | SS\n\n"
     caption += f"💬 {PUBLIC_CHANNEL}"
-    
+
     if os.path.exists(COVER_PUBLIC):
         result = send_photo_with_file(
-            PUBLIC_CHANNEL, 
+            PUBLIC_CHANNEL,
             COVER_PUBLIC,
-            public_file, 
-            caption, 
+            public_file,
+            caption,
             bot_token=BOT_TOKEN_PUBLIC
         )
-        
+
         if result and result.get('ok'):
             print(f"✅ Пост отправлен в {PUBLIC_CHANNEL}")
         else:
-            print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
+            error_msg = result.get('description', 'Unknown error') if result else 'No response'
+            print(f"❌ Ошибка: {error_msg}")
     else:
-        print("⚠️  Нет картинки")
-    
-    try:
-        os.remove(public_file)
-    except:
-        pass
+        print("⚠️ Нет картинки для публичного канала")
+
+    safe_remove(public_file)
 
     # Донат-пост в публичный канал
     donate_text = (
@@ -299,43 +321,51 @@ def main():
             },
             timeout=15,
         )
-        print(f"✅ Донат-пост отправлен: {resp.status_code} {resp.text}")
+        if resp.json().get('ok'):
+            print("✅ Донат-пост отправлен")
+        else:
+            print(f"❌ Ошибка донат-поста: {resp.json().get('description')}")
     except Exception as e:
         print(f"❌ Ошибка отправки донат-поста: {e}")
-    
+
     # ========== ПРИВАТНЫЙ КАНАЛ ==========
-    if PRIVATE_CHANNEL and total_keys > 100:
-        print("\n" + "="*70)
+    if PRIVATE_CHANNEL and total_keys > 30:
+        print("\n" + "=" * 70)
         print(f"🔒 ПРИВАТНЫЙ КАНАЛ: {PRIVATE_CHANNEL}")
-        print("="*70 + "\n")
-        
+        print("=" * 70 + "\n")
+
         private_file, private_count = create_private_file(all_keys)
-        
+
         caption = f"🔐 <b>Полный список ключей</b>\n\n"
         caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-        caption += f"📦 Ключей: <b>{private_count}</b> из {total_keys}\n\n"
+        caption += f"📦 В файле: <b>{private_count}</b> ключей\n"
+        caption += f"📝 В постах: <b>30</b> ключей\n"
+        caption += f"📊 Всего: <b>{total_keys}</b>\n\n"
         caption += f"🔍 Двойная проверка: TCP + XRAY\n"
         caption += f"📡 VLESS | VMess | Trojan | SS"
-        
-        # 1) Пост: картинка + файл
+
+        # 1) Пост: картинка + файл с остальными ключами
         if os.path.exists(COVER_PRIVATE):
             result = send_photo_with_file(
-                PRIVATE_CHANNEL, 
+                PRIVATE_CHANNEL,
                 COVER_PRIVATE,
-                private_file, 
-                caption, 
+                private_file,
+                caption,
                 bot_token=BOT_TOKEN_PRIVATE
             )
-            
+
             if result and result.get('ok'):
-                print("✅ Пост с файлом отправлен в приватный канал")
+                print(f"✅ Пост с файлом отправлен ({private_count} ключей в файле)")
             else:
-                print(f"❌ Ошибка: {result.get('description', 'Unknown error')}")
+                error_msg = result.get('description', 'Unknown error') if result else 'No response'
+                print(f"❌ Ошибка: {error_msg}")
         else:
-            print("⚠️  Нет картинки для приватного канала")
-        
-        # 2) Отдельные посты с код-блоками
+            print("⚠️ Нет картинки для приватного канала")
+
+        # 2) Отдельные посты с первыми 30 ключами в код-блоках
         chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=30, limit=3900)
+        print(f"📝 Отправка {len(chunks)} постов с ключами...")
+
         for idx, text in enumerate(chunks, start=1):
             try:
                 resp = requests.post(
@@ -348,26 +378,26 @@ def main():
                     },
                     timeout=15,
                 )
-                print(f"✅ Часть {idx}/{len(chunks)} форматированного поста: {resp.status_code} {resp.text}")
+                if resp.json().get('ok'):
+                    print(f"✅ Пост {idx}/{len(chunks)} отправлен")
+                else:
+                    print(f"❌ Пост {idx}/{len(chunks)} ошибка: {resp.json().get('description')}")
             except Exception as e:
-                print(f"❌ Ошибка отправки части {idx}: {e}")
-        
-        try:
-            os.remove(private_file)
-        except:
-            pass
-    elif total_keys <= 100:
-        print("\n⚠️  Меньше 100 ключей - только публичный пост")
-    
-    print("\n" + "="*70)
+                print(f"❌ Ошибка отправки поста {idx}: {e}")
+
+        safe_remove(private_file)
+
+    elif total_keys <= 30:
+        print("\n⚠️ Меньше 30 ключей — только публичный пост")
+
+    print("\n" + "=" * 70)
     print("✅ ГОТОВО")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
     return 0
 
 
 if __name__ == "__main__":
-    exit(main())
-
+    sys.exit(main())
 
 
 
