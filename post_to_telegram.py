@@ -28,6 +28,15 @@ WARNING_TEXT = (
 CLIENTS = "Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket\n"
 TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
+REACTIONS_TEXT = (
+    "Если формат зашел — жми 👍\n"
+    "Не согласен — выбери 😡\n"
+    "Хочешь продолжение — поставь 🔥\n"
+    "Конфиг рабочий? жми 🟢, лагает — тыкай 🔴\n"
+    "Протокол топ? ставь 🚀, если фейл — жми 💥\n"
+    "Юзаешь? отмечай 😎, если нет — выбирай 🤔"
+)
+
 
 def clean_key(k: str) -> str:
     """Убираем мусор из ключа."""
@@ -282,7 +291,8 @@ def main():
     caption += f"📊 Всего проверено: <b>{total_keys}</b>\n\n"
     caption += f"🔍 Двойная проверка: TCP + XRAY\n"
     caption += f"📡 VLESS | VMess | Trojan | SS\n\n"
-    caption += f"💬 {PUBLIC_CHANNEL}"
+    caption += f"💬 {PUBLIC_CHANNEL}\n\n"
+    caption += REACTIONS_TEXT
 
     if os.path.exists(COVER_PUBLIC):
         result = send_photo_with_file(
@@ -398,6 +408,7 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 
 
