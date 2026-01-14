@@ -75,7 +75,7 @@ def fix_universal(key: str) -> str:
         return key
 
 
-def build_markdown_chunks(keys, per_chunk=5, max_total_keys=30, limit=3900):
+def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
     """
     Создаёт список markdown-сообщений.
     В каждом: дисклеймер + до per_chunk ключей в код-блоках + хвост.
@@ -190,19 +190,19 @@ def create_public_file(all_keys):
 
 
 def create_private_file(all_keys):
-    """Создать файл со ВСЕМИ ключами (кроме первых 30) для закрытого канала."""
+    """Создать файл со ВСЕМИ ключами (кроме первых 10) для закрытого канала."""
     date_str = datetime.now().strftime('%Y%m%d_%H%M')
     filename = f"private_remaining_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
-    # Первые 30 идут в посты с код-блоками, остальные в файл
-    remaining_keys = all_keys[30:]
+    # Первые 10 идут в посты с код-блоками, остальные в файл
+    remaining_keys = all_keys[10:]
 
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
         f.write(f"# Keys in file: {len(remaining_keys)}\n")
-        f.write(f"# Keys in posts: 30\n")
+        f.write(f"# Keys in posts: 10\n")
         f.write(f"# Total: {len(all_keys)}\n\n")
         for key in remaining_keys:
             f.write(key + "\n")
@@ -339,7 +339,7 @@ def main():
         print(f"❌ Ошибка отправки донат-поста: {e}")
 
     # ========== ПРИВАТНЫЙ КАНАЛ ==========
-    if PRIVATE_CHANNEL and total_keys > 30:
+    if PRIVATE_CHANNEL and total_keys > 10:
         print("\n" + "=" * 70)
         print(f"🔒 ПРИВАТНЫЙ КАНАЛ: {PRIVATE_CHANNEL}")
         print("=" * 70 + "\n")
@@ -349,7 +349,7 @@ def main():
         caption = f"🔐 <b>Полный список ключей</b>\n\n"
         caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
         caption += f"📦 В файле: <b>{private_count}</b> ключей\n"
-        caption += f"📝 В постах: <b>30</b> ключей\n"
+        caption += f"📝 В постах: <b>10</b> ключей\n"
         caption += f"📊 Всего: <b>{total_keys}</b>\n\n"
         caption += f"🔍 Двойная проверка: TCP + XRAY\n"
         caption += f"📡 VLESS | VMess | Trojan | SS"
@@ -372,8 +372,8 @@ def main():
         else:
             print("⚠️ Нет картинки для приватного канала")
 
-        # 2) Отдельные посты с первыми 30 ключами в код-блоках
-        chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=30, limit=3900)
+        # 2) Отдельные посты с первыми 10 ключами в код-блоках
+        chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
         print(f"📝 Отправка {len(chunks)} постов с ключами...")
 
         for idx, text in enumerate(chunks, start=1):
@@ -397,13 +397,18 @@ def main():
 
         safe_remove(private_file)
 
-    elif total_keys <= 30:
-        print("\n⚠️ Меньше 30 ключей — только публичный пост")
+    elif total_keys <= 10:
+        print("\n⚠️ Меньше 10 ключей — только публичный пост")
 
     print("\n" + "=" * 70)
     print("✅ ГОТОВО")
     print("=" * 70 + "\n")
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
 
 
 if __name__ == "__main__":
