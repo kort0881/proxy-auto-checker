@@ -95,14 +95,12 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
             lines = [WARNING_TEXT]
             for i, key in enumerate(part, start=offset + 1):
                 emoji = EMOJIS[(i - 1) % len(EMOJIS)]
-                # Заменяем ``` внутри ключа на безопасный вариант
                 safe_key = key.replace("```", "'''")
-                # Каждый ключ в отдельном код-блоке
                 lines.append(f"{emoji} *Ключ {i}:*")
-                lines.append(f"```")
+                lines.append("```")
                 lines.append(f"{safe_key}")
-                lines.append(f"```")
-                lines.append("")  # пустая строка между ключами
+                lines.append("```")
+                lines.append("")
 
             lines.append(CLIENTS)
             lines.append(TAGS)
@@ -117,7 +115,6 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
                 break
 
         if not added:
-            # Пропускаем проблемный ключ
             offset += 1
 
     return chunks
@@ -179,9 +176,9 @@ def create_public_file(all_keys):
     top_keys = all_keys[:100]
 
     with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(f"# Channel: @vlesstrojan\n")
+        f.write("# Channel: @vlesstrojan\n")
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
-        f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
+        f.write("# Verified: Dual-check (TCP + XRAY)\n")
         f.write(f"# Total: {len(top_keys)}\n\n")
         for key in top_keys:
             f.write(key + "\n")
@@ -195,14 +192,13 @@ def create_private_file(all_keys):
     filename = f"private_remaining_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
-    # Первые 10 идут в посты с код-блоками, остальные в файл
     remaining_keys = all_keys[10:]
 
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
-        f.write(f"# Verified: Dual-check (TCP + XRAY)\n")
+        f.write("# Verified: Dual-check (TCP + XRAY)\n")
         f.write(f"# Keys in file: {len(remaining_keys)}\n")
-        f.write(f"# Keys in posts: 10\n")
+        f.write("# Keys in posts: 10\n")
         f.write(f"# Total: {len(all_keys)}\n\n")
         for key in remaining_keys:
             f.write(key + "\n")
@@ -247,22 +243,33 @@ def main():
         if f.startswith("verified_") and f.endswith(".txt")
     ]
 
-    if not verified_files:
+    semi_dead_files = [
+        f for f in os.listdir(RESULTS_FOLDER)
+        if f.startswith("semi_dead_") and f.endswith(".txt")
+    ]
+
+    if verified_files:
+        latest_file = max(
+            verified_files,
+            key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
+        )
+        print("📄 Используем verified-файл (идеальные ключи)")
+    elif semi_dead_files:
+        latest_file = max(
+            semi_dead_files,
+            key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
+        )
+        print("📄 Verified нет, используем semi_dead (частично рабочие)")
+    else:
         print("❌ Нет файлов с результатами")
         return 1
 
-    latest_file = max(
-        verified_files,
-        key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
-    )
     file_path = os.path.join(RESULTS_FOLDER, latest_file)
-
     print(f"📁 Файл: {latest_file}")
 
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
-    # Очищаем и делаем ключи универсальными
     all_keys = []
     for line in lines:
         line = line.strip()
@@ -271,7 +278,6 @@ def main():
             all_keys.append(key)
 
     total_keys = len(all_keys)
-
     print(f"📦 Всего ключей: {total_keys}\n")
 
     if total_keys == 0:
@@ -285,12 +291,12 @@ def main():
 
     public_file, public_count = create_public_file(all_keys)
 
-    caption = f"🔥 <b>Проверенные прокси-ключи</b>\n\n"
+    caption = "🔥 <b>Проверенные прокси-ключи</b>\n\n"
     caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
     caption += f"✅ Лучших: <b>{public_count}</b>\n"
     caption += f"📊 Всего проверено: <b>{total_keys}</b>\n\n"
-    caption += f"🔍 Двойная проверка: TCP + XRAY\n"
-    caption += f"📡 VLESS | VMess | Trojan | SS\n\n"
+    caption += "🔍 Двойная проверка: TCP + XRAY\n"
+    caption += "📡 VLESS | VMess | Trojan | SS\n\n"
     caption += f"💬 {PUBLIC_CHANNEL}\n\n"
     caption += REACTIONS_TEXT
 
@@ -346,15 +352,14 @@ def main():
 
         private_file, private_count = create_private_file(all_keys)
 
-        caption = f"🔐 <b>Полный список ключей</b>\n\n"
+        caption = "🔐 <b>Полный список ключей</b>\n\n"
         caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
         caption += f"📦 В файле: <b>{private_count}</b> ключей\n"
-        caption += f"📝 В постах: <b>10</b> ключей\n"
+        caption += "📝 В постах: <b>10</b> ключей\n"
         caption += f"📊 Всего: <b>{total_keys}</b>\n\n"
-        caption += f"🔍 Двойная проверка: TCP + XRAY\n"
-        caption += f"📡 VLESS | VMess | Trojan | SS"
+        caption += "🔍 Двойная проверка: TCP + XRAY\n"
+        caption += "📡 VLESS | VMess | Trojan | SS"
 
-        # 1) Пост: картинка + файл с остальными ключами
         if os.path.exists(COVER_PRIVATE):
             result = send_photo_with_file(
                 PRIVATE_CHANNEL,
@@ -372,7 +377,6 @@ def main():
         else:
             print("⚠️ Нет картинки для приватного канала")
 
-        # 2) Отдельные посты с первыми 10 ключами в код-блоках
         chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
         print(f"📝 Отправка {len(chunks)} постов с ключами...")
 
@@ -391,7 +395,7 @@ def main():
                 if resp.json().get('ok'):
                     print(f"✅ Пост {idx}/{len(chunks)} отправлен")
                 else:
-                    print(f"❌ Пост {idx}/{len(chunks)} ошибка: {resp.json().get('description')}")
+                    print(f"❌ Пост {idx} ошибка: {resp.json().get('description')}")
             except Exception as e:
                 print(f"❌ Ошибка отправки поста {idx}: {e}")
 
@@ -409,10 +413,6 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 
-
-
-if __name__ == "__main__":
-    sys.exit(main())
 
 
 
