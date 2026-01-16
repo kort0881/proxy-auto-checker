@@ -8,7 +8,7 @@ on:
 jobs:
   check-and-post:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 2 часа максимум
+    timeout-minutes: 240  # 🔥 4 часа вместо 2 (было недостаточно)
     
     steps:
     - name: 📥 Checkout repository
@@ -39,10 +39,14 @@ jobs:
         python post_to_telegram.py
     
     - name: 📁 Upload results as artifact
-      if: always()
+      if: always()  # 🔥 ВАЖНО: загружать даже если скрипт упал
       uses: actions/upload-artifact@v4
       with:
-        name: verified-keys
-        path: results/verified_*.txt
+        name: verified-keys-${{ github.run_number }}  # 🔥 Уникальное имя
+        path: |
+          results/verified_*.txt
+          results/semi_dead_*.txt
+          results/checkpoint_*.txt
         retention-days: 7
+
 
