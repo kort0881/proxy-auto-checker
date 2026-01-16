@@ -8,7 +8,7 @@ on:
 jobs:
   check-and-post:
     runs-on: ubuntu-latest
-    timeout-minutes: 240  # 🔥 4 часа вместо 2 (было недостаточно)
+    timeout-minutes: 240  # 🔥 4 часа (достаточно для 1677 ключей)
     
     steps:
     - name: 📥 Checkout repository
@@ -22,7 +22,7 @@ jobs:
     - name: 📦 Install dependencies
       run: |
         pip install --upgrade pip
-        pip install requests[socks]
+        pip install requests[socks] urllib3
     
     - name: 🔍 Run proxy checker
       run: |
@@ -39,14 +39,35 @@ jobs:
         python post_to_telegram.py
     
     - name: 📁 Upload results as artifact
-      if: always()  # 🔥 ВАЖНО: загружать даже если скрипт упал
+      if: always()  # 🔥 Загружать даже если скрипт упал
       uses: actions/upload-artifact@v4
       with:
-        name: verified-keys-${{ github.run_number }}  # 🔥 Уникальное имя
+        name: verified-keys-${{ github.run_number }}  # Уникальное имя
         path: |
           results/verified_*.txt
           results/semi_dead_*.txt
           results/checkpoint_*.txt
         retention-days: 7
+        if-no-files-found: warn  # 🔥 НОВОЕ: Предупреждение вместо ошибки
+    
+    - name: 📊 Show summary
+      if: always()
+      run: |
+        echo "## 📊 Результаты проверки" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f results/verified_*.txt ]; then
+          PERFECT_COUNT=$(cat results/verified_*.txt | grep -v "^#" | wc -l)
+          echo "🟢 **Идеальных ключей:** $PERFECT_COUNT" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f results/semi_dead_*.txt ]; then
+          PARTIAL_COUNT=$(cat results/semi_dead_*.txt | grep -v "^#" | wc -l)
+          echo "🟠 **Полудохлых ключей:** $PARTIAL_COUNT" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Workflow завершён" >> $GITHUB_STEP_SUMMARY
+
 
 
