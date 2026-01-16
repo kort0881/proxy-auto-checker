@@ -37,47 +37,35 @@ KEY_SOURCES = {
     ]
 }
 
-# 🔥 НОВОЕ: Тестовые сайты для 4-й ступени
+# 🔥 ОПТИМИЗИРОВАННЫЕ тестовые сайты (5 вместо 7, уменьшены таймауты)
 TEST_SITES = {
     "youtube": {
         "url": "https://www.youtube.com/",
-        "timeout": 12,
+        "timeout": 8,  # было 12
         "min_size": 50000,
         "keywords": ["youtube", "video"]
     },
     "instagram": {
         "url": "https://www.instagram.com/",
-        "timeout": 12,
+        "timeout": 8,  # было 12
         "min_size": 30000,
         "keywords": ["instagram"]
     },
-    "whatsapp": {
-        "url": "https://web.whatsapp.com/",
-        "timeout": 12,
-        "min_size": 20000,
-        "keywords": ["whatsapp"]
-    },
     "telegram": {
         "url": "https://web.telegram.org/",
-        "timeout": 12,
+        "timeout": 8,  # было 12
         "min_size": 15000,
         "keywords": ["telegram"]
     },
     "sberbank": {
         "url": "https://www.sberbank.ru/",
-        "timeout": 15,
+        "timeout": 10,  # было 15
         "min_size": 10000,
         "keywords": ["сбербанк", "sberbank", "sber"]
     },
-    "tinkoff": {
-        "url": "https://www.tinkoff.ru/",
-        "timeout": 15,
-        "min_size": 10000,
-        "keywords": ["тинькофф", "tinkoff"]
-    },
     "google": {
         "url": "https://www.google.com/",
-        "timeout": 10,
+        "timeout": 6,  # было 10
         "min_size": 5000,
         "keywords": ["google"]
     }
@@ -641,7 +629,7 @@ def stage2_xray_check(key, xray_exe):
 
 # 🔥 ------------------ СТУПЕНЬ 3: РЕАЛЬНЫЕ САЙТЫ ------------------
 def stage3_real_world_test(key_data, xray_exe):
-    """Глубокое тестирование на реальных сайтах (YouTube, Instagram, банки и т.д.)"""
+    """Глубокое тестирование на реальных сайтах"""
     stage3_checked[0] += 1
     latency, quality, protocol, host, port, key = key_data
     
@@ -721,8 +709,8 @@ def stage3_real_world_test(key_data, xray_exe):
             except Exception:
                 failed_sites.append(f"{site_name}(err)")
             
-            # Пауза между запросами
-            time.sleep(0.5)
+            # 🔥 Уменьшена пауза
+            time.sleep(0.3)  # было 0.5
         
         if process:
             process.terminate()
@@ -748,21 +736,18 @@ def stage3_real_world_test(key_data, xray_exe):
         else:
             avg_latency = latency
         
-        # Классификация
-        if working_count == total_sites:
-            # Идеальный - все работают
+        # 🔥 СМЯГЧЁННАЯ КЛАССИФИКАЦИЯ
+        if working_count >= 5:  # 5 из 5 = 100%
             stage3_perfect[0] += 1
             return (key, avg_latency, "perfect", protocol, host, port, working_sites, failed_sites)
-        elif working_count >= total_sites * 0.6:
-            # Хороший - 60%+ работают
+        elif working_count >= 4:  # 4 из 5 = 80%
             stage3_perfect[0] += 1
             return (key, avg_latency, "good", protocol, host, port, working_sites, failed_sites)
-        elif working_count > 0:
-            # Полудохлый - хоть что-то работает
+        elif working_count >= 2:  # 2-3 из 5 = 40-60%
             stage3_partial[0] += 1
             return (key, avg_latency, "partial", protocol, host, port, working_sites, failed_sites)
         else:
-            # Дохлый - ничего не работает
+            # 0-1 сайтов - слишком плохо
             return None
         
     except Exception:
@@ -836,13 +821,37 @@ def cleanup_xray():
     except:
         pass
 
+# 🔥 НОВАЯ ФУНКЦИЯ: Сохранение промежуточных результатов
+def save_checkpoint(perfect, partial):
+    """Сохранение контрольной точки каждые 100 ключей"""
+    checkpoint_file = os.path.join(RESULTS_FOLDER, f"checkpoint_{datetime.now().strftime('%H-%M')}.txt")
+    
+    try:
+        all_keys = perfect + partial
+        if not all_keys:
+            return
+        
+        with open(checkpoint_file, 'w', encoding='utf-8') as f:
+            f.write(f"# Checkpoint: {datetime.now().isoformat()}\n")
+            f.write(f"# Perfect: {len(perfect)}, Partial: {len(partial)}\n")
+            f.write(f"# Total saved: {len(all_keys)}\n\n")
+            
+            for key, lat, qual, prot, h, p, working, failed in all_keys:
+                sites_status = f"✅{len(working)}/{len(TEST_SITES)}"
+                key_with_tag = add_comment_to_uri(key, lat, qual, prot, sites_status)
+                f.write(key_with_tag + "\n")
+        
+        log(f"💾 Checkpoint сохранён: {len(all_keys)} ключей")
+    except Exception as e:
+        log(f"⚠️ Ошибка сохранения checkpoint: {e}")
+
 def main():
     # Отключаем SSL warnings
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
     print("\n" + "="*70)
-    print(" " * 5 + "🔥 QUAD-STAGE REAL-WORLD PROXY CHECKER 🔥")
+    print(" " * 5 + "🔥 QUAD-LEVEL REAL-WORLD PROXY CHECKER 🔥")
     print("="*70 + "\n")
     
     xray_exe = setup_xray()
@@ -930,7 +939,10 @@ def main():
     perfect_keys = []
     partial_keys = []
     
-    max_workers_3 = 5 if os.environ.get('GITHUB_ACTIONS') else 10
+    # 🔥 Уменьшаем потоки для GitHub
+    max_workers_3 = 3 if os.environ.get('GITHUB_ACTIONS') else 10
+    
+    checked_count = 0  # 🔥 Счётчик для checkpoint
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_3) as executor:
         futures = {executor.submit(stage3_real_world_test, key_data, xray_exe): key_data for key_data in stage2_results}
@@ -945,6 +957,11 @@ def main():
                         perfect_keys.append(result)
                     elif qual == "partial":
                         partial_keys.append(result)
+                    
+                    # 🔥 Сохраняем checkpoint каждые 100 ключей
+                    checked_count += 1
+                    if checked_count % 100 == 0:
+                        save_checkpoint(perfect_keys, partial_keys)
             except:
                 pass
     
@@ -960,7 +977,7 @@ def main():
             f.write(f"# Channel: {MY_CHANNEL}\n")
             f.write(f"# Date: {datetime.now().isoformat()}\n")
             f.write(f"# Perfect keys: {len(perfect_keys)} / {total[0]}\n")
-            f.write(f"# Method: QUAD-STAGE (TCP + XRAY + 2xHTTP + REAL-SITES)\n")
+            f.write(f"# Method: QUAD-LEVEL (TCP + XRAY + 2xHTTP + REAL-SITES)\n")
             f.write(f"# Test sites: {', '.join(TEST_SITES.keys())}\n\n")
             
             for key, lat, qual, prot, h, p, working, failed in perfect_keys:
@@ -1024,4 +1041,5 @@ if __name__ == "__main__":
         traceback.print_exc()
         cleanup_xray()
         exit(1)
+
 
