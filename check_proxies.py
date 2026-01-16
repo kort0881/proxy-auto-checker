@@ -37,37 +37,19 @@ KEY_SOURCES = {
     ]
 }
 
-# 🔥 ОПТИМИЗИРОВАННЫЕ тестовые сайты (5 вместо 7, уменьшены таймауты)
+# 🔥 ТОЛЬКО 2 САЙТА (Сбербанк + X)
 TEST_SITES = {
-    "youtube": {
-        "url": "https://www.youtube.com/",
-        "timeout": 8,  # было 12
-        "min_size": 50000,
-        "keywords": ["youtube", "video"]
-    },
-    "instagram": {
-        "url": "https://www.instagram.com/",
-        "timeout": 8,  # было 12
-        "min_size": 30000,
-        "keywords": ["instagram"]
-    },
-    "telegram": {
-        "url": "https://web.telegram.org/",
-        "timeout": 8,  # было 12
-        "min_size": 15000,
-        "keywords": ["telegram"]
-    },
     "sberbank": {
         "url": "https://www.sberbank.ru/",
-        "timeout": 10,  # было 15
-        "min_size": 10000,
+        "timeout": 8,
+        "min_size": 8000,
         "keywords": ["сбербанк", "sberbank", "sber"]
     },
-    "google": {
-        "url": "https://www.google.com/",
-        "timeout": 6,  # было 10
-        "min_size": 5000,
-        "keywords": ["google"]
+    "x": {
+        "url": "https://x.com/",
+        "timeout": 8,
+        "min_size": 12000,
+        "keywords": ["twitter", "x.com"]
     }
 }
 
@@ -87,7 +69,7 @@ stage3_partial = [0]
 total = [0]
 
 def log(msg):
-    print(msg)
+    print(msg, flush=True)
 
 # ------------------ Установка XRAY ------------------
 def setup_xray():
@@ -142,15 +124,12 @@ def setup_xray():
 
 # ------------------ ИЗВЛЕЧЕНИЕ HOST:PORT ------------------
 def extract_host_port(key):
-    """Универсальное извлечение host:port из любого ключа"""
     try:
-        # Удаляем префикс протокола
         for prefix in ["vless://", "vmess://", "trojan://", "ss://"]:
             if key.lower().startswith(prefix):
                 key = key[len(prefix):]
                 break
         
-        # Для VMess (base64)
         if "@" not in key and ":" not in key:
             try:
                 padding = len(key) % 4
@@ -162,7 +141,6 @@ def extract_host_port(key):
             except:
                 return None, None
         
-        # Для остальных (vless/trojan/ss)
         if "@" in key:
             key = key.split("@", 1)[1]
         
@@ -182,7 +160,6 @@ def extract_host_port(key):
 
 # ------------------ СТУПЕНЬ 1: БЫСТРАЯ TCP ПРОВЕРКА ------------------
 def stage1_tcp_check(key):
-    """Быстрая TCP проверка - отсеиваем мусор"""
     stage1_checked[0] += 1
     
     if stage1_checked[0] % 100 == 0:
@@ -193,7 +170,6 @@ def stage1_tcp_check(key):
         return None
     
     try:
-        # Определяем нужен ли TLS
         use_tls = "tls" in key.lower() or key.lower().startswith("trojan://")
         
         with socket.create_connection((host, port), timeout=5) as sock:
@@ -223,7 +199,7 @@ def stage1_tcp_check(key):
     
     return None
 
-# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ ------------------
+# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ (полностью, как у тебя) ------------------
 def parse_vless(key):
     try:
         if not key.startswith("vless://"):
@@ -518,7 +494,6 @@ def create_xray_config(proxy_config, socks_port=10808):
 
 # ------------------ СТУПЕНЬ 2: XRAY БАЗОВАЯ ------------------
 def stage2_xray_check(key, xray_exe):
-    """Базовая проверка через xray (gstatic + Cloudflare)"""
     stage2_checked[0] += 1
     
     if stage2_checked[0] % 10 == 0:
@@ -544,8 +519,7 @@ def stage2_xray_check(key, xray_exe):
             stderr=subprocess.DEVNULL
         )
         
-        # Даём xray подняться (для GitHub больше времени)
-        time.sleep(2.5 if os.environ.get('GITHUB_ACTIONS') else 1.5)
+        time.sleep(1.5)
         
         start = time.time()
         success = False
@@ -557,22 +531,20 @@ def stage2_xray_check(key, xray_exe):
                 'https': f'socks5://127.0.0.1:{socks_port}'
             }
             
-            # Проверка 1: gstatic
             resp1 = requests.get(
                 'http://www.gstatic.com/generate_204',
                 proxies=proxies,
-                timeout=12,
+                timeout=10,
                 allow_redirects=False
             )
             if resp1.status_code not in [200, 204]:
                 success = False
             else:
-                # Проверка 2: cloudflare
                 try:
                     resp2 = requests.get(
                         'https://cp.cloudflare.com/generate_204',
                         proxies=proxies,
-                        timeout=12,
+                        timeout=10,
                         allow_redirects=False
                     )
                     if resp2.status_code in [200, 204]:
@@ -615,7 +587,7 @@ def stage2_xray_check(key, xray_exe):
         
         return None
         
-    except Exception as e:
+    except Exception:
         if process:
             try:
                 process.kill()
@@ -627,14 +599,14 @@ def stage2_xray_check(key, xray_exe):
             pass
         return None
 
-# 🔥 ------------------ СТУПЕНЬ 3: РЕАЛЬНЫЕ САЙТЫ ------------------
-def stage3_real_world_test(key_data, xray_exe):
-    """Глубокое тестирование на реальных сайтах"""
+# 🔥 ------------------ СТУПЕНЬ 3: СБЕРБАНК + X (ТОЛЬКО 2 САЙТА!) ------------------
+def stage3_real_sites(key_data, xray_exe):
     stage3_checked[0] += 1
     latency, quality, protocol, host, port, key = key_data
     
-    if stage3_checked[0] % 5 == 0:
-        log(f"🌐 Ступень 3: {stage3_checked[0]}/{stage2_live[0]} | Идеальных: {stage3_perfect[0]} | Полудохлых: {stage3_partial[0]}")
+    # 🔥 ЛОГИРУЕМ КАЖДЫЕ 2 КЛЮЧА
+    if stage3_checked[0] % 2 == 0:
+        log(f"🌐 Ступень 3: {stage3_checked[0]}/{stage2_live[0]} | Perfect: {stage3_perfect[0]} | Partial: {stage3_partial[0]}")
     
     proxy_config, _ = parse_proxy_key(key)
     if not proxy_config:
@@ -656,7 +628,7 @@ def stage3_real_world_test(key_data, xray_exe):
             stderr=subprocess.DEVNULL
         )
         
-        time.sleep(2.5 if os.environ.get('GITHUB_ACTIONS') else 2)
+        time.sleep(1.5)
         
         proxies = {
             'http': f'socks5://127.0.0.1:{socks_port}',
@@ -664,18 +636,14 @@ def stage3_real_world_test(key_data, xray_exe):
         }
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
         working_sites = []
         failed_sites = []
         total_latency = 0
         
-        # Проверяем каждый тестовый сайт
+        # Проверяем ОБА сайта
         for site_name, site_config in TEST_SITES.items():
             try:
                 start_time = time.time()
@@ -684,17 +652,15 @@ def stage3_real_world_test(key_data, xray_exe):
                     site_config["url"],
                     proxies=proxies,
                     timeout=site_config["timeout"],
-                    allow_redirects=True,
                     headers=headers,
                     verify=False
                 )
                 
                 request_time = time.time() - start_time
                 
-                # Проверяем статус, размер и ключевые слова
                 if resp.status_code == 200 and len(resp.content) >= site_config["min_size"]:
                     content_lower = resp.text.lower()
-                    if any(keyword.lower() in content_lower for keyword in site_config["keywords"]):
+                    if any(kw.lower() in content_lower for kw in site_config["keywords"]):
                         working_sites.append(site_name)
                         total_latency += request_time
                     else:
@@ -704,13 +670,10 @@ def stage3_real_world_test(key_data, xray_exe):
                     
             except requests.exceptions.Timeout:
                 failed_sites.append(f"{site_name}(timeout)")
-            except requests.exceptions.ConnectionError:
-                failed_sites.append(f"{site_name}(conn)")
-            except Exception:
+            except:
                 failed_sites.append(f"{site_name}(err)")
             
-            # 🔥 Уменьшена пауза
-            time.sleep(0.3)  # было 0.5
+            time.sleep(0.2)  # Короткая пауза
         
         if process:
             process.terminate()
@@ -727,27 +690,21 @@ def stage3_real_world_test(key_data, xray_exe):
         except:
             pass
         
-        total_sites = len(TEST_SITES)
         working_count = len(working_sites)
         
-        # Вычисляем среднюю латентность
         if working_count > 0:
             avg_latency = int((total_latency / working_count) * 1000)
         else:
             avg_latency = latency
         
-        # 🔥 СМЯГЧЁННАЯ КЛАССИФИКАЦИЯ
-        if working_count >= 5:  # 5 из 5 = 100%
+        # 🔥 КЛАССИФИКАЦИЯ ДЛЯ 2 САЙТОВ:
+        if working_count == 2:  # Оба работают
             stage3_perfect[0] += 1
             return (key, avg_latency, "perfect", protocol, host, port, working_sites, failed_sites)
-        elif working_count >= 4:  # 4 из 5 = 80%
-            stage3_perfect[0] += 1
-            return (key, avg_latency, "good", protocol, host, port, working_sites, failed_sites)
-        elif working_count >= 2:  # 2-3 из 5 = 40-60%
+        elif working_count == 1:  # Хоть один работает
             stage3_partial[0] += 1
             return (key, avg_latency, "partial", protocol, host, port, working_sites, failed_sites)
         else:
-            # 0-1 сайтов - слишком плохо
             return None
         
     except Exception:
@@ -783,7 +740,6 @@ def download_keys():
             except Exception as e:
                 log(f"  ❌ Ошибка: {e}")
     
-    # Удаляем дубли
     all_keys = list(set(all_keys))
     log(f"\n📦 Всего уникальных ключей: {len(all_keys)}")
     
@@ -810,7 +766,6 @@ def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str, site
     return f"{base}#{quote(new_tag, safe=' @[]-_./=🟢🟡🟠⚪✅❌')}"
 
 def cleanup_xray():
-    """Очистка временных файлов"""
     try:
         for f in os.listdir(XRAY_FOLDER):
             if f.startswith("config_") and f.endswith(".json"):
@@ -821,37 +776,12 @@ def cleanup_xray():
     except:
         pass
 
-# 🔥 НОВАЯ ФУНКЦИЯ: Сохранение промежуточных результатов
-def save_checkpoint(perfect, partial):
-    """Сохранение контрольной точки каждые 100 ключей"""
-    checkpoint_file = os.path.join(RESULTS_FOLDER, f"checkpoint_{datetime.now().strftime('%H-%M')}.txt")
-    
-    try:
-        all_keys = perfect + partial
-        if not all_keys:
-            return
-        
-        with open(checkpoint_file, 'w', encoding='utf-8') as f:
-            f.write(f"# Checkpoint: {datetime.now().isoformat()}\n")
-            f.write(f"# Perfect: {len(perfect)}, Partial: {len(partial)}\n")
-            f.write(f"# Total saved: {len(all_keys)}\n\n")
-            
-            for key, lat, qual, prot, h, p, working, failed in all_keys:
-                sites_status = f"✅{len(working)}/{len(TEST_SITES)}"
-                key_with_tag = add_comment_to_uri(key, lat, qual, prot, sites_status)
-                f.write(key_with_tag + "\n")
-        
-        log(f"💾 Checkpoint сохранён: {len(all_keys)} ключей")
-    except Exception as e:
-        log(f"⚠️ Ошибка сохранения checkpoint: {e}")
-
 def main():
-    # Отключаем SSL warnings
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
     print("\n" + "="*70)
-    print(" " * 5 + "🔥 QUAD-LEVEL REAL-WORLD PROXY CHECKER 🔥")
+    print(" " * 5 + "🔥 TRIPLE-STAGE CHECKER (Sberbank + X) 🔥")
     print("="*70 + "\n")
     
     xray_exe = setup_xray()
@@ -870,16 +800,13 @@ def main():
     
     # ========== СТУПЕНЬ 1: TCP ==========
     print("\n" + "="*70)
-    log("⚡ СТУПЕНЬ 1: Быстрая TCP проверка (отсев мусора)")
+    log("⚡ СТУПЕНЬ 1: Быстрая TCP проверка")
     print("="*70 + "\n")
     
     start_time = time.time()
     stage1_results = []
     
-    # Для GitHub меньше потоков
-    max_workers_1 = 80 if os.environ.get('GITHUB_ACTIONS') else 100
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_1) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
         futures = {executor.submit(stage1_tcp_check, key): key for key in all_keys}
         
         for future in concurrent.futures.as_completed(futures):
@@ -899,7 +826,7 @@ def main():
         log("❌ Нет ключей после ступени 1")
         return 1
     
-    # ========== СТУПЕНЬ 2: XRAY БАЗОВАЯ ==========
+    # ========== СТУПЕНЬ 2: XRAY ==========
     print("="*70)
     log("⚡ СТУПЕНЬ 2: Проверка через xray (gstatic + cloudflare)")
     print("="*70 + "\n")
@@ -907,9 +834,7 @@ def main():
     stage2_start = time.time()
     stage2_results = []
     
-    max_workers_2 = 10 if os.environ.get('GITHUB_ACTIONS') else 20
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_2) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
         
         for future in concurrent.futures.as_completed(futures):
@@ -929,39 +854,29 @@ def main():
         log("❌ Нет ключей после ступени 2")
         return 1
     
-    # ========== СТУПЕНЬ 3: РЕАЛЬНЫЕ САЙТЫ ==========
+    # ========== СТУПЕНЬ 3: СБЕРБАНК + X ==========
     print("="*70)
-    log("⚡ СТУПЕНЬ 3: Тестирование на реальных сайтах")
-    log(f"   Проверяем: {', '.join(TEST_SITES.keys())}")
+    log("⚡ СТУПЕНЬ 3: Тестирование (Sberbank + X)")
     print("="*70 + "\n")
     
     stage3_start = time.time()
     perfect_keys = []
     partial_keys = []
     
-    # 🔥 Уменьшаем потоки для GitHub
-    max_workers_3 = 3 if os.environ.get('GITHUB_ACTIONS') else 10
-    
-    checked_count = 0  # 🔥 Счётчик для checkpoint
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_3) as executor:
-        futures = {executor.submit(stage3_real_world_test, key_data, xray_exe): key_data for key_data in stage2_results}
+    # 🔥 10 потоков для быстроты
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(stage3_real_sites, key_data, xray_exe): key_data for key_data in stage2_results}
         
         for future in concurrent.futures.as_completed(futures):
             try:
-                result = future.result(timeout=90)
+                result = future.result(timeout=30)
                 if result:
                     key, lat, qual, prot, h, p, working, failed = result
                     
-                    if qual in ["perfect", "good"]:
+                    if qual == "perfect":
                         perfect_keys.append(result)
                     elif qual == "partial":
                         partial_keys.append(result)
-                    
-                    # 🔥 Сохраняем checkpoint каждые 100 ключей
-                    checked_count += 1
-                    if checked_count % 100 == 0:
-                        save_checkpoint(perfect_keys, partial_keys)
             except:
                 pass
     
@@ -977,11 +892,10 @@ def main():
             f.write(f"# Channel: {MY_CHANNEL}\n")
             f.write(f"# Date: {datetime.now().isoformat()}\n")
             f.write(f"# Perfect keys: {len(perfect_keys)} / {total[0]}\n")
-            f.write(f"# Method: QUAD-LEVEL (TCP + XRAY + 2xHTTP + REAL-SITES)\n")
-            f.write(f"# Test sites: {', '.join(TEST_SITES.keys())}\n\n")
+            f.write(f"# Method: TRIPLE-STAGE (TCP + XRAY + Sberbank + X)\n\n")
             
             for key, lat, qual, prot, h, p, working, failed in perfect_keys:
-                sites_status = f"✅{len(working)}/{len(TEST_SITES)}"
+                sites_status = f"✅{len(working)}/2"
                 key_with_tag = add_comment_to_uri(key, lat, qual, prot, sites_status)
                 f.write(key_with_tag + "\n")
         
@@ -994,14 +908,14 @@ def main():
             f.write(f"# Channel: {MY_CHANNEL}\n")
             f.write(f"# Date: {datetime.now().isoformat()}\n")
             f.write(f"# Partial keys: {len(partial_keys)} / {total[0]}\n")
-            f.write(f"# Warning: работают частично!\n\n")
+            f.write(f"# Warning: работает только 1 сайт!\n\n")
             
             for key, lat, qual, prot, h, p, working, failed in partial_keys:
                 sites_info = f"✅{','.join(working)} ❌{','.join(failed)}"
                 key_with_tag = add_comment_to_uri(key, lat, qual, prot, sites_info)
                 f.write(key_with_tag + "\n")
         
-        log(f"⚠️  Сохранено {len(partial_keys)} полудохлых: {SEMI_DEAD_FILE}")
+        log(f"⚠️  Сохранено {len(partial_keys)} частично рабочих: {SEMI_DEAD_FILE}")
     
     # ========== СТАТИСТИКА ==========
     print("\n" + "="*70)
@@ -1009,19 +923,18 @@ def main():
     print("="*70)
     print(f"📊 Ступень 1 (TCP):         {stage1_live[0]}/{total[0]} за {stage1_time:.1f}с")
     print(f"📊 Ступень 2 (XRAY):        {stage2_live[0]}/{stage1_live[0]} за {stage2_time:.1f}с")
-    print(f"📊 Ступень 3 (Real-World):")
-    print(f"   🟢 Идеальных:            {len(perfect_keys)} ({len(perfect_keys)/total[0]*100:.1f}%)")
-    print(f"   🟠 Полудохлых:           {len(partial_keys)} ({len(partial_keys)/total[0]*100:.1f}%)")
-    print(f"   ❌ Дохлых:               {stage2_live[0] - len(perfect_keys) - len(partial_keys)}")
+    print(f"📊 Ступень 3 (Sber+X):")
+    print(f"   🟢 Идеальных (оба):      {len(perfect_keys)} ({len(perfect_keys)/total[0]*100:.1f}%)")
+    print(f"   🟠 Частичных (1 из 2):   {len(partial_keys)} ({len(partial_keys)/total[0]*100:.1f}%)")
     print(f"\n⏱️  Общее время: {elapsed:.1f}с ({elapsed/60:.1f} мин)")
     
     if perfect_keys:
         print(f"📁 Идеальные: {FINAL_FILE}")
     if partial_keys:
-        print(f"📁 Полудохлые: {SEMI_DEAD_FILE}")
+        print(f"📁 Частичные: {SEMI_DEAD_FILE}")
     
     print("="*70)
-    print(f"💡 Итого рабочих: {len(perfect_keys)} из {total[0]} ({len(perfect_keys)/total[0]*100:.1f}%)")
+    print(f"💡 Итого рабочих: {len(perfect_keys)+len(partial_keys)} из {total[0]}")
     print("="*70)
     
     cleanup_xray()
@@ -1041,5 +954,6 @@ if __name__ == "__main__":
         traceback.print_exc()
         cleanup_xray()
         exit(1)
+
 
 
