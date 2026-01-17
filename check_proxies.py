@@ -37,46 +37,25 @@ KEY_SOURCES = {
     ]
 }
 
-# 🔥 ТОЛЬКО 2 САЙТА (Сбербанк + X)
-TEST_SITES = {
-    "sberbank": {
-        "url": "https://www.sberbank.ru/",
-        "timeout": 8,
-        "min_size": 8000,
-        "keywords": ["сбербанк", "sberbank", "sber"]
-    },
-    "x": {
-        "url": "https://x.com/",
-        "timeout": 8,
-        "min_size": 12000,
-        "keywords": ["twitter", "x.com"]
-    }
-}
-
 MY_CHANNEL = "@vlesstrojan"
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 FINAL_FILE = os.path.join(RESULTS_FOLDER, f"verified_{timestamp}.txt")
-SEMI_DEAD_FILE = os.path.join(RESULTS_FOLDER, f"semi_dead_{timestamp}.txt")
 
 # Счетчики
 stage1_checked = [0]
 stage1_live = [0]
 stage2_checked = [0]
 stage2_live = [0]
-stage3_checked = [0]
-stage3_perfect = [0]
-stage3_partial = [0]
 total = [0]
 
 def log(msg):
-    print(msg, flush=True)
+    print(msg)
 
 # ------------------ Установка XRAY ------------------
 def setup_xray():
     exe_path = os.path.join(XRAY_FOLDER, "xray.exe" if os.name == 'nt' else "xray")
     
     if os.path.exists(exe_path):
-        log(f"✅ Используется xray: {exe_path}")
         return exe_path
     
     log("📥 Скачивание xray-core...")
@@ -124,12 +103,15 @@ def setup_xray():
 
 # ------------------ ИЗВЛЕЧЕНИЕ HOST:PORT ------------------
 def extract_host_port(key):
+    """Универсальное извлечение host:port из любого ключа"""
     try:
+        # Удаляем префикс протокола
         for prefix in ["vless://", "vmess://", "trojan://", "ss://"]:
             if key.lower().startswith(prefix):
                 key = key[len(prefix):]
                 break
         
+        # Для VMess (base64)
         if "@" not in key and ":" not in key:
             try:
                 padding = len(key) % 4
@@ -141,6 +123,7 @@ def extract_host_port(key):
             except:
                 return None, None
         
+        # Для остальных (vless/trojan/ss)
         if "@" in key:
             key = key.split("@", 1)[1]
         
@@ -160,6 +143,7 @@ def extract_host_port(key):
 
 # ------------------ СТУПЕНЬ 1: БЫСТРАЯ TCP ПРОВЕРКА ------------------
 def stage1_tcp_check(key):
+    """Быстрая TCP проверка - отсеиваем мусор"""
     stage1_checked[0] += 1
     
     if stage1_checked[0] % 100 == 0:
@@ -170,6 +154,7 @@ def stage1_tcp_check(key):
         return None
     
     try:
+        # Определяем нужен ли TLS
         use_tls = "tls" in key.lower() or key.lower().startswith("trojan://")
         
         with socket.create_connection((host, port), timeout=5) as sock:
@@ -199,7 +184,7 @@ def stage1_tcp_check(key):
     
     return None
 
-# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ (полностью, как у тебя) ------------------
+# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ ------------------
 def parse_vless(key):
     try:
         if not key.startswith("vless://"):
@@ -492,8 +477,9 @@ def create_xray_config(proxy_config, socks_port=10808):
         "outbounds": [proxy_config]
     }
 
-# ------------------ СТУПЕНЬ 2: XRAY БАЗОВАЯ ------------------
+# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА + 3-я СТУПЕНЬ ------------------
 def stage2_xray_check(key, xray_exe):
+    """Глубокая проверка через xray + двойной HTTP-чек (gstatic + Cloudflare)"""
     stage2_checked[0] += 1
     
     if stage2_checked[0] % 10 == 0:
@@ -507,8 +493,6 @@ def stage2_xray_check(key, xray_exe):
     config = create_xray_config(proxy_config, socks_port)
     config_file = os.path.join(XRAY_FOLDER, f"config_{socks_port}.json")
     
-    process = None
-    
     try:
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
@@ -519,6 +503,7 @@ def stage2_xray_check(key, xray_exe):
             stderr=subprocess.DEVNULL
         )
         
+        # даём xray подняться
         time.sleep(1.5)
         
         start = time.time()
@@ -531,6 +516,7 @@ def stage2_xray_check(key, xray_exe):
                 'https': f'socks5://127.0.0.1:{socks_port}'
             }
             
+            # 2-я ступень (как была): gstatic 204
             resp1 = requests.get(
                 'http://www.gstatic.com/generate_204',
                 proxies=proxies,
@@ -540,6 +526,7 @@ def stage2_xray_check(key, xray_exe):
             if resp1.status_code not in [200, 204]:
                 success = False
             else:
+                # 3-я ступень: второй HTTP-чек через тот же туннель (Cloudflare 204)
                 try:
                     resp2 = requests.get(
                         'https://cp.cloudflare.com/generate_204',
@@ -557,15 +544,11 @@ def stage2_xray_check(key, xray_exe):
         except:
             success = False
         
-        if process:
-            process.terminate()
-            try:
-                process.wait(timeout=2)
-            except:
-                try:
-                    process.kill()
-                except:
-                    pass
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except:
+            process.kill()
         
         try:
             os.remove(config_file)
@@ -587,132 +570,11 @@ def stage2_xray_check(key, xray_exe):
         
         return None
         
-    except Exception:
-        if process:
-            try:
-                process.kill()
-            except:
-                pass
+    except Exception as e:
         try:
-            os.remove(config_file)
+            process.kill()
         except:
             pass
-        return None
-
-# 🔥 ------------------ СТУПЕНЬ 3: СБЕРБАНК + X (ТОЛЬКО 2 САЙТА!) ------------------
-def stage3_real_sites(key_data, xray_exe):
-    stage3_checked[0] += 1
-    latency, quality, protocol, host, port, key = key_data
-    
-    # 🔥 ЛОГИРУЕМ КАЖДЫЕ 2 КЛЮЧА
-    if stage3_checked[0] % 2 == 0:
-        log(f"🌐 Ступень 3: {stage3_checked[0]}/{stage2_live[0]} | Perfect: {stage3_perfect[0]} | Partial: {stage3_partial[0]}")
-    
-    proxy_config, _ = parse_proxy_key(key)
-    if not proxy_config:
-        return None
-    
-    socks_port = random.randint(30000, 40000)
-    config = create_xray_config(proxy_config, socks_port)
-    config_file = os.path.join(XRAY_FOLDER, f"config_{socks_port}.json")
-    
-    process = None
-    
-    try:
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        
-        process = subprocess.Popen(
-            [xray_exe, "run", "-c", config_file],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        
-        time.sleep(1.5)
-        
-        proxies = {
-            'http': f'socks5://127.0.0.1:{socks_port}',
-            'https': f'socks5://127.0.0.1:{socks_port}'
-        }
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        
-        working_sites = []
-        failed_sites = []
-        total_latency = 0
-        
-        # Проверяем ОБА сайта
-        for site_name, site_config in TEST_SITES.items():
-            try:
-                start_time = time.time()
-                
-                resp = requests.get(
-                    site_config["url"],
-                    proxies=proxies,
-                    timeout=site_config["timeout"],
-                    headers=headers,
-                    verify=False
-                )
-                
-                request_time = time.time() - start_time
-                
-                if resp.status_code == 200 and len(resp.content) >= site_config["min_size"]:
-                    content_lower = resp.text.lower()
-                    if any(kw.lower() in content_lower for kw in site_config["keywords"]):
-                        working_sites.append(site_name)
-                        total_latency += request_time
-                    else:
-                        failed_sites.append(site_name)
-                else:
-                    failed_sites.append(site_name)
-                    
-            except requests.exceptions.Timeout:
-                failed_sites.append(f"{site_name}(timeout)")
-            except:
-                failed_sites.append(f"{site_name}(err)")
-            
-            time.sleep(0.2)  # Короткая пауза
-        
-        if process:
-            process.terminate()
-            try:
-                process.wait(timeout=2)
-            except:
-                try:
-                    process.kill()
-                except:
-                    pass
-        
-        try:
-            os.remove(config_file)
-        except:
-            pass
-        
-        working_count = len(working_sites)
-        
-        if working_count > 0:
-            avg_latency = int((total_latency / working_count) * 1000)
-        else:
-            avg_latency = latency
-        
-        # 🔥 КЛАССИФИКАЦИЯ ДЛЯ 2 САЙТОВ:
-        if working_count == 2:  # Оба работают
-            stage3_perfect[0] += 1
-            return (key, avg_latency, "perfect", protocol, host, port, working_sites, failed_sites)
-        elif working_count == 1:  # Хоть один работает
-            stage3_partial[0] += 1
-            return (key, avg_latency, "partial", protocol, host, port, working_sites, failed_sites)
-        else:
-            return None
-        
-    except Exception:
-        if process:
-            try:
-                process.kill()
-            except:
-                pass
         try:
             os.remove(config_file)
         except:
@@ -740,56 +602,29 @@ def download_keys():
             except Exception as e:
                 log(f"  ❌ Ошибка: {e}")
     
+    # Удаляем дубли
     all_keys = list(set(all_keys))
     log(f"\n📦 Всего уникальных ключей: {len(all_keys)}")
     
     return all_keys
 
-def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str, sites_status: str = "") -> str:
+def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> str:
     if "#" in uri:
         base = uri.split("#")[0]
     else:
         base = uri
-    
-    quality_emoji = {
-        "perfect": "🟢",
-        "good": "🟡",
-        "partial": "🟠",
-        "weak": "⚪"
-    }.get(quality, quality)
-    
-    if sites_status:
-        new_tag = f"{quality_emoji} {latency}ms {protocol} {sites_status} {MY_CHANNEL}"
-    else:
-        new_tag = f"[{latency}ms {quality} {protocol} {MY_CHANNEL}]"
-    
-    return f"{base}#{quote(new_tag, safe=' @[]-_./=🟢🟡🟠⚪✅❌')}"
-
-def cleanup_xray():
-    try:
-        for f in os.listdir(XRAY_FOLDER):
-            if f.startswith("config_") and f.endswith(".json"):
-                try:
-                    os.remove(os.path.join(XRAY_FOLDER, f))
-                except:
-                    pass
-    except:
-        pass
+    new_tag = f"[{latency}ms {quality} {protocol} {MY_CHANNEL}]"
+    return f"{base}#{quote(new_tag, safe=' @[]-_./=')}"
 
 def main():
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    
     print("\n" + "="*70)
-    print(" " * 5 + "🔥 TRIPLE-STAGE CHECKER (Sberbank + X) 🔥")
+    print(" " * 5 + "🔥 DUAL-STAGE XRAY PROXY CHECKER 🔥")
     print("="*70 + "\n")
     
     xray_exe = setup_xray()
     if not xray_exe:
         log("❌ Не удалось установить xray")
         return 1
-    
-    cleanup_xray()
     
     all_keys = download_keys()
     if not all_keys:
@@ -798,9 +633,8 @@ def main():
     
     total[0] = len(all_keys)
     
-    # ========== СТУПЕНЬ 1: TCP ==========
     print("\n" + "="*70)
-    log("⚡ СТУПЕНЬ 1: Быстрая TCP проверка")
+    log("⚡ СТУПЕНЬ 1: Быстрая TCP проверка (отсев мусора)")
     print("="*70 + "\n")
     
     start_time = time.time()
@@ -810,12 +644,9 @@ def main():
         futures = {executor.submit(stage1_tcp_check, key): key for key in all_keys}
         
         for future in concurrent.futures.as_completed(futures):
-            try:
-                result = future.result(timeout=10)
-                if result:
-                    stage1_results.append(result)
-            except:
-                pass
+            result = future.result()
+            if result:
+                stage1_results.append(result)
     
     stage1_time = time.time() - start_time
     
@@ -826,134 +657,54 @@ def main():
         log("❌ Нет ключей после ступени 1")
         return 1
     
-    # ========== СТУПЕНЬ 2: XRAY ==========
     print("="*70)
-    log("⚡ СТУПЕНЬ 2: Проверка через xray (gstatic + cloudflare)")
+    log("⚡ СТУПЕНЬ 2: Проверка через xray + 3-я ступень HTTP")
     print("="*70 + "\n")
     
     stage2_start = time.time()
-    stage2_results = []
+    results = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
         
         for future in concurrent.futures.as_completed(futures):
-            try:
-                result = future.result(timeout=30)
-                if result:
-                    stage2_results.append(result)
-            except:
-                pass
+            result = future.result()
+            if result:
+                results.append(result)
     
     stage2_time = time.time() - stage2_start
-    
-    log(f"\n✅ Ступень 2: {stage2_live[0]}/{stage1_live[0]} ({stage2_live[0]/stage1_live[0]*100:.1f}%)")
-    log(f"   Время: {stage2_time:.1f}с\n")
-    
-    if not stage2_results:
-        log("❌ Нет ключей после ступени 2")
-        return 1
-    
-    # ========== СТУПЕНЬ 3: СБЕРБАНК + X ==========
-    print("="*70)
-    log("⚡ СТУПЕНЬ 3: Тестирование (Sberbank + X)")
-    print("="*70 + "\n")
-    
-    stage3_start = time.time()
-    perfect_keys = []
-    partial_keys = []
-    
-    # 🔥 10 потоков для быстроты
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(stage3_real_sites, key_data, xray_exe): key_data for key_data in stage2_results}
-        
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                result = future.result(timeout=30)
-                if result:
-                    key, lat, qual, prot, h, p, working, failed = result
-                    
-                    if qual == "perfect":
-                        perfect_keys.append(result)
-                    elif qual == "partial":
-                        partial_keys.append(result)
-            except:
-                pass
-    
-    stage3_time = time.time() - stage3_start
     elapsed = time.time() - start_time
     
-    # ========== СОХРАНЕНИЕ ==========
-    
-    if perfect_keys:
-        perfect_keys.sort(key=lambda x: x[1])
+    if results:
+        results.sort(key=lambda x: x[0])
         
         with open(FINAL_FILE, 'w', encoding='utf-8') as f:
             f.write(f"# Channel: {MY_CHANNEL}\n")
-            f.write(f"# Date: {datetime.now().isoformat()}\n")
-            f.write(f"# Perfect keys: {len(perfect_keys)} / {total[0]}\n")
-            f.write(f"# Method: TRIPLE-STAGE (TCP + XRAY + Sberbank + X)\n\n")
+            f.write(f"# Date: {datetime.now()}\n")
+            f.write(f"# Verified: {len(results)} / {total[0]}\n")
+            f.write(f"# Method: TRIPLE-STAGE (TCP + XRAY + 2xHTTP)\n\n")
             
-            for key, lat, qual, prot, h, p, working, failed in perfect_keys:
-                sites_status = f"✅{len(working)}/2"
-                key_with_tag = add_comment_to_uri(key, lat, qual, prot, sites_status)
+            for latency, quality, protocol, host, port, key in results:
+                key_with_tag = add_comment_to_uri(key, latency, quality, protocol)
                 f.write(key_with_tag + "\n")
         
-        log(f"✅ Сохранено {len(perfect_keys)} идеальных: {FINAL_FILE}")
-    
-    if partial_keys:
-        partial_keys.sort(key=lambda x: -len(x[6]))
+        print("\n" + "="*70)
+        print("🎉 РЕЗУЛЬТАТЫ")
+        print("="*70)
+        print(f"📊 Ступень 1 (TCP): {stage1_live[0]}/{total[0]} за {stage1_time:.1f}с")
+        print(f"📊 Ступень 2+3 (XRAY + 2xHTTP): {len(results)}/{stage1_live[0]} за {stage2_time:.1f}с")
+        print(f"✅ ФИНАЛ: {len(results)}/{total[0]} ({len(results)/total[0]*100:.1f}%)")
+        print(f"⏱️  Общее время: {elapsed:.1f}с ({elapsed/60:.1f} мин)")
+        print(f"📁 Файл: {FINAL_FILE}")
+        print("="*70)
         
-        with open(SEMI_DEAD_FILE, 'w', encoding='utf-8') as f:
-            f.write(f"# Channel: {MY_CHANNEL}\n")
-            f.write(f"# Date: {datetime.now().isoformat()}\n")
-            f.write(f"# Partial keys: {len(partial_keys)} / {total[0]}\n")
-            f.write(f"# Warning: работает только 1 сайт!\n\n")
-            
-            for key, lat, qual, prot, h, p, working, failed in partial_keys:
-                sites_info = f"✅{','.join(working)} ❌{','.join(failed)}"
-                key_with_tag = add_comment_to_uri(key, lat, qual, prot, sites_info)
-                f.write(key_with_tag + "\n")
-        
-        log(f"⚠️  Сохранено {len(partial_keys)} частично рабочих: {SEMI_DEAD_FILE}")
-    
-    # ========== СТАТИСТИКА ==========
-    print("\n" + "="*70)
-    print("🎉 РЕЗУЛЬТАТЫ")
-    print("="*70)
-    print(f"📊 Ступень 1 (TCP):         {stage1_live[0]}/{total[0]} за {stage1_time:.1f}с")
-    print(f"📊 Ступень 2 (XRAY):        {stage2_live[0]}/{stage1_live[0]} за {stage2_time:.1f}с")
-    print(f"📊 Ступень 3 (Sber+X):")
-    print(f"   🟢 Идеальных (оба):      {len(perfect_keys)} ({len(perfect_keys)/total[0]*100:.1f}%)")
-    print(f"   🟠 Частичных (1 из 2):   {len(partial_keys)} ({len(partial_keys)/total[0]*100:.1f}%)")
-    print(f"\n⏱️  Общее время: {elapsed:.1f}с ({elapsed/60:.1f} мин)")
-    
-    if perfect_keys:
-        print(f"📁 Идеальные: {FINAL_FILE}")
-    if partial_keys:
-        print(f"📁 Частичные: {SEMI_DEAD_FILE}")
-    
-    print("="*70)
-    print(f"💡 Итого рабочих: {len(perfect_keys)+len(partial_keys)} из {total[0]}")
-    print("="*70)
-    
-    cleanup_xray()
-    
-    return 0
+        return 0
+    else:
+        log("\n❌ НЕТ РАБОЧИХ КЛЮЧЕЙ")
+        return 1
 
 if __name__ == "__main__":
-    try:
-        exit(main())
-    except KeyboardInterrupt:
-        print("\n⚠️  Прервано")
-        cleanup_xray()
-        exit(1)
-    except Exception as e:
-        print(f"\n❌ Ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        cleanup_xray()
-        exit(1)
+    exit(main())
 
 
 
