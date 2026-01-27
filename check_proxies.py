@@ -26,12 +26,12 @@ os.makedirs(XRAY_FOLDER, exist_ok=True)
 os.makedirs(RESULTS_FOLDER, exist_ok=True)
 
 # === НАСТРОЙКИ ФИЛЬТРАЦИИ ===
-MAX_LATENCY = 2000       # Макс латентность (мс) - отсекаем медленные
-TCP_TIMEOUT = 3          # Таймаут TCP проверки
-HTTP_TIMEOUT = 5         # Таймаут HTTP запросов через прокси
-XRAY_STARTUP = 0.8       # Время на запуск xray
+MAX_LATENCY = 2000       # Макс латентность (мс)
+TCP_TIMEOUT = 3          # Таймаут TCP
+HTTP_TIMEOUT = 5         # Таймаут HTTP
+XRAY_STARTUP = 0.8       # Время на запуск
 
-# Источники ключей
+# Источники ключей (твои)
 KEY_SOURCES = {
     "RU": [
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part1.txt",
@@ -50,34 +50,23 @@ MY_CHANNEL = "@vlesstrojan"
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 FINAL_FILE = os.path.join(RESULTS_FOLDER, f"verified_{timestamp}.txt")
 
-# Счетчики
 stats = {
-    "tcp_checked": 0,
-    "tcp_live": 0,
-    "tcp_timeout": 0,
-    "xray_checked": 0,
-    "xray_live": 0,
-    "xray_timeout": 0,
-    "total": 0
+    "tcp_checked": 0, "tcp_live": 0, "tcp_timeout": 0,
+    "xray_checked": 0, "xray_live": 0, "xray_timeout": 0, "total": 0
 }
 
-def log(msg):
-    print(msg)
+def log(msg): print(msg)
 
-# ------------------ Установка XRAY ------------------
+# ------------------ Установка XRAY (без изменений) ------------------
 def setup_xray():
     exe_path = os.path.join(XRAY_FOLDER, "xray.exe" if os.name == 'nt' else "xray")
-    
-    if os.path.exists(exe_path):
-        return exe_path
+    if os.path.exists(exe_path): return exe_path
     
     log("📥 Скачивание xray-core...")
-    
     try:
         import platform
         system = platform.system().lower()
         machine = platform.machine().lower()
-        
         if system == "windows":
             arch = "64" if "64" in machine else "32"
             filename = f"Xray-windows-{arch}.zip"
@@ -85,42 +74,31 @@ def setup_xray():
             arch = "64" if "64" in machine or "aarch64" in machine or "x86_64" in machine else "32"
             filename = f"Xray-linux-{arch}.zip"
         else:
-            log("❌ Неподдерживаемая ОС")
             return None
         
         url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
         r = requests.get(url, stream=True, timeout=120)
         zip_path = os.path.join(XRAY_FOLDER, "xray.zip")
-        
         with open(zip_path, 'wb') as f:
             for chunk in r.iter_content(8192):
-                if chunk:
-                    f.write(chunk)
-        
+                if chunk: f.write(chunk)
         import zipfile
         with zipfile.ZipFile(zip_path, 'r') as zf:
             zf.extractall(XRAY_FOLDER)
-        
         os.remove(zip_path)
-        
-        if system != "windows":
-            os.chmod(exe_path, 0o755)
-        
-        log("✅ Xray установлен")
+        if system != "windows": os.chmod(exe_path, 0o755)
         return exe_path
-        
     except Exception as e:
         log(f"❌ Ошибка установки xray: {e}")
         return None
 
-# ------------------ ИЗВЛЕЧЕНИЕ HOST:PORT ------------------
+# ------------------ ИЗВЛЕЧЕНИЕ HOST:PORT (без изменений) ------------------
 def extract_host_port(key):
     try:
         for prefix in ["vless://", "vmess://", "trojan://", "ss://"]:
             if key.lower().startswith(prefix):
                 key = key[len(prefix):]
                 break
-        
         if "@" not in key and ":" not in key:
             try:
                 padding = len(key) % 4
@@ -128,31 +106,23 @@ def extract_host_port(key):
                 decoded = base64.b64decode(key).decode('utf-8')
                 data = json.loads(decoded)
                 return data.get("add"), int(data.get("port", 443))
-            except:
-                return None, None
-        
+            except: return None, None
         if "@" in key: key = key.split("@", 1)[1]
         if "?" in key: key = key.split("?", 1)[0]
         if "#" in key: key = key.split("#", 1)[0]
-        
         if ":" in key:
             host, port = key.rsplit(":", 1)
             return host, int(port)
         return None, None
-    except:
-        return None, None
+    except: return None, None
 
-# ------------------ СТУПЕНЬ 1: TCP ------------------
+# ------------------ СТУПЕНЬ 1: TCP (без изменений) ------------------
 def stage1_tcp_check(key):
-    """Быстрая TCP проверка"""
     stats["tcp_checked"] += 1
-    
     if stats["tcp_checked"] % 100 == 0:
         log(f"📊 TCP: {stats['tcp_checked']}/{stats['total']} | ✅ {stats['tcp_live']} | ⏱️ {stats['tcp_timeout']}")
-    
     host, port = extract_host_port(key)
-    if not host or not port:
-        return None
+    if not host or not port: return None
     
     sock = None
     try:
@@ -164,17 +134,15 @@ def stage1_tcp_check(key):
     except socket.timeout:
         stats["tcp_timeout"] += 1
         return None
-    except:
-        return None
+    except: return None
     finally:
         if sock:
-            try:
-                sock.close()
-            except:
-                pass
+            try: sock.close()
+            except: pass
 
-# ------------------ ПАРСЕРЫ ------------------
+# ------------------ ПАРСЕРЫ (без изменений) ------------------
 def parse_vless(key):
+    # (код парсера vless тот же)
     try:
         if not key.startswith("vless://"): return None
         key = key[8:]
@@ -190,16 +158,10 @@ def parse_vless(key):
         if params_part:
             for param in params_part.split("&"):
                 if "=" in param: k, v = param.split("=", 1); params[k] = unquote(v)
-        
         config = {
             "protocol": "vless",
-            "settings": {
-                "vnext": [{"address": host, "port": port, "users": [{"id": uuid_part, "encryption": params.get("encryption", "none"), "flow": params.get("flow", "")}]}]
-            },
-            "streamSettings": {
-                "network": params.get("type", "tcp"),
-                "security": params.get("security", "none")
-            }
+            "settings": {"vnext": [{"address": host, "port": port, "users": [{"id": uuid_part, "encryption": params.get("encryption", "none"), "flow": params.get("flow", "")}]}]},
+            "streamSettings": {"network": params.get("type", "tcp"), "security": params.get("security", "none")}
         }
         if params.get("security") == "tls":
             config["streamSettings"]["tlsSettings"] = {"serverName": params.get("sni", host), "allowInsecure": params.get("allowInsecure", "0") == "1"}
@@ -213,6 +175,7 @@ def parse_vless(key):
     except: return None
 
 def parse_vmess(key):
+    # (код парсера vmess тот же)
     try:
         if not key.startswith("vmess://"): return None
         encoded = key[8:]
@@ -235,6 +198,7 @@ def parse_vmess(key):
     except: return None
 
 def parse_trojan(key):
+    # (код парсера trojan тот же)
     try:
         if not key.startswith("trojan://"): return None
         key = key[9:]
@@ -264,6 +228,7 @@ def parse_trojan(key):
     except: return None
 
 def parse_shadowsocks(key):
+    # (код парсера ss тот же)
     try:
         if not key.startswith("ss://"): return None
         key = key[5:]
@@ -305,65 +270,36 @@ def create_xray_config(proxy_config, socks_port=10808):
     }
 
 def kill_process(process):
-    """Гарантированно убиваем процесс"""
-    if not process:
-        return
-    try:
-        process.terminate()
-        process.wait(timeout=1)
+    if not process: return
+    try: process.terminate(); process.wait(timeout=1)
     except:
-        try:
-            process.kill()
-            process.wait(timeout=1)
-        except:
-            pass
+        try: process.kill(); process.wait(timeout=1)
+        except: pass
 
-# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА ------------------
+# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА (без изменений) ------------------
 def stage2_xray_check(key, xray_exe):
+    # (код xray проверки тот же, он работает норм)
     stats["xray_checked"] += 1
-    
     if stats["xray_checked"] % 10 == 0:
         log(f"🔥 XRAY: {stats['xray_checked']}/{stats['tcp_live']} | ✅ {stats['xray_live']} | ⏱️ {stats['xray_timeout']}")
     
     proxy_config, protocol = parse_proxy_key(key)
-    if not proxy_config:
-        return None
-    
+    if not proxy_config: return None
     socks_port = random.randint(20000, 30000)
     config = create_xray_config(proxy_config, socks_port)
     config_file = os.path.join(XRAY_FOLDER, f"config_{socks_port}.json")
-    
     process = None
     try:
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        
-        process = subprocess.Popen(
-            [xray_exe, "run", "-c", config_file],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        
+        with open(config_file, 'w', encoding='utf-8') as f: json.dump(config, f, indent=2)
+        process = subprocess.Popen([xray_exe, "run", "-c", config_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(XRAY_STARTUP)
-        
-        # Проверяем что xray жив
         if process.poll() is not None:
             try: os.remove(config_file)
             except: pass
             return None
         
-        proxies = {
-            'http': f'socks5://127.0.0.1:{socks_port}',
-            'https': f'socks5://127.0.0.1:{socks_port}'
-        }
-        
-        # Лёгкие тесты - 204 эндпоинты (минимум трафика)
-        tests = [
-            ('http://www.gstatic.com/generate_204', 'gstatic'),
-            ('http://cp.cloudflare.com/generate_204', 'cloudflare'),
-            ('http://connectivitycheck.android.com/generate_204', 'android'),
-        ]
-        
+        proxies = {'http': f'socks5://127.0.0.1:{socks_port}', 'https': f'socks5://127.0.0.1:{socks_port}'}
+        tests = [('http://www.gstatic.com/generate_204', 'gstatic'), ('http://cp.cloudflare.com/generate_204', 'cloudflare'), ('http://connectivitycheck.android.com/generate_204', 'android')]
         success_count = 0
         first_latency = None
         
@@ -372,40 +308,28 @@ def stage2_xray_check(key, xray_exe):
                 start = time.time()
                 r = requests.get(url, proxies=proxies, timeout=HTTP_TIMEOUT, allow_redirects=False)
                 latency = int((time.time() - start) * 1000)
-                
                 if r.status_code in [200, 204]:
                     success_count += 1
-                    if first_latency is None:
-                        first_latency = latency
-                        
+                    if first_latency is None: first_latency = latency
             except requests.exceptions.Timeout:
                 stats["xray_timeout"] += 1
-                # Таймаут на первом тесте - сразу выходим
                 if success_count == 0:
                     kill_process(process)
                     try: os.remove(config_file)
                     except: pass
                     return None
-            except:
-                pass
+            except: pass
         
         kill_process(process)
         try: os.remove(config_file)
         except: pass
         
-        # Успех: минимум 2 теста пройдено И латентность в норме
         if success_count >= 2 and first_latency and first_latency < MAX_LATENCY:
             stats["xray_live"] += 1
-            
-            # Качество по латентности
-            if first_latency < 300:
-                quality = "fast"
-            elif first_latency < 800:
-                quality = "good"
-            elif first_latency < 1500:
-                quality = "ok"
-            else:
-                quality = "slow"
+            if first_latency < 300: quality = "fast"
+            elif first_latency < 800: quality = "good"
+            elif first_latency < 1500: quality = "ok"
+            else: quality = "slow"
             
             if protocol in ["VLESS", "VMess"]:
                 host = proxy_config["settings"]["vnext"][0]["address"]
@@ -413,11 +337,8 @@ def stage2_xray_check(key, xray_exe):
             else:
                 host = proxy_config["settings"]["servers"][0]["address"]
                 port = proxy_config["settings"]["servers"][0]["port"]
-            
             return (first_latency, quality, protocol, host, port, key)
-        
         return None
-        
     except Exception:
         kill_process(process)
         try: os.remove(config_file)
@@ -427,7 +348,6 @@ def stage2_xray_check(key, xray_exe):
 def download_keys():
     all_keys = []
     log("📥 Загрузка ключей...")
-    
     for region, urls in KEY_SOURCES.items():
         log(f"\n🌍 {region}:")
         for url in urls:
@@ -439,36 +359,66 @@ def download_keys():
                     if line and line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
                         all_keys.append(line)
                 log(f"  ✅ {url.split('/')[-1]}: {len(lines)} строк")
-            except Exception as e:
-                log(f"  ❌ {e}")
-    
+            except Exception as e: log(f"  ❌ {e}")
     all_keys = list(set(all_keys))
     log(f"\n📦 Уникальных: {len(all_keys)}")
     return all_keys
 
+# ------------------ НОВАЯ ФУНКЦИЯ ДОБАВЛЕНИЯ КОММЕНТАРИЯ ------------------
 def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> str:
-    base = uri.split("#")[0] if "#" in uri else uri
+    """Безопасное добавление комментария, поддерживающее VMess и другие форматы"""
+    
     tag = f"[{latency}ms {quality} {protocol} {MY_CHANNEL}]"
-    return f"{base}#{quote(tag, safe=' @[]-_./=')}"
+    
+    # --- VMESS (Base64 JSON) ---
+    if uri.lower().startswith("vmess://"):
+        try:
+            # Декодируем
+            b64_part = uri[8:]
+            # Правим паддинг
+            padding = len(b64_part) % 4
+            if padding: b64_part += '=' * (4 - padding)
+            
+            json_str = base64.b64decode(b64_part).decode('utf-8')
+            data = json.loads(json_str)
+            
+            # Меняем поле ps (примечание)
+            data['ps'] = tag
+            
+            # Кодируем обратно без переносов строк
+            new_json = json.dumps(data, separators=(',', ':'))
+            new_b64 = base64.b64encode(new_json.encode('utf-8')).decode('utf-8')
+            return f"vmess://{new_b64}"
+        except:
+            # Если не вышло распарсить - возвращаем как есть (или пробуем тупо добавить #)
+            pass
+            
+    # --- VLESS / TROJAN / SS (обычные ссылки) ---
+    # Обрезаем старый фрагмент (после #)
+    base_uri = uri.split("#")[0]
+    
+    # Кодируем тег, чтобы пробелы и скобки стали %20 и т.д.
+    # Hiddify любит, когда tag закодирован
+    encoded_tag = quote(tag)
+    
+    return f"{base_uri}#{encoded_tag}"
 
+# ------------------ MAIN (без изменений) ------------------
 def main():
     print("\n" + "="*70)
-    print(" " * 10 + "🔥 XRAY CHECKER [OPTIMIZED] 🔥")
+    print(" " * 10 + "🔥 XRAY CHECKER [FIXED URI] 🔥")
     print("="*70)
     print(f"⚙️  TCP: {TCP_TIMEOUT}s | HTTP: {HTTP_TIMEOUT}s | Max Latency: {MAX_LATENCY}ms")
     print("="*70 + "\n")
     
     xray_exe = setup_xray()
-    if not xray_exe:
-        return 1
+    if not xray_exe: return 1
     
     all_keys = download_keys()
-    if not all_keys:
-        return 1
+    if not all_keys: return 1
     
     stats["total"] = len(all_keys)
     
-    # === СТУПЕНЬ 1: TCP ===
     print("\n" + "="*70)
     log("⚡ СТУПЕНЬ 1: TCP проверка")
     print("="*70 + "\n")
@@ -480,18 +430,13 @@ def main():
         futures = {executor.submit(stage1_tcp_check, key): key for key in all_keys}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
-            if result:
-                stage1_results.append(result)
+            if result: stage1_results.append(result)
     
     stage1_time = time.time() - start_time
     log(f"\n✅ TCP: {stats['tcp_live']}/{stats['total']} ({stats['tcp_live']/stats['total']*100:.1f}%) за {stage1_time:.1f}с")
-    log(f"   Таймаутов: {stats['tcp_timeout']}")
     
-    if not stage1_results:
-        log("❌ Нет живых после TCP")
-        return 1
+    if not stage1_results: return 1
     
-    # === СТУПЕНЬ 2: XRAY ===
     print("\n" + "="*70)
     log("⚡ СТУПЕНЬ 2: XRAY + HTTP/204")
     print("="*70 + "\n")
@@ -503,8 +448,7 @@ def main():
         futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
-            if result:
-                results.append(result)
+            if result: results.append(result)
     
     stage2_time = time.time() - stage2_start
     total_time = time.time() - start_time
@@ -513,31 +457,16 @@ def main():
         results.sort(key=lambda x: x[0])
         
         with open(FINAL_FILE, 'w', encoding='utf-8') as f:
-            f.write(f"# {MY_CHANNEL}\n")
-            f.write(f"# {datetime.now()}\n")
-            f.write(f"# Verified: {len(results)} / {stats['total']}\n")
-            f.write(f"# Settings: TCP {TCP_TIMEOUT}s, HTTP {HTTP_TIMEOUT}s, Max {MAX_LATENCY}ms\n\n")
-            
+            f.write(f"# {MY_CHANNEL}\n# {datetime.now()}\n# Verified: {len(results)}\n\n")
             for latency, quality, protocol, host, port, key in results:
                 f.write(add_comment_to_uri(key, latency, quality, protocol) + "\n")
-        
-        # Статистика качества
-        by_quality = {}
-        for r in results:
-            q = r[1]
-            by_quality[q] = by_quality.get(q, 0) + 1
         
         print("\n" + "="*70)
         print("🎉 РЕЗУЛЬТАТЫ")
         print("="*70)
-        print(f"📊 TCP: {stats['tcp_live']}/{stats['total']} за {stage1_time:.1f}с")
-        print(f"📊 XRAY: {len(results)}/{stats['tcp_live']} за {stage2_time:.1f}с")
-        print(f"✅ ИТОГО: {len(results)} рабочих ({len(results)/stats['total']*100:.1f}%)")
-        print(f"\n📈 Качество:")
-        for q in ['fast', 'good', 'ok', 'slow']:
-            if q in by_quality:
-                print(f"   {'🚀' if q=='fast' else '✅' if q=='good' else '📊' if q=='ok' else '🐢'} {q}: {by_quality[q]}")
-        print(f"\n⏱️  Время: {total_time:.1f}с ({total_time/60:.1f} мин)")
+        print(f"📊 TCP: {stats['tcp_live']}/{stats['total']}")
+        print(f"📊 XRAY: {len(results)}/{stats['tcp_live']}")
+        print(f"✅ ИТОГО: {len(results)} рабочих")
         print(f"📁 {FINAL_FILE}")
         print("="*70)
         return 0
