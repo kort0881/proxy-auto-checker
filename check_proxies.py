@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-XRAY CHECKER - Enhanced Edition (DEBUGGED)
-Улучшенная версия с многоступенчатой проверкой качества прокси
-"""
-
 import os
 import re
 import html  # FIX 1: Added missing import
