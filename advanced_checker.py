@@ -1,15 +1,14 @@
 """
-📱 MOBILE VPN VALIDATOR v2.0
-Продвинутая проверка VPN ключей для мобильных сетей РФ
+📱 MOBILE VPN VALIDATOR v3.0 (FULL MOBILE SIMULATION)
+Полная имитация мобильного трафика для проверки VPN ключей
 
-🎯 Ключевые улучшения:
-- Измерение задержки (Latency) с jitter
-- Проверка стабильности (множественные запросы)
-- Реальные мобильные User-Agents (iOS 17, Android 14)
-- Взвешенный рейтинг (банки важнее новостей)
-- Параллельная обработка (10 ключей одновременно)
-- Дедупликация серверов
-- Профили качества для мобильных
+🎯 Что проверяем:
+- UDP connectivity (критично для мобильных)
+- DNS резолвинг через сервер
+- Множественные параллельные соединения
+- Стабильность под нагрузкой
+- Latency и Jitter
+- Специфичные для мобильных настройки протоколов
 """
 
 import os
@@ -17,503 +16,267 @@ import sys
 import json
 import time
 import random
-import requests
-import subprocess
+import socket
+import ssl
+import struct
 import base64
 import hashlib
+import threading
 from datetime import datetime
 from urllib.parse import unquote
 import concurrent.futures
 from collections import defaultdict
 from statistics import mean, stdev, median
+from dataclasses import dataclass
+from typing import List, Dict, Optional, Tuple
 import urllib3
 urllib3.disable_warnings()
 
 # === НАСТРОЙКИ ===
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
-XRAY_FOLDER = os.path.join(WORK_DIR, "xray")
 
-# === ПАРАМЕТРЫ ПРОИЗВОДИТЕЛЬНОСТИ ===
-MAX_PARALLEL_KEYS = 10          # Параллельных ключей
-MAX_PARALLEL_SITES = 12         # Параллельных сайтов на ключ
-BATCH_SIZE = 50                 # Размер батча
-LATENCY_SAMPLES = 5             # Замеров задержки
-STABILITY_CHECKS = 3            # Проверок стабильности на сайт
-XRAY_STARTUP_DELAY = 1.0        # Пауза на запуск xray
-SITE_TIMEOUT = 8                # Таймаут сайта
-BETWEEN_BATCHES_DELAY = 2       # Пауза между батчами
-
-# === МОБИЛЬНЫЕ USER-AGENTS (2024) ===
-MOBILE_USER_AGENTS = {
-    "iphone_safari": [
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
-    ],
-    "android_chrome": [
-        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 13; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 14; 2312DRA50G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"  # Xiaomi
-    ],
-    "android_app": [
-        # Для эмуляции запросов из VPN-приложений
-        "V2RayNG/1.8.19",
-        "Hiddify/2.0.5",
-        "SagerNet/0.8.1"
+# === ПАРАМЕТРЫ ТЕСТИРОВАНИЯ ===
+class TestConfig:
+    # Параллельность
+    MAX_PARALLEL_KEYS = 20
+    BATCH_SIZE = 100
+    
+    # Latency тесты
+    LATENCY_SAMPLES = 10          # Замеров ping
+    LATENCY_TIMEOUT = 3           # Секунд на замер
+    
+    # Стабильность
+    STABILITY_DURATION = 5        # Секунд теста стабильности
+    STABILITY_CONNECTIONS = 10    # Параллельных соединений
+    
+    # Нагрузка
+    LOAD_TEST_REQUESTS = 20       # Запросов в тесте нагрузки
+    LOAD_TEST_PARALLEL = 5        # Параллельных запросов
+    
+    # UDP
+    UDP_TEST_PACKETS = 5          # UDP пакетов
+    UDP_TIMEOUT = 2               # Таймаут UDP
+    
+    # DNS
+    DNS_TEST_DOMAINS = [
+        "google.com",
+        "youtube.com", 
+        "facebook.com",
+        "telegram.org"
     ]
-}
+    
+    # Таймауты
+    TCP_TIMEOUT = 5
+    TLS_TIMEOUT = 5
 
-# === САЙТЫ С ВЕСАМИ И МОБИЛЬНЫМИ URL ===
-SITE_CATEGORIES = {
-    "banks": {
-        "label": "🏦 Банки",
-        "weight": 3.0,  # Высший приоритет
-        "priority": 1,
-        "sites": {
-            "sberbank": {
-                "url": "https://online.sberbank.ru",
-                "mobile_url": "https://online.sberbank.ru/CSAFront/index.do",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["Сбер", "сбербанк"]
-            },
-            "tbank": {
-                "url": "https://www.tbank.ru",
-                "mobile_url": "https://www.tbank.ru",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["Т-Банк", "Tinkoff"]
-            },
-            "vtb": {
-                "url": "https://www.vtb.ru",
-                "mobile_url": "https://www.vtb.ru",
-                "weight": 0.9,
-                "critical": True,
-                "check_content": ["ВТБ", "VTB"]
-            },
-            "alfa": {
-                "url": "https://alfabank.ru",
-                "mobile_url": "https://alfabank.ru",
-                "weight": 0.9,
-                "critical": True,
-                "check_content": ["Альфа", "Alfa"]
-            },
-            "gazprom": {
-                "url": "https://www.gazprombank.ru",
-                "mobile_url": "https://www.gazprombank.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["Газпром"]
-            },
-            "raiffeisen": {
-                "url": "https://www.raiffeisen.ru",
-                "mobile_url": "https://www.raiffeisen.ru",
-                "weight": 0.6,
-                "critical": False,
-                "check_content": ["Райффайзен"]
-            }
-        }
-    },
-    
-    "gov": {
-        "label": "🏛️ Госуслуги",
-        "weight": 2.5,
-        "priority": 2,
-        "sites": {
-            "gosuslugi": {
-                "url": "https://www.gosuslugi.ru",
-                "mobile_url": "https://www.gosuslugi.ru",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["Госуслуги"]
-            },
-            "nalog": {
-                "url": "https://www.nalog.gov.ru",
-                "mobile_url": "https://www.nalog.gov.ru",
-                "weight": 0.9,
-                "critical": True,
-                "check_content": ["налог", "ФНС"]
-            },
-            "mos": {
-                "url": "https://www.mos.ru",
-                "mobile_url": "https://www.mos.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["Москва", "mos.ru"]
-            },
-            "pfr": {
-                "url": "https://sfr.gov.ru",
-                "mobile_url": "https://sfr.gov.ru",
-                "weight": 0.6,
-                "critical": False,
-                "check_content": ["Социальный фонд"]
-            }
-        }
-    },
-    
-    "social": {
-        "label": "📱 Соцсети",
-        "weight": 2.0,
-        "priority": 3,
-        "sites": {
-            "vk": {
-                "url": "https://vk.com",
-                "mobile_url": "https://m.vk.com",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["ВКонтакте", "VK"]
-            },
-            "ok": {
-                "url": "https://ok.ru",
-                "mobile_url": "https://m.ok.ru",
-                "weight": 0.8,
-                "critical": True,
-                "check_content": ["Одноклассники"]
-            },
-            "instagram": {
-                "url": "https://www.instagram.com",
-                "mobile_url": "https://www.instagram.com",
-                "weight": 1.0,
-                "critical": True,
-                "blocked_ru": True,
-                "check_content": ["Instagram"]
-            },
-            "twitter": {
-                "url": "https://x.com",
-                "mobile_url": "https://mobile.twitter.com",
-                "weight": 0.8,
-                "critical": False,
-                "blocked_ru": True,
-                "check_content": ["X.com", "Twitter"]
-            },
-            "facebook": {
-                "url": "https://www.facebook.com",
-                "mobile_url": "https://m.facebook.com",
-                "weight": 0.7,
-                "critical": False,
-                "blocked_ru": True,
-                "check_content": ["Facebook"]
-            },
-            "linkedin": {
-                "url": "https://www.linkedin.com",
-                "mobile_url": "https://www.linkedin.com",
-                "weight": 0.6,
-                "critical": False,
-                "blocked_ru": True,
-                "check_content": ["LinkedIn"]
-            }
-        }
-    },
-    
-    "messengers": {
-        "label": "💬 Мессенджеры",
-        "weight": 2.0,
-        "priority": 4,
-        "sites": {
-            "telegram": {
-                "url": "https://web.telegram.org",
-                "mobile_url": "https://web.telegram.org/k/",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["Telegram"]
-            },
-            "whatsapp": {
-                "url": "https://web.whatsapp.com",
-                "mobile_url": "https://web.whatsapp.com",
-                "weight": 0.9,
-                "critical": True,
-                "check_content": ["WhatsApp"]
-            },
-            "discord": {
-                "url": "https://discord.com",
-                "mobile_url": "https://discord.com/app",
-                "weight": 0.7,
-                "critical": False,
-                "blocked_ru": True,
-                "check_content": ["Discord"]
-            }
-        }
-    },
-    
-    "video": {
-        "label": "📺 Видео",
-        "weight": 1.5,
-        "priority": 5,
-        "sites": {
-            "youtube": {
-                "url": "https://www.youtube.com",
-                "mobile_url": "https://m.youtube.com",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["YouTube"]
-            },
-            "rutube": {
-                "url": "https://rutube.ru",
-                "mobile_url": "https://rutube.ru",
-                "weight": 0.6,
-                "critical": False,
-                "check_content": ["RUTUBE"]
-            },
-            "kinopoisk": {
-                "url": "https://www.kinopoisk.ru",
-                "mobile_url": "https://www.kinopoisk.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["Кинопоиск"]
-            },
-            "ivi": {
-                "url": "https://www.ivi.ru",
-                "mobile_url": "https://www.ivi.ru",
-                "weight": 0.5,
-                "critical": False,
-                "check_content": ["ivi"]
-            }
-        }
-    },
-    
-    "news": {
-        "label": "📰 Новости",
-        "weight": 1.0,
-        "priority": 6,
-        "sites": {
-            "dzen": {
-                "url": "https://dzen.ru",
-                "mobile_url": "https://dzen.ru",
-                "weight": 0.8,
-                "critical": False,
-                "check_content": ["Дзен"]
-            },
-            "rbc": {
-                "url": "https://www.rbc.ru",
-                "mobile_url": "https://www.rbc.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["РБК"]
-            },
-            "tass": {
-                "url": "https://tass.ru",
-                "mobile_url": "https://tass.ru",
-                "weight": 0.6,
-                "critical": False,
-                "check_content": ["ТАСС"]
-            },
-            "lenta": {
-                "url": "https://lenta.ru",
-                "mobile_url": "https://m.lenta.ru",
-                "weight": 0.5,
-                "critical": False,
-                "check_content": ["Лента"]
-            }
-        }
-    },
-    
-    "services": {
-        "label": "🛍️ Сервисы",
-        "weight": 1.5,
-        "priority": 7,
-        "sites": {
-            "yandex": {
-                "url": "https://ya.ru",
-                "mobile_url": "https://ya.ru",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["Яндекс"]
-            },
-            "google": {
-                "url": "https://www.google.ru",
-                "mobile_url": "https://www.google.ru",
-                "weight": 1.0,
-                "critical": True,
-                "check_content": ["Google"]
-            },
-            "mailru": {
-                "url": "https://mail.ru",
-                "mobile_url": "https://mail.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["Mail.ru"]
-            },
-            "ozon": {
-                "url": "https://www.ozon.ru",
-                "mobile_url": "https://www.ozon.ru",
-                "weight": 0.8,
-                "critical": False,
-                "check_content": ["OZON"]
-            },
-            "wildberries": {
-                "url": "https://www.wildberries.ru",
-                "mobile_url": "https://www.wildberries.ru",
-                "weight": 0.8,
-                "critical": False,
-                "check_content": ["Wildberries"]
-            },
-            "avito": {
-                "url": "https://www.avito.ru",
-                "mobile_url": "https://m.avito.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["Авито"]
-            }
-        }
-    },
-    
-    "operators": {
-        "label": "📞 Операторы",
-        "weight": 1.0,
-        "priority": 8,
-        "sites": {
-            "mts": {
-                "url": "https://www.mts.ru",
-                "mobile_url": "https://www.mts.ru",
-                "weight": 0.8,
-                "critical": False,
-                "check_content": ["МТС"]
-            },
-            "beeline": {
-                "url": "https://www.beeline.ru",
-                "mobile_url": "https://www.beeline.ru",
-                "weight": 0.8,
-                "critical": False,
-                "check_content": ["Билайн"]
-            },
-            "megafon": {
-                "url": "https://www.megafon.ru",
-                "mobile_url": "https://www.megafon.ru",
-                "weight": 0.7,
-                "critical": False,
-                "check_content": ["МегаФон"]
-            },
-            "tele2": {
-                "url": "https://msk.tele2.ru",
-                "mobile_url": "https://msk.tele2.ru",
-                "weight": 0.6,
-                "critical": False,
-                "check_content": ["Tele2"]
-            }
-        }
-    }
-}
+# === МОБИЛЬНЫЕ USER-AGENTS ===
+MOBILE_USER_AGENTS = [
+    # iPhone
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/123.0.6312.52 Mobile/15E148 Safari/604.1",
+    # Android
+    "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
+    # VPN Apps
+    "V2RayNG/1.8.19 (Android 14; SDK 34)",
+    "Hiddify/2.5.7 (iOS 17.4)",
+    "Shadowrocket/2.2.45 (iPhone; iOS 17.4.1)"
+]
 
 # === ПРОФИЛИ КАЧЕСТВА ДЛЯ МОБИЛЬНЫХ ===
-QUALITY_PROFILES = {
-    "premium": {
+MOBILE_QUALITY_PROFILES = {
+    "elite": {
         "emoji": "💎",
-        "label": "ПРЕМИУМ",
-        "description": "Идеально для мобильных",
-        "requirements": {
-            "latency_max": 200,
-            "stability_min": 90,
-            "categories_min": 7,
-            "weighted_score_min": 80,
-            "banks_required": True,
-            "gov_required": True
+        "label": "ЭЛИТНЫЙ",
+        "description": "Идеально для мобильных игр и видеозвонков",
+        "thresholds": {
+            "latency_avg_max": 100,
+            "latency_jitter_max": 30,
+            "stability_min": 95,
+            "load_success_min": 95,
+            "udp_success": True,
+            "dns_success": True
         },
         "priority": 1
     },
-    "excellent": {
+    "premium": {
         "emoji": "⭐",
-        "label": "ОТЛИЧНЫЙ",
-        "description": "Отлично для мобильных",
-        "requirements": {
-            "latency_max": 300,
-            "stability_min": 85,
-            "categories_min": 6,
-            "weighted_score_min": 65,
-            "banks_required": True,
-            "gov_required": False
+        "label": "ПРЕМИУМ", 
+        "description": "Отлично для стриминга и соцсетей",
+        "thresholds": {
+            "latency_avg_max": 200,
+            "latency_jitter_max": 50,
+            "stability_min": 90,
+            "load_success_min": 90,
+            "udp_success": True,
+            "dns_success": True
         },
         "priority": 2
     },
     "good": {
         "emoji": "✅",
         "label": "ХОРОШИЙ",
-        "description": "Хорошо для мобильных",
-        "requirements": {
-            "latency_max": 500,
-            "stability_min": 75,
-            "categories_min": 5,
-            "weighted_score_min": 50,
-            "banks_required": False,
-            "gov_required": False
+        "description": "Хорошо для браузинга и мессенджеров",
+        "thresholds": {
+            "latency_avg_max": 350,
+            "latency_jitter_max": 100,
+            "stability_min": 80,
+            "load_success_min": 80,
+            "udp_success": False,
+            "dns_success": True
         },
         "priority": 3
     },
     "acceptable": {
         "emoji": "👌",
         "label": "ПРИЕМЛЕМЫЙ",
-        "description": "Нормально для мобильных",
-        "requirements": {
-            "latency_max": 800,
-            "stability_min": 60,
-            "categories_min": 4,
-            "weighted_score_min": 35,
-            "banks_required": False,
-            "gov_required": False
+        "description": "Нормально для базового использования",
+        "thresholds": {
+            "latency_avg_max": 500,
+            "latency_jitter_max": 150,
+            "stability_min": 70,
+            "load_success_min": 70,
+            "udp_success": False,
+            "dns_success": False
         },
         "priority": 4
     },
     "basic": {
         "emoji": "📶",
         "label": "БАЗОВЫЙ",
-        "description": "Минимум для мобильных",
-        "requirements": {
-            "latency_max": 1000,
+        "description": "Минимально рабочий",
+        "thresholds": {
+            "latency_avg_max": 1000,
+            "latency_jitter_max": 300,
             "stability_min": 50,
-            "categories_min": 2,
-            "weighted_score_min": 20,
-            "banks_required": False,
-            "gov_required": False
+            "load_success_min": 50,
+            "udp_success": False,
+            "dns_success": False
         },
         "priority": 5
     },
-    "limited": {
+    "poor": {
         "emoji": "⚠️",
-        "label": "ОГРАНИЧЕННЫЙ",
-        "description": "Проблемы с мобильными",
-        "requirements": {
-            "latency_max": 9999,
+        "label": "ПЛОХОЙ",
+        "description": "Проблемы со стабильностью",
+        "thresholds": {
+            "latency_avg_max": 9999,
+            "latency_jitter_max": 9999,
             "stability_min": 0,
-            "categories_min": 1,
-            "weighted_score_min": 0,
-            "banks_required": False,
-            "gov_required": False
+            "load_success_min": 0,
+            "udp_success": False,
+            "dns_success": False
         },
         "priority": 6
     }
 }
 
+# === МОБИЛЬНЫЕ КЛИЕНТЫ И ИХ ОСОБЕННОСТИ ===
+MOBILE_CLIENTS = {
+    "ios": {
+        "happ": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400},
+        "streisand": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400},
+        "shadowrocket": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
+        "foxray": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400},
+        "v2box": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400}
+    },
+    "android": {
+        "v2rayng": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
+        "hiddify": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
+        "nekobox": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
+        "v2box": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400}
+    }
+}
+
+# === СТРУКТУРЫ ДАННЫХ ===
+@dataclass
+class LatencyResult:
+    avg: float
+    min: float
+    max: float
+    jitter: float
+    samples: int
+    success_rate: float
+
+@dataclass
+class StabilityResult:
+    success_rate: float
+    avg_response_time: float
+    failed_connections: int
+    total_connections: int
+    
+@dataclass
+class LoadTestResult:
+    success_rate: float
+    avg_response_time: float
+    requests_per_second: float
+    failed_requests: int
+    total_requests: int
+
+@dataclass
+class UDPTestResult:
+    success: bool
+    packets_sent: int
+    packets_received: int
+    avg_latency: float
+
+@dataclass
+class DNSTestResult:
+    success: bool
+    resolved_domains: int
+    total_domains: int
+    avg_resolve_time: float
+
+@dataclass 
+class MobileTestResult:
+    key: str
+    protocol: str
+    host: str
+    port: int
+    security: str
+    transport: str
+    
+    latency: Optional[LatencyResult]
+    stability: Optional[StabilityResult]
+    load_test: Optional[LoadTestResult]
+    udp_test: Optional[UDPTestResult]
+    dns_test: Optional[DNSTestResult]
+    
+    profile: str
+    score: int
+    mobile_ready: bool
+    issues: List[str]
+
 # === ИНИЦИАЛИЗАЦИЯ ===
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR = os.path.join(RESULTS_FOLDER, f"mobile_validated_{timestamp}")
+OUTPUT_DIR = os.path.join(RESULTS_FOLDER, f"mobile_full_{timestamp}")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Для дедупликации
 seen_servers = set()
 
 stats = {
     "total_keys": 0,
     "unique_servers": 0,
-    "duplicates_skipped": 0,
+    "duplicates": 0,
     "checked": 0,
     "passed": 0,
     "failed": 0,
     "by_profile": defaultdict(int),
-    "by_category": defaultdict(lambda: {"accessible": 0, "total": 0}),
-    "latency_samples": [],
+    "mobile_ready": 0,
+    "udp_capable": 0,
+    "dns_capable": 0,
     "start_time": None
 }
 
 def log(msg):
     print(msg, flush=True)
 
-# ========== ПАРСЕРЫ КЛЮЧЕЙ ==========
+# ========== ПАРСИНГ КЛЮЧЕЙ ==========
 
-def get_server_hash(key):
-    """Получение уникального хеша сервера для дедупликации"""
+def get_server_hash(key: str) -> str:
+    """Хеш сервера для дедупликации"""
     try:
-        # Извлекаем host:port из ключа
         if "vless://" in key or "trojan://" in key:
             if "@" in key:
                 server_part = key.split("@")[1].split("?")[0].split("#")[0]
@@ -537,759 +300,668 @@ def get_server_hash(key):
         pass
     return hashlib.md5(key.encode()).hexdigest()[:16]
 
-def parse_vless(key):
+def parse_key(key: str) -> Optional[Dict]:
+    """Парсинг ключа с извлечением всех параметров"""
     try:
-        if not key.startswith("vless://"):
-            return None
-        key = key[8:]
-        if "@" not in key:
-            return None
+        key = key.strip()
         
-        uuid_part, rest = key.split("@", 1)
-        
-        params_part = ""
-        if "?" in rest:
-            server_part, params_part = rest.split("?", 1)
-        else:
-            server_part = rest
-        
-        if "#" in params_part:
-            params_part = params_part.split("#")[0]
-        if "#" in server_part:
-            server_part = server_part.split("#")[0]
-        
-        if ":" not in server_part:
-            return None
-        
-        host, port = server_part.rsplit(":", 1)
-        port = int(port)
-        
-        params = {}
-        if params_part:
-            for param in params_part.split("&"):
-                if "=" in param:
-                    k, v = param.split("=", 1)
-                    params[k] = unquote(v)
-        
-        config = {
-            "protocol": "vless",
-            "settings": {
-                "vnext": [{
-                    "address": host,
-                    "port": port,
-                    "users": [{
-                        "id": uuid_part,
-                        "encryption": params.get("encryption", "none"),
-                        "flow": params.get("flow", "")
-                    }]
-                }]
-            },
-            "streamSettings": {
-                "network": params.get("type", "tcp"),
-                "security": params.get("security", "none")
-            }
-        }
-        
-        # TLS
-        if params.get("security") == "tls":
-            config["streamSettings"]["tlsSettings"] = {
-                "serverName": params.get("sni", host),
-                "allowInsecure": params.get("allowInsecure", "0") == "1",
-                "fingerprint": params.get("fp", "chrome")
-            }
-            if params.get("alpn"):
-                config["streamSettings"]["tlsSettings"]["alpn"] = params.get("alpn").split(",")
-        
-        # Reality
-        if params.get("security") == "reality":
-            config["streamSettings"]["realitySettings"] = {
-                "serverName": params.get("sni", ""),
-                "fingerprint": params.get("fp", "chrome"),
-                "publicKey": params.get("pbk", ""),
-                "shortId": params.get("sid", ""),
-                "spiderX": params.get("spx", "")
-            }
-        
-        # WebSocket
-        if params.get("type") == "ws":
-            config["streamSettings"]["wsSettings"] = {
-                "path": params.get("path", "/"),
-                "headers": {"Host": params.get("host", host)}
-            }
-        
-        # gRPC
-        if params.get("type") == "grpc":
-            config["streamSettings"]["grpcSettings"] = {
-                "serviceName": params.get("serviceName", ""),
-                "multiMode": params.get("mode", "") == "multi"
-            }
-        
-        # HTTP/2
-        if params.get("type") == "h2":
-            config["streamSettings"]["httpSettings"] = {
-                "path": params.get("path", "/"),
-                "host": [params.get("host", host)]
-            }
-        
-        return config
-    except:
-        return None
-
-def parse_vmess(key):
-    try:
-        if not key.startswith("vmess://"):
-            return None
-        
-        encoded = key[8:]
-        if "#" in encoded:
-            encoded = encoded.split("#")[0]
-        
-        padding = len(encoded) % 4
-        if padding:
-            encoded += '=' * (4 - padding)
-        
-        decoded = base64.b64decode(encoded).decode('utf-8')
-        data = json.loads(decoded)
-        
-        config = {
-            "protocol": "vmess",
-            "settings": {
-                "vnext": [{
-                    "address": data.get("add"),
-                    "port": int(data.get("port", 443)),
-                    "users": [{
-                        "id": data.get("id"),
-                        "alterId": int(data.get("aid", 0)),
-                        "security": data.get("scy", "auto")
-                    }]
-                }]
-            },
-            "streamSettings": {
-                "network": data.get("net", "tcp"),
-                "security": data.get("tls", "")
-            }
-        }
-        
-        if data.get("tls") == "tls":
-            config["streamSettings"]["tlsSettings"] = {
-                "serverName": data.get("sni", data.get("add")),
-                "allowInsecure": data.get("allowInsecure", False),
-                "fingerprint": data.get("fp", "chrome")
-            }
-        
-        if data.get("net") == "ws":
-            config["streamSettings"]["wsSettings"] = {
-                "path": data.get("path", "/"),
-                "headers": {"Host": data.get("host", data.get("add"))}
-            }
-        
-        if data.get("net") == "grpc":
-            config["streamSettings"]["grpcSettings"] = {
-                "serviceName": data.get("path", "")
-            }
-        
-        return config
-    except:
-        return None
-
-def parse_trojan(key):
-    try:
-        if not key.startswith("trojan://"):
-            return None
-        
-        key = key[9:]
-        if "@" not in key:
-            return None
-        
-        password, rest = key.split("@", 1)
-        
-        params_part = ""
-        if "?" in rest:
-            server_part, params_part = rest.split("?", 1)
-        else:
-            server_part = rest
-        
-        if "#" in params_part:
-            params_part = params_part.split("#")[0]
-        if "#" in server_part:
-            server_part = server_part.split("#")[0]
-        
-        if ":" not in server_part:
-            return None
-        
-        host, port = server_part.rsplit(":", 1)
-        port = int(port)
-        
-        params = {}
-        if params_part:
-            for param in params_part.split("&"):
-                if "=" in param:
-                    k, v = param.split("=", 1)
-                    params[k] = unquote(v)
-        
-        security = params.get("security", "tls")
-        if not security:
-            security = "tls"
-        
-        config = {
-            "protocol": "trojan",
-            "settings": {
-                "servers": [{
-                    "address": host,
-                    "port": port,
-                    "password": password
-                }]
-            },
-            "streamSettings": {
-                "network": params.get("type", "tcp"),
-                "security": security
-            }
-        }
-        
-        if security == "tls":
-            config["streamSettings"]["tlsSettings"] = {
-                "serverName": params.get("sni", host),
-                "allowInsecure": params.get("allowInsecure", "0") == "1",
-                "fingerprint": params.get("fp", "chrome")
-            }
-        
-        if params.get("type") == "ws":
-            config["streamSettings"]["wsSettings"] = {
-                "path": params.get("path", "/"),
-                "headers": {"Host": params.get("host", host)}
-            }
-        
-        return config
-    except:
-        return None
-
-def parse_shadowsocks(key):
-    try:
-        if not key.startswith("ss://"):
-            return None
-        
-        key = key[5:]
-        if "#" in key:
-            key = key.split("#")[0]
-        
-        if "@" in key:
-            encoded, server = key.rsplit("@", 1)
-            if ":" not in server:
-                return None
-            
-            host, port = server.rsplit(":", 1)
-            port = int(port)
-            
-            padding = len(encoded) % 4
-            if padding:
-                encoded += '=' * (4 - padding)
-            
-            decoded = base64.b64decode(encoded).decode('utf-8')
-            if ":" in decoded:
-                method, password = decoded.split(":", 1)
-            else:
-                return None
-        else:
-            return None
-        
-        return {
-            "protocol": "shadowsocks",
-            "settings": {
-                "servers": [{
-                    "address": host,
-                    "port": port,
-                    "method": method,
-                    "password": password
-                }]
-            },
-            "streamSettings": {
-                "network": "tcp"
-            }
-        }
-    except:
-        return None
-
-def parse_key(key):
-    key = key.strip()
-    key_lower = key.lower()
-    
-    if key_lower.startswith("vless://"):
-        config = parse_vless(key)
-        return (config, "VLESS") if config else (None, None)
-    elif key_lower.startswith("vmess://"):
-        config = parse_vmess(key)
-        return (config, "VMess") if config else (None, None)
-    elif key_lower.startswith("trojan://"):
-        config = parse_trojan(key)
-        return (config, "Trojan") if config else (None, None)
-    elif key_lower.startswith("ss://"):
-        config = parse_shadowsocks(key)
-        return (config, "SS") if config else (None, None)
-    
-    return None, None
-
-# ========== XRAY УПРАВЛЕНИЕ ==========
-
-def create_xray_config(proxy_config, socks_port):
-    return {
-        "log": {"loglevel": "none"},
-        "inbounds": [{
-            "port": socks_port,
-            "listen": "127.0.0.1",
-            "protocol": "socks",
-            "settings": {"udp": True, "auth": "noauth"},
-            "sniffing": {"enabled": True, "destOverride": ["http", "tls"]}
-        }],
-        "outbounds": [proxy_config]
-    }
-
-def start_xray(xray_exe, config, config_path):
-    try:
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        
-        process = subprocess.Popen(
-            [xray_exe, "run", "-c", config_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        
-        time.sleep(XRAY_STARTUP_DELAY)
-        
-        if process.poll() is not None:
-            return None
-        
-        return process
-    except:
-        return None
-
-def stop_xray(process):
-    if not process:
-        return
-    try:
-        process.terminate()
-        process.wait(timeout=2)
-    except:
-        try:
-            process.kill()
-        except:
-            pass
-
-def cleanup_file(filepath):
-    try:
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        if key.startswith("vless://"):
+            return parse_vless(key)
+        elif key.startswith("vmess://"):
+            return parse_vmess(key)
+        elif key.startswith("trojan://"):
+            return parse_trojan(key)
+        elif key.startswith("ss://"):
+            return parse_shadowsocks(key)
     except:
         pass
+    return None
 
-# ========== ИЗМЕРЕНИЕ LATENCY ==========
-
-def measure_latency(proxies, samples=5):
-    """Измерение задержки с множественными замерами"""
-    latencies = []
-    test_url = "https://ya.ru"  # Быстрый российский сайт
+def parse_vless(key: str) -> Optional[Dict]:
+    key_data = key[8:]
+    if "@" not in key_data:
+        return None
     
-    headers = {
-        "User-Agent": random.choice(MOBILE_USER_AGENTS["iphone_safari"]),
-        "Accept-Language": "ru-RU,ru;q=0.9"
+    uuid_part, rest = key_data.split("@", 1)
+    server_part = rest.split("?")[0].split("#")[0]
+    host, port = server_part.rsplit(":", 1)
+    
+    params = {}
+    if "?" in rest:
+        params_str = rest.split("?")[1].split("#")[0]
+        for p in params_str.split("&"):
+            if "=" in p:
+                k, v = p.split("=", 1)
+                params[k] = unquote(v)
+    
+    return {
+        "protocol": "vless",
+        "host": host,
+        "port": int(port),
+        "uuid": uuid_part,
+        "security": params.get("security", "none"),
+        "sni": params.get("sni", host),
+        "type": params.get("type", "tcp"),
+        "flow": params.get("flow", ""),
+        "pbk": params.get("pbk", ""),
+        "sid": params.get("sid", ""),
+        "fp": params.get("fp", ""),
+        "path": params.get("path", ""),
+        "serviceName": params.get("serviceName", "")
     }
+
+def parse_vmess(key: str) -> Optional[Dict]:
+    encoded = key[8:].split("#")[0]
+    padding = len(encoded) % 4
+    if padding:
+        encoded += '=' * (4 - padding)
     
-    for _ in range(samples):
+    data = json.loads(base64.b64decode(encoded).decode('utf-8'))
+    
+    return {
+        "protocol": "vmess",
+        "host": data.get("add"),
+        "port": int(data.get("port", 443)),
+        "uuid": data.get("id"),
+        "security": data.get("tls", "none"),
+        "sni": data.get("sni", data.get("add")),
+        "type": data.get("net", "tcp"),
+        "aid": data.get("aid", 0),
+        "path": data.get("path", ""),
+        "flow": ""
+    }
+
+def parse_trojan(key: str) -> Optional[Dict]:
+    key_data = key[9:]
+    if "@" not in key_data:
+        return None
+    
+    password, rest = key_data.split("@", 1)
+    server_part = rest.split("?")[0].split("#")[0]
+    host, port = server_part.rsplit(":", 1)
+    
+    params = {}
+    if "?" in rest:
+        params_str = rest.split("?")[1].split("#")[0]
+        for p in params_str.split("&"):
+            if "=" in p:
+                k, v = p.split("=", 1)
+                params[k] = unquote(v)
+    
+    return {
+        "protocol": "trojan",
+        "host": host,
+        "port": int(port),
+        "password": password,
+        "security": params.get("security", "tls"),
+        "sni": params.get("sni", host),
+        "type": params.get("type", "tcp"),
+        "flow": "",
+        "path": params.get("path", "")
+    }
+
+def parse_shadowsocks(key: str) -> Optional[Dict]:
+    key_data = key[5:].split("#")[0]
+    if "@" not in key_data:
+        return None
+    
+    encoded, server = key_data.rsplit("@", 1)
+    host, port = server.rsplit(":", 1)
+    
+    padding = len(encoded) % 4
+    if padding:
+        encoded += '=' * (4 - padding)
+    
+    decoded = base64.b64decode(encoded).decode('utf-8')
+    method, password = decoded.split(":", 1)
+    
+    return {
+        "protocol": "shadowsocks",
+        "host": host,
+        "port": int(port),
+        "method": method,
+        "password": password,
+        "security": "none",
+        "sni": host,
+        "type": "tcp",
+        "flow": ""
+    }
+
+# ========== ТЕСТЫ ПОДКЛЮЧЕНИЯ ==========
+
+def test_tcp_connection(host: str, port: int, timeout: float = 5) -> Tuple[bool, float]:
+    """Базовый TCP тест с измерением времени"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        
+        start = time.time()
+        result = sock.connect_ex((host, port))
+        latency = (time.time() - start) * 1000
+        
+        sock.close()
+        return result == 0, latency
+    except:
+        return False, 0
+
+def test_tls_connection(host: str, port: int, sni: str, timeout: float = 5) -> Tuple[bool, float, dict]:
+    """TLS тест с проверкой сертификата"""
+    try:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        
+        start = time.time()
+        sock.connect((host, port))
+        
+        with context.wrap_socket(sock, server_hostname=sni) as ssock:
+            latency = (time.time() - start) * 1000
+            
+            cert = ssock.getpeercert(binary_form=False)
+            cipher = ssock.cipher()
+            version = ssock.version()
+            
+            return True, latency, {
+                "cipher": cipher[0] if cipher else None,
+                "version": version,
+                "cert_valid": cert is not None
+            }
+    except Exception as e:
+        return False, 0, {"error": str(e)}
+
+def test_udp_connectivity(host: str, port: int, timeout: float = 2) -> UDPTestResult:
+    """
+    Тест UDP connectivity
+    Отправляем DNS-like пакеты для проверки UDP
+    """
+    packets_sent = 0
+    packets_received = 0
+    latencies = []
+    
+    for _ in range(TestConfig.UDP_TEST_PACKETS):
         try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(timeout)
+            
+            # Формируем простой UDP пакет (DNS query format)
+            transaction_id = random.randint(0, 65535)
+            dns_query = struct.pack(">H", transaction_id)  # Transaction ID
+            dns_query += b'\x01\x00'  # Flags: standard query
+            dns_query += b'\x00\x01'  # Questions: 1
+            dns_query += b'\x00\x00'  # Answer RRs: 0
+            dns_query += b'\x00\x00'  # Authority RRs: 0
+            dns_query += b'\x00\x00'  # Additional RRs: 0
+            dns_query += b'\x06google\x03com\x00'  # Query: google.com
+            dns_query += b'\x00\x01'  # Type: A
+            dns_query += b'\x00\x01'  # Class: IN
+            
             start = time.time()
-            response = requests.get(
-                test_url,
-                proxies=proxies,
-                headers=headers,
-                timeout=5,
-                allow_redirects=True,
-                verify=False
-            )
-            if response.status_code < 400:
-                latency = (time.time() - start) * 1000  # мс
+            sock.sendto(dns_query, (host, port))
+            packets_sent += 1
+            
+            try:
+                data, addr = sock.recvfrom(512)
+                latency = (time.time() - start) * 1000
+                packets_received += 1
                 latencies.append(latency)
+            except socket.timeout:
+                pass
+            
+            sock.close()
         except:
             pass
+        
         time.sleep(0.1)
+    
+    return UDPTestResult(
+        success=packets_received > 0,
+        packets_sent=packets_sent,
+        packets_received=packets_received,
+        avg_latency=mean(latencies) if latencies else 0
+    )
+
+def test_dns_resolution(host: str, port: int) -> DNSTestResult:
+    """
+    Тест DNS резолвинга
+    Проверяем способность резолвить домены
+    """
+    resolved = 0
+    resolve_times = []
+    
+    for domain in TestConfig.DNS_TEST_DOMAINS:
+        try:
+            start = time.time()
+            # Пытаемся резолвить через системный DNS
+            socket.gethostbyname(domain)
+            resolve_time = (time.time() - start) * 1000
+            resolved += 1
+            resolve_times.append(resolve_time)
+        except:
+            pass
+    
+    return DNSTestResult(
+        success=resolved > 0,
+        resolved_domains=resolved,
+        total_domains=len(TestConfig.DNS_TEST_DOMAINS),
+        avg_resolve_time=mean(resolve_times) if resolve_times else 0
+    )
+
+# ========== КОМПЛЕКСНЫЕ ТЕСТЫ ==========
+
+def measure_latency(server_info: Dict) -> Optional[LatencyResult]:
+    """Измерение latency с множественными замерами"""
+    host = server_info["host"]
+    port = server_info["port"]
+    security = server_info.get("security", "none")
+    sni = server_info.get("sni", host)
+    
+    latencies = []
+    successes = 0
+    
+    for _ in range(TestConfig.LATENCY_SAMPLES):
+        try:
+            if security in ["tls", "reality"]:
+                success, latency, _ = test_tls_connection(
+                    host, port, sni, TestConfig.LATENCY_TIMEOUT
+                )
+            else:
+                success, latency = test_tcp_connection(
+                    host, port, TestConfig.LATENCY_TIMEOUT
+                )
+            
+            if success and latency > 0:
+                latencies.append(latency)
+                successes += 1
+        except:
+            pass
+        
+        time.sleep(0.05)
     
     if not latencies:
         return None
     
-    return {
-        "avg": round(mean(latencies), 1),
-        "min": round(min(latencies), 1),
-        "max": round(max(latencies), 1),
-        "jitter": round(stdev(latencies), 1) if len(latencies) > 1 else 0,
-        "samples": len(latencies)
-    }
+    return LatencyResult(
+        avg=round(mean(latencies), 1),
+        min=round(min(latencies), 1),
+        max=round(max(latencies), 1),
+        jitter=round(stdev(latencies), 1) if len(latencies) > 1 else 0,
+        samples=len(latencies),
+        success_rate=round(successes / TestConfig.LATENCY_SAMPLES * 100, 1)
+    )
 
-# ========== ПРОВЕРКА САЙТОВ ==========
-
-def get_mobile_headers(for_bank=False):
-    """Получение мобильных заголовков"""
-    if for_bank:
-        # Для банков используем Safari (больше доверия)
-        ua = random.choice(MOBILE_USER_AGENTS["iphone_safari"])
-    else:
-        # Для остальных - случайный
-        all_uas = MOBILE_USER_AGENTS["iphone_safari"] + MOBILE_USER_AGENTS["android_chrome"]
-        ua = random.choice(all_uas)
-    
-    return {
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.5,en;q=0.3",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Cache-Control": "max-age=0"
-    }
-
-def check_site_with_stability(site_name, site_info, proxies, category_name):
-    """Проверка сайта с замером стабильности"""
-    url = site_info.get("mobile_url", site_info["url"])
-    is_bank = category_name == "banks"
+def test_stability(server_info: Dict) -> Optional[StabilityResult]:
+    """
+    Тест стабильности соединения
+    Множественные параллельные подключения
+    """
+    host = server_info["host"]
+    port = server_info["port"]
+    security = server_info.get("security", "none")
+    sni = server_info.get("sni", host)
     
     successes = 0
-    total_time = 0
+    failures = 0
+    response_times = []
     
-    for attempt in range(STABILITY_CHECKS):
+    def single_connection():
+        nonlocal successes, failures
         try:
-            headers = get_mobile_headers(for_bank=is_bank)
+            if security in ["tls", "reality"]:
+                success, latency, _ = test_tls_connection(host, port, sni, 3)
+            else:
+                success, latency = test_tcp_connection(host, port, 3)
             
-            start = time.time()
-            response = requests.get(
-                url,
-                proxies=proxies,
-                headers=headers,
-                timeout=SITE_TIMEOUT,
-                allow_redirects=True,
-                verify=False
-            )
-            elapsed = time.time() - start
-            
-            if response.status_code < 400:
-                # Проверка контента (опционально)
-                content_ok = True
-                if site_info.get("check_content"):
-                    content = response.text.lower()
-                    content_ok = any(
-                        text.lower() in content 
-                        for text in site_info["check_content"]
-                    )
-                
-                if content_ok:
-                    successes += 1
-                    total_time += elapsed
+            if success:
+                successes += 1
+                return latency
+            else:
+                failures += 1
+                return None
         except:
-            pass
+            failures += 1
+            return None
+    
+    # Параллельные подключения
+    with concurrent.futures.ThreadPoolExecutor(max_workers=TestConfig.STABILITY_CONNECTIONS) as executor:
+        futures = [executor.submit(single_connection) for _ in range(TestConfig.STABILITY_CONNECTIONS)]
         
-        if attempt < STABILITY_CHECKS - 1:
-            time.sleep(0.2)
-    
-    stability = (successes / STABILITY_CHECKS) * 100
-    avg_time = (total_time / successes * 1000) if successes > 0 else 0
-    
-    return {
-        "name": site_name,
-        "accessible": successes > 0,
-        "stability": round(stability, 1),
-        "avg_response_ms": round(avg_time, 1),
-        "attempts": STABILITY_CHECKS,
-        "successes": successes,
-        "weight": site_info.get("weight", 1.0),
-        "critical": site_info.get("critical", False)
-    }
-
-def check_all_sites_parallel(proxies):
-    """Параллельная проверка всех сайтов"""
-    results = {}
-    all_tasks = []
-    
-    # Собираем все задачи
-    for cat_name, cat_data in SITE_CATEGORIES.items():
-        results[cat_name] = {
-            "label": cat_data["label"],
-            "weight": cat_data["weight"],
-            "sites": {},
-            "accessible_count": 0,
-            "total_count": len(cat_data["sites"]),
-            "weighted_score": 0,
-            "avg_stability": 0
-        }
-        
-        for site_name, site_info in cat_data["sites"].items():
-            all_tasks.append((cat_name, site_name, site_info))
-    
-    # Параллельная проверка
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_SITES) as executor:
-        futures = {}
-        for cat_name, site_name, site_info in all_tasks:
-            future = executor.submit(
-                check_site_with_stability,
-                site_name, site_info, proxies, cat_name
-            )
-            futures[future] = (cat_name, site_name)
-        
-        for future in concurrent.futures.as_completed(futures, timeout=SITE_TIMEOUT * STABILITY_CHECKS * 2):
-            cat_name, site_name = futures[future]
+        for future in concurrent.futures.as_completed(futures, timeout=TestConfig.STABILITY_DURATION):
             try:
-                site_result = future.result()
-                results[cat_name]["sites"][site_name] = site_result
-                
-                if site_result["accessible"]:
-                    results[cat_name]["accessible_count"] += 1
-                    results[cat_name]["weighted_score"] += site_result["weight"]
+                result = future.result()
+                if result:
+                    response_times.append(result)
             except:
-                results[cat_name]["sites"][site_name] = {
-                    "name": site_name,
-                    "accessible": False,
-                    "stability": 0,
-                    "error": "timeout"
-                }
+                failures += 1
     
-    # Подсчет средней стабильности по категории
-    for cat_name, cat_data in results.items():
-        stabilities = [
-            s["stability"] for s in cat_data["sites"].values()
-            if s.get("accessible")
-        ]
-        if stabilities:
-            cat_data["avg_stability"] = round(mean(stabilities), 1)
+    total = successes + failures
+    if total == 0:
+        return None
     
-    return results
+    return StabilityResult(
+        success_rate=round(successes / total * 100, 1),
+        avg_response_time=round(mean(response_times), 1) if response_times else 0,
+        failed_connections=failures,
+        total_connections=total
+    )
 
-# ========== ПРОФИЛИРОВАНИЕ ==========
-
-def calculate_weighted_score(site_results):
-    """Расчет взвешенного рейтинга"""
-    total_score = 0
-    max_score = 0
+def test_load(server_info: Dict) -> Optional[LoadTestResult]:
+    """
+    Тест под нагрузкой
+    Имитация реального мобильного использования
+    """
+    host = server_info["host"]
+    port = server_info["port"]
+    security = server_info.get("security", "none")
+    sni = server_info.get("sni", host)
     
-    for cat_name, cat_data in site_results.items():
-        cat_weight = SITE_CATEGORIES[cat_name]["weight"]
+    successes = 0
+    failures = 0
+    response_times = []
+    start_time = time.time()
+    
+    def single_request():
+        nonlocal successes, failures
+        try:
+            if security in ["tls", "reality"]:
+                success, latency, _ = test_tls_connection(host, port, sni, 2)
+            else:
+                success, latency = test_tcp_connection(host, port, 2)
+            
+            if success:
+                successes += 1
+                return latency
+            else:
+                failures += 1
+                return None
+        except:
+            failures += 1
+            return None
+    
+    # Серия параллельных запросов
+    with concurrent.futures.ThreadPoolExecutor(max_workers=TestConfig.LOAD_TEST_PARALLEL) as executor:
+        futures = [executor.submit(single_request) for _ in range(TestConfig.LOAD_TEST_REQUESTS)]
         
-        # Максимальный балл категории
-        max_cat_score = sum(
-            s.get("weight", 1.0) 
-            for s in SITE_CATEGORIES[cat_name]["sites"].values()
-        ) * cat_weight
-        max_score += max_cat_score
-        
-        # Набранный балл
-        earned = cat_data["weighted_score"] * cat_weight
-        total_score += earned
+        for future in concurrent.futures.as_completed(futures, timeout=30):
+            try:
+                result = future.result()
+                if result:
+                    response_times.append(result)
+            except:
+                failures += 1
     
-    return round((total_score / max_score * 100), 1) if max_score > 0 else 0
+    elapsed = time.time() - start_time
+    total = successes + failures
+    
+    if total == 0:
+        return None
+    
+    return LoadTestResult(
+        success_rate=round(successes / total * 100, 1),
+        avg_response_time=round(mean(response_times), 1) if response_times else 0,
+        requests_per_second=round(total / elapsed, 2) if elapsed > 0 else 0,
+        failed_requests=failures,
+        total_requests=total
+    )
 
-def determine_quality_profile(site_results, latency_data):
-    """Определение профиля качества"""
-    
-    # Подсчет метрик
-    accessible_categories = [
-        cat for cat, data in site_results.items()
-        if data["accessible_count"] > 0
-    ]
-    categories_count = len(accessible_categories)
-    
-    # Средняя стабильность по всем сайтам
-    all_stabilities = []
-    for cat_data in site_results.values():
-        for site_data in cat_data["sites"].values():
-            if site_data.get("accessible"):
-                all_stabilities.append(site_data["stability"])
-    
-    avg_stability = mean(all_stabilities) if all_stabilities else 0
-    
-    # Взвешенный рейтинг
-    weighted_score = calculate_weighted_score(site_results)
-    
-    # Latency
-    avg_latency = latency_data["avg"] if latency_data else 9999
-    
-    # Проверка банков и госуслуг
-    has_banks = site_results.get("banks", {}).get("accessible_count", 0) >= 3
-    has_gov = site_results.get("gov", {}).get("accessible_count", 0) >= 2
-    
-    # Проход по профилям
-    for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
-        profile = QUALITY_PROFILES[profile_name]
-        req = profile["requirements"]
-        
-        # Проверка требований
-        if avg_latency > req["latency_max"]:
-            continue
-        if avg_stability < req["stability_min"]:
-            continue
-        if categories_count < req["categories_min"]:
-            continue
-        if weighted_score < req["weighted_score_min"]:
-            continue
-        if req["banks_required"] and not has_banks:
-            continue
-        if req["gov_required"] and not has_gov:
-            continue
-        
-        return profile_name
-    
-    return "limited"
+# ========== ВАЛИДАЦИЯ МОБИЛЬНЫХ ПРОТОКОЛОВ ==========
 
-# ========== ОСНОВНАЯ ПРОВЕРКА КЛЮЧА ==========
+def validate_mobile_protocol(server_info: Dict) -> Tuple[bool, List[str]]:
+    """
+    Проверка специфичных для мобильных настроек протокола
+    """
+    issues = []
+    
+    protocol = server_info.get("protocol", "")
+    security = server_info.get("security", "none")
+    transport = server_info.get("type", "tcp")
+    flow = server_info.get("flow", "")
+    
+    # Reality проверки
+    if security == "reality":
+        if not server_info.get("pbk"):
+            issues.append("Reality: отсутствует publicKey")
+        if not server_info.get("fp"):
+            issues.append("Reality: отсутствует fingerprint")
+        if not server_info.get("sni"):
+            issues.append("Reality: отсутствует SNI")
+    
+    # XTLS Flow проверки для iOS
+    if flow:
+        if "splice" in flow.lower():
+            issues.append("Flow splice не поддерживается на iOS")
+    
+    # gRPC проверки
+    if transport == "grpc":
+        if not server_info.get("serviceName"):
+            issues.append("gRPC: отсутствует serviceName")
+    
+    # WebSocket проверки
+    if transport == "ws":
+        if not server_info.get("path"):
+            issues.append("WebSocket: отсутствует path (будет использован /)")
+    
+    # VMess alterId
+    if protocol == "vmess":
+        if server_info.get("aid", 0) > 0:
+            issues.append("VMess: alterId > 0 устарел")
+    
+    # Общие проверки
+    if not server_info.get("sni") and security in ["tls", "reality"]:
+        issues.append("TLS/Reality: пустой SNI может вызвать проблемы")
+    
+    is_valid = len([i for i in issues if "не поддерживается" in i or "отсутствует publicKey" in i]) == 0
+    
+    return is_valid, issues
 
-def check_single_key(key, xray_exe, key_index, total_keys):
-    """Полная проверка одного ключа"""
+# ========== ОПРЕДЕЛЕНИЕ ПРОФИЛЯ ==========
+
+def determine_profile(
+    latency: Optional[LatencyResult],
+    stability: Optional[StabilityResult],
+    load_test: Optional[LoadTestResult],
+    udp_test: Optional[UDPTestResult],
+    dns_test: Optional[DNSTestResult]
+) -> Tuple[str, int]:
+    """Определение профиля качества для мобильных"""
+    
+    # Базовые проверки
+    if not latency:
+        return "poor", 0
+    
+    # Расчет score
+    score = 0
+    
+    # Latency (до 30 баллов)
+    if latency.avg < 100:
+        score += 30
+    elif latency.avg < 200:
+        score += 25
+    elif latency.avg < 350:
+        score += 20
+    elif latency.avg < 500:
+        score += 15
+    elif latency.avg < 1000:
+        score += 10
+    else:
+        score += 5
+    
+    # Jitter (до 20 баллов)
+    if latency.jitter < 30:
+        score += 20
+    elif latency.jitter < 50:
+        score += 15
+    elif latency.jitter < 100:
+        score += 10
+    elif latency.jitter < 150:
+        score += 5
+    
+    # Стабильность (до 25 баллов)
+    if stability:
+        if stability.success_rate >= 95:
+            score += 25
+        elif stability.success_rate >= 90:
+            score += 20
+        elif stability.success_rate >= 80:
+            score += 15
+        elif stability.success_rate >= 70:
+            score += 10
+        else:
+            score += 5
+    
+    # Нагрузка (до 15 баллов)
+    if load_test:
+        if load_test.success_rate >= 95:
+            score += 15
+        elif load_test.success_rate >= 90:
+            score += 12
+        elif load_test.success_rate >= 80:
+            score += 9
+        elif load_test.success_rate >= 70:
+            score += 6
+        else:
+            score += 3
+    
+    # UDP (до 5 баллов)
+    if udp_test and udp_test.success:
+        score += 5
+    
+    # DNS (до 5 баллов)
+    if dns_test and dns_test.success:
+        score += 5
+    
+    # Определение профиля
+    for profile_name, profile_data in sorted(
+        MOBILE_QUALITY_PROFILES.items(),
+        key=lambda x: x[1]["priority"]
+    ):
+        thresholds = profile_data["thresholds"]
+        
+        if latency.avg > thresholds["latency_avg_max"]:
+            continue
+        if latency.jitter > thresholds["latency_jitter_max"]:
+            continue
+        if stability and stability.success_rate < thresholds["stability_min"]:
+            continue
+        if load_test and load_test.success_rate < thresholds["load_success_min"]:
+            continue
+        if thresholds["udp_success"] and (not udp_test or not udp_test.success):
+            continue
+        if thresholds["dns_success"] and (not dns_test or not dns_test.success):
+            continue
+        
+        return profile_name, score
+    
+    return "poor", score
+
+# ========== ПОЛНЫЙ АНАЛИЗ КЛЮЧА ==========
+
+def analyze_key_full(key: str) -> Optional[MobileTestResult]:
+    """Полный анализ ключа для мобильных"""
     try:
         # Дедупликация
         server_hash = get_server_hash(key)
         if server_hash in seen_servers:
-            return {"status": "duplicate", "key": key}
+            return None  # Дубликат
         seen_servers.add(server_hash)
         
         # Парсинг
-        proxy_config, protocol = parse_key(key)
-        if not proxy_config:
-            return {"status": "parse_error", "key": key}
+        server_info = parse_key(key)
+        if not server_info:
+            return None
         
-        # Запуск Xray
-        socks_port = random.randint(20000, 50000)
-        config = create_xray_config(proxy_config, socks_port)
-        config_path = os.path.join(XRAY_FOLDER, f"mobile_{socks_port}.json")
+        host = server_info["host"]
+        port = server_info["port"]
         
-        process = start_xray(xray_exe, config, config_path)
-        if not process:
-            cleanup_file(config_path)
-            return {"status": "xray_error", "key": key}
+        # 1. Latency тест
+        latency = measure_latency(server_info)
+        if not latency:
+            return None  # Сервер недоступен
         
-        try:
-            proxies = {
-                'http': f'socks5h://127.0.0.1:{socks_port}',
-                'https': f'socks5h://127.0.0.1:{socks_port}'
-            }
-            
-            # 1. Измерение latency
-            latency_data = measure_latency(proxies, LATENCY_SAMPLES)
-            if not latency_data:
-                return {"status": "latency_fail", "key": key}
-            
-            # 2. Проверка всех сайтов
-            site_results = check_all_sites_parallel(proxies)
-            
-            # 3. Определение профиля
-            profile = determine_quality_profile(site_results, latency_data)
-            
-            # 4. Подсчет статистики
-            total_accessible = sum(
-                cat["accessible_count"] for cat in site_results.values()
-            )
-            total_sites = sum(
-                cat["total_count"] for cat in site_results.values()
-            )
-            weighted_score = calculate_weighted_score(site_results)
-            
-            # Средняя стабильность
-            all_stabilities = []
-            for cat_data in site_results.values():
-                for site_data in cat_data["sites"].values():
-                    if site_data.get("accessible"):
-                        all_stabilities.append(site_data["stability"])
-            avg_stability = mean(all_stabilities) if all_stabilities else 0
-            
-            return {
-                "status": "success",
-                "key": key,
-                "protocol": protocol,
-                "profile": profile,
-                "latency": latency_data,
-                "stability": round(avg_stability, 1),
-                "weighted_score": weighted_score,
-                "categories": site_results,
-                "accessible_categories": [
-                    cat for cat, data in site_results.items()
-                    if data["accessible_count"] > 0
-                ],
-                "total_accessible": total_accessible,
-                "total_sites": total_sites
-            }
-            
-        finally:
-            stop_xray(process)
-            cleanup_file(config_path)
-            
+        # 2. Стабильность
+        stability = test_stability(server_info)
+        
+        # 3. Нагрузка
+        load_test = test_load(server_info)
+        
+        # 4. UDP тест
+        udp_test = test_udp_connectivity(host, port)
+        
+        # 5. DNS тест
+        dns_test = test_dns_resolution(host, port)
+        
+        # 6. Валидация протокола
+        protocol_valid, protocol_issues = validate_mobile_protocol(server_info)
+        
+        # 7. Определение профиля
+        profile, score = determine_profile(latency, stability, load_test, udp_test, dns_test)
+        
+        # 8. Mobile ready?
+        mobile_ready = (
+            profile in ["elite", "premium", "good"] and
+            protocol_valid and
+            stability and stability.success_rate >= 80
+        )
+        
+        return MobileTestResult(
+            key=key,
+            protocol=server_info["protocol"].upper(),
+            host=host,
+            port=port,
+            security=server_info.get("security", "none"),
+            transport=server_info.get("type", "tcp"),
+            latency=latency,
+            stability=stability,
+            load_test=load_test,
+            udp_test=udp_test,
+            dns_test=dns_test,
+            profile=profile,
+            score=score,
+            mobile_ready=mobile_ready,
+            issues=protocol_issues
+        )
+        
     except Exception as e:
-        return {"status": "error", "key": key, "error": str(e)}
-
-# ========== БАТЧЕВАЯ ОБРАБОТКА ==========
-
-def process_batch(batch, xray_exe, batch_num, total_batches, start_idx):
-    """Обработка батча ключей параллельно"""
-    results = []
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_KEYS) as executor:
-        futures = {}
-        for i, key in enumerate(batch):
-            key_idx = start_idx + i + 1
-            future = executor.submit(
-                check_single_key, key, xray_exe, key_idx, stats["total_keys"]
-            )
-            futures[future] = (key, key_idx)
-        
-        for future in concurrent.futures.as_completed(futures):
-            key, key_idx = futures[future]
-            try:
-                result = future.result()
-                results.append(result)
-                
-                # Логирование
-                if result["status"] == "success":
-                    profile_info = QUALITY_PROFILES[result["profile"]]
-                    log(f"  [{key_idx}] {profile_info['emoji']} {result['profile'].upper()}: "
-                        f"Lat:{result['latency']['avg']:.0f}ms Stab:{result['stability']:.0f}% "
-                        f"Score:{result['weighted_score']:.0f} Sites:{result['total_accessible']}/{result['total_sites']}")
-                elif result["status"] == "duplicate":
-                    log(f"  [{key_idx}] 🔄 Дубликат - пропущен")
-                else:
-                    log(f"  [{key_idx}] ❌ {result['status']}")
-                    
-            except Exception as e:
-                log(f"  [{key_idx}] ❌ Ошибка: {e}")
-                results.append({"status": "error", "key": key})
-    
-    return results
+        return None
 
 # ========== ФОРМАТИРОВАНИЕ ==========
 
-def format_result_line(result):
-    """Форматирование строки результата"""
-    key = result["key"]
-    profile = result["profile"]
-    profile_info = QUALITY_PROFILES[profile]
+def format_result(result: MobileTestResult) -> str:
+    """Форматирование результата"""
+    profile_info = MOBILE_QUALITY_PROFILES[result.profile]
     
-    # Категории
-    cats = []
-    for cat_name in result["accessible_categories"]:
-        cat_label = SITE_CATEGORIES[cat_name]["label"].split()[0]
-        count = result["categories"][cat_name]["accessible_count"]
-        total = result["categories"][cat_name]["total_count"]
-        cats.append(f"{cat_label}{count}/{total}")
+    parts = [
+        f"#{profile_info['emoji']}",
+        f"Score:{result.score}",
+        f"Lat:{result.latency.avg:.0f}ms",
+        f"Jit:{result.latency.jitter:.0f}ms"
+    ]
     
-    cats_str = " ".join(cats[:6])
+    if result.stability:
+        parts.append(f"Stab:{result.stability.success_rate:.0f}%")
     
-    # Метрики
-    lat = result["latency"]["avg"]
-    stab = result["stability"]
-    score = result["weighted_score"]
+    if result.load_test:
+        parts.append(f"Load:{result.load_test.success_rate:.0f}%")
     
-    comment = (f"#{profile_info['emoji']} Lat:{lat:.0f}ms Stab:{stab:.0f}% "
-               f"Score:{score:.0f} [{cats_str}]")
+    if result.udp_test and result.udp_test.success:
+        parts.append("UDP:✓")
     
-    return f"{key} {comment}"
+    if result.dns_test and result.dns_test.success:
+        parts.append("DNS:✓")
+    
+    parts.append(f"[{result.security}/{result.transport}]")
+    
+    if result.mobile_ready:
+        parts.append("📱")
+    
+    return f"{result.key} {' '.join(parts)}"
 
 # ========== MAIN ==========
 
-def find_latest_verified():
+def find_latest_verified() -> Optional[str]:
+    """Поиск последнего verified файла"""
     if not os.path.exists(RESULTS_FOLDER):
         return None
     
@@ -1312,30 +984,23 @@ def main():
     stats["start_time"] = time.time()
     
     print("\n" + "="*100)
-    print(" "*20 + "📱 MOBILE VPN VALIDATOR v2.0")
-    print(" "*15 + "Продвинутая проверка для мобильных сетей РФ")
+    print(" "*15 + "📱 MOBILE VPN VALIDATOR v3.0 (FULL SIMULATION)")
+    print(" "*20 + "Полная имитация мобильного трафика")
     print("="*100)
     
-    print("""
-🎯 Что проверяем:
-   ⚡ Latency (задержка) - {samples} замеров с jitter
-   📊 Стабильность - {stability} попыток на сайт
-   🌐 {sites} сайтов в {cats} категориях
-   📱 Mobile User-Agent (iOS 17, Android 14)
-   🇷🇺 Accept-Language: ru-RU
-   ⚖️ Взвешенный рейтинг (банки важнее новостей)
-""".format(
-        samples=LATENCY_SAMPLES,
-        stability=STABILITY_CHECKS,
-        sites=sum(len(c["sites"]) for c in SITE_CATEGORIES.values()),
-        cats=len(SITE_CATEGORIES)
-    ))
-    
-    # Xray
-    xray_exe = os.path.join(XRAY_FOLDER, "xray.exe" if os.name == 'nt' else "xray")
-    if not os.path.exists(xray_exe):
-        log(f"❌ Xray не найден: {xray_exe}")
-        return 1
+    print(f"""
+🎯 Что тестируем:
+   ⚡ Latency - {TestConfig.LATENCY_SAMPLES} замеров с jitter
+   📊 Стабильность - {TestConfig.STABILITY_CONNECTIONS} параллельных соединений
+   🔥 Нагрузка - {TestConfig.LOAD_TEST_REQUESTS} запросов ({TestConfig.LOAD_TEST_PARALLEL} параллельно)
+   📡 UDP connectivity - {TestConfig.UDP_TEST_PACKETS} пакетов
+   🌐 DNS резолвинг - {len(TestConfig.DNS_TEST_DOMAINS)} доменов
+   ✅ Валидация мобильных протоколов
+
+📱 Мобильные клиенты:
+   🍎 iOS: Happ, Streisand, Shadowrocket, FoXray, V2Box
+   🤖 Android: V2RayNG, Hiddify, NekoBox, V2Box
+""")
     
     # Источник
     source_file = find_latest_verified()
@@ -1358,57 +1023,66 @@ def main():
                 keys.append(key)
     
     stats["total_keys"] = len(keys)
-    
     log(f"📦 Загружено ключей: {len(keys)}")
     
     # Оценка времени
-    # ~4 сек на ключ при параллельной обработке
-    est_seconds = (len(keys) / MAX_PARALLEL_KEYS) * 6
+    est_seconds = (len(keys) / TestConfig.MAX_PARALLEL_KEYS) * 8
     log(f"⏱️  Оценка времени: ~{int(est_seconds//60)} мин")
-    log(f"🔧 Параллельность: {MAX_PARALLEL_KEYS} ключей × {MAX_PARALLEL_SITES} сайтов")
+    log(f"🚀 Параллельность: {TestConfig.MAX_PARALLEL_KEYS} ключей")
     
     print("\n" + "="*100)
-    log("🚀 Начинаем проверку...")
+    log("🔍 Начинаем полное тестирование...")
     print("="*100 + "\n")
     
-    # Батчевая обработка
-    all_results = []
-    batches = [keys[i:i+BATCH_SIZE] for i in range(0, len(keys), BATCH_SIZE)]
+    # Обработка
+    all_results: List[MobileTestResult] = []
     
-    for batch_num, batch in enumerate(batches, 1):
-        start_idx = (batch_num - 1) * BATCH_SIZE
+    with concurrent.futures.ThreadPoolExecutor(max_workers=TestConfig.MAX_PARALLEL_KEYS) as executor:
+        futures = {executor.submit(analyze_key_full, key): key for key in keys}
         
-        elapsed = time.time() - stats["start_time"]
-        if batch_num > 1:
-            avg_per_key = elapsed / start_idx
-            remaining = avg_per_key * (len(keys) - start_idx)
-            log(f"\n📦 Батч {batch_num}/{len(batches)} | "
-                f"Прогресс: {start_idx}/{len(keys)} | "
-                f"Осталось: ~{int(remaining//60)}мин")
-        else:
-            log(f"\n📦 Батч {batch_num}/{len(batches)}")
-        
-        batch_results = process_batch(batch, xray_exe, batch_num, len(batches), start_idx)
-        all_results.extend(batch_results)
-        
-        if batch_num < len(batches):
-            time.sleep(BETWEEN_BATCHES_DELAY)
+        completed = 0
+        for future in concurrent.futures.as_completed(futures):
+            completed += 1
+            stats["checked"] += 1
+            
+            result = future.result()
+            
+            if result is None:
+                stats["duplicates"] += 1
+                continue
+            
+            if result:
+                all_results.append(result)
+                stats["passed"] += 1
+                stats["by_profile"][result.profile] += 1
+                
+                if result.mobile_ready:
+                    stats["mobile_ready"] += 1
+                if result.udp_test and result.udp_test.success:
+                    stats["udp_capable"] += 1
+                if result.dns_test and result.dns_test.success:
+                    stats["dns_capable"] += 1
+                
+                profile_info = MOBILE_QUALITY_PROFILES[result.profile]
+                mobile_icon = "📱" if result.mobile_ready else ""
+                
+                log(f"[{completed}/{len(keys)}] {profile_info['emoji']} {result.profile.upper()}: "
+                    f"Score:{result.score} Lat:{result.latency.avg:.0f}ms "
+                    f"Jit:{result.latency.jitter:.0f}ms {mobile_icon}")
+            else:
+                stats["failed"] += 1
+                if completed % 20 == 0:
+                    log(f"[{completed}/{len(keys)}] ❌ Не прошел")
+            
+            # Прогресс
+            if completed % 50 == 0 and completed > 0:
+                elapsed = time.time() - stats["start_time"]
+                remaining = (elapsed / completed) * (len(keys) - completed)
+                log(f"\n📊 Прогресс: {completed}/{len(keys)} | "
+                    f"✅ {stats['passed']} | 📱 {stats['mobile_ready']} | "
+                    f"⏱️ ~{int(remaining//60)}мин\n")
     
-    # Фильтрация успешных
-    successful = [r for r in all_results if r["status"] == "success"]
-    duplicates = [r for r in all_results if r["status"] == "duplicate"]
-    failed = [r for r in all_results if r["status"] not in ["success", "duplicate"]]
-    
-    stats["passed"] = len(successful)
-    stats["failed"] = len(failed)
-    stats["duplicates_skipped"] = len(duplicates)
     stats["unique_servers"] = len(seen_servers)
-    
-    # Группировка по профилям
-    by_profile = defaultdict(list)
-    for r in successful:
-        by_profile[r["profile"]].append(r)
-        stats["by_profile"][r["profile"]] += 1
     
     # === СОХРАНЕНИЕ ===
     log("\n" + "="*100)
@@ -1416,34 +1090,82 @@ def main():
     log("="*100 + "\n")
     
     # По профилям
-    for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+    by_profile = defaultdict(list)
+    for r in all_results:
+        by_profile[r.profile].append(r)
+    
+    for profile_name in sorted(MOBILE_QUALITY_PROFILES.keys(), key=lambda x: MOBILE_QUALITY_PROFILES[x]["priority"]):
         results = by_profile.get(profile_name, [])
         if not results:
             continue
         
-        profile_info = QUALITY_PROFILES[profile_name]
+        profile_info = MOBILE_QUALITY_PROFILES[profile_name]
         filename = os.path.join(OUTPUT_DIR, f"{profile_name}_{timestamp}.txt")
         
-        # Сортировка по weighted_score
-        results.sort(key=lambda x: x["weighted_score"], reverse=True)
+        results.sort(key=lambda x: x.score, reverse=True)
         
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(f"# {profile_info['emoji']} {profile_info['label']}\n")
             f.write(f"# {profile_info['description']}\n")
             f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
             f.write(f"# Количество: {len(results)}\n")
-            f.write(f"# Метрики: Latency, Stability, Weighted Score\n\n")
+            f.write(f"# Mobile Ready: {sum(1 for r in results if r.mobile_ready)}\n\n")
             
             for r in results:
-                f.write(format_result_line(r) + "\n")
+                f.write(format_result(r) + "\n")
         
         log(f"{profile_info['emoji']} {profile_info['label']}: {len(results)} → {os.path.basename(filename)}")
     
-    # Детальный JSON
+    # Mobile Ready отдельно
+    mobile_ready_results = [r for r in all_results if r.mobile_ready]
+    if mobile_ready_results:
+        mobile_file = os.path.join(OUTPUT_DIR, f"mobile_ready_{timestamp}.txt")
+        with open(mobile_file, 'w', encoding='utf-8') as f:
+            f.write("# 📱 MOBILE READY\n")
+            f.write("# Оптимизированы для мобильных клиентов\n")
+            f.write(f"# Количество: {len(mobile_ready_results)}\n\n")
+            
+            for r in sorted(mobile_ready_results, key=lambda x: x.score, reverse=True):
+                f.write(format_result(r) + "\n")
+        
+        log(f"📱 Mobile Ready: {len(mobile_ready_results)} → {os.path.basename(mobile_file)}")
+    
+    # JSON
     detailed_file = os.path.join(OUTPUT_DIR, f"detailed_{timestamp}.json")
     with open(detailed_file, 'w', encoding='utf-8') as f:
-        json.dump(successful, f, indent=2, ensure_ascii=False, default=str)
-    log(f"📄 Детальный JSON → {os.path.basename(detailed_file)}")
+        json_data = []
+        for r in all_results:
+            json_data.append({
+                "key": r.key,
+                "protocol": r.protocol,
+                "host": r.host,
+                "port": r.port,
+                "security": r.security,
+                "transport": r.transport,
+                "profile": r.profile,
+                "score": r.score,
+                "mobile_ready": r.mobile_ready,
+                "latency": {
+                    "avg": r.latency.avg,
+                    "min": r.latency.min,
+                    "max": r.latency.max,
+                    "jitter": r.latency.jitter
+                } if r.latency else None,
+                "stability": {
+                    "success_rate": r.stability.success_rate,
+                    "avg_response": r.stability.avg_response_time
+                } if r.stability else None,
+                "load_test": {
+                    "success_rate": r.load_test.success_rate,
+                    "rps": r.load_test.requests_per_second
+                } if r.load_test else None,
+                "udp_capable": r.udp_test.success if r.udp_test else False,
+                "dns_capable": r.dns_test.success if r.dns_test else False,
+                "issues": r.issues
+            })
+        json.dump(json_data, f, indent=2, ensure_ascii=False)
+    
+    log(f"📄 JSON → {os.path.basename(detailed_file)}")
     
     # Сводка
     total_time = int(time.time() - stats["start_time"])
@@ -1451,65 +1173,69 @@ def main():
     summary_file = os.path.join(OUTPUT_DIR, f"summary_{timestamp}.txt")
     with open(summary_file, 'w', encoding='utf-8') as f:
         f.write("="*80 + "\n")
-        f.write("MOBILE VPN VALIDATOR v2.0 - СВОДКА\n")
+        f.write("MOBILE VPN VALIDATOR v3.0 - ПОЛНАЯ СВОДКА\n")
         f.write("="*80 + "\n\n")
         
         f.write(f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Всего ключей: {stats['total_keys']}\n")
-        f.write(f"Уникальных серверов: {stats['unique_servers']}\n")
-        f.write(f"Дубликатов пропущено: {stats['duplicates_skipped']}\n")
-        f.write(f"Прошли проверку: {stats['passed']}\n")
+        f.write(f"Уникальных: {stats['unique_servers']}\n")
+        f.write(f"Дубликатов: {stats['duplicates']}\n")
+        f.write(f"Прошли: {stats['passed']}\n")
         f.write(f"Не прошли: {stats['failed']}\n")
-        f.write(f"Время: {total_time}с ({total_time//60}мин)\n")
-        f.write(f"Среднее на ключ: {total_time/max(len(keys),1):.1f}с\n\n")
+        f.write(f"Время: {total_time}с ({total_time//60}мин)\n\n")
         
-        f.write("ПАРАМЕТРЫ ПРОВЕРКИ:\n")
-        f.write(f"  Замеров latency: {LATENCY_SAMPLES}\n")
-        f.write(f"  Проверок стабильности: {STABILITY_CHECKS}\n")
-        f.write(f"  Параллельных ключей: {MAX_PARALLEL_KEYS}\n")
-        f.write(f"  Параллельных сайтов: {MAX_PARALLEL_SITES}\n\n")
+        f.write("МОБИЛЬНАЯ ГОТОВНОСТЬ:\n")
+        f.write(f"  📱 Mobile Ready: {stats['mobile_ready']}\n")
+        f.write(f"  📡 UDP capable: {stats['udp_capable']}\n")
+        f.write(f"  🌐 DNS capable: {stats['dns_capable']}\n\n")
         
-        f.write("ПО ПРОФИЛЯМ КАЧЕСТВА:\n")
-        for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+        f.write("ПО ПРОФИЛЯМ:\n")
+        for profile_name in sorted(MOBILE_QUALITY_PROFILES.keys(), key=lambda x: MOBILE_QUALITY_PROFILES[x]["priority"]):
             count = stats["by_profile"].get(profile_name, 0)
             if count > 0:
-                info = QUALITY_PROFILES[profile_name]
+                info = MOBILE_QUALITY_PROFILES[profile_name]
                 pct = count / stats["passed"] * 100 if stats["passed"] > 0 else 0
                 f.write(f"  {info['emoji']} {info['label']}: {count} ({pct:.1f}%)\n")
         
-        # Статистика latency
-        if successful:
-            latencies = [r["latency"]["avg"] for r in successful]
-            f.write(f"\nСТАТИСТИКА LATENCY:\n")
-            f.write(f"  Минимум: {min(latencies):.0f}ms\n")
-            f.write(f"  Среднее: {mean(latencies):.0f}ms\n")
-            f.write(f"  Медиана: {median(latencies):.0f}ms\n")
-            f.write(f"  Максимум: {max(latencies):.0f}ms\n")
+        if all_results:
+            latencies = [r.latency.avg for r in all_results if r.latency]
+            jitters = [r.latency.jitter for r in all_results if r.latency]
+            scores = [r.score for r in all_results]
+            
+            f.write(f"\nСТАТИСТИКА:\n")
+            f.write(f"  Latency: min={min(latencies):.0f} avg={mean(latencies):.0f} max={max(latencies):.0f}ms\n")
+            f.write(f"  Jitter: min={min(jitters):.0f} avg={mean(jitters):.0f} max={max(jitters):.0f}ms\n")
+            f.write(f"  Score: min={min(scores)} avg={mean(scores):.0f} max={max(scores)}\n")
     
     log(f"📊 Сводка → {os.path.basename(summary_file)}")
     
-    # === ФИНАЛЬНАЯ СТАТИСТИКА ===
+    # === ФИНАЛ ===
     print("\n" + "="*100)
     print("📊 ИТОГОВАЯ СТАТИСТИКА")
     print("="*100)
-    print(f"Всего ключей:         {stats['total_keys']}")
-    print(f"Уникальных серверов:  {stats['unique_servers']}")
-    print(f"Дубликатов пропущено: {stats['duplicates_skipped']}")
-    print(f"✅ Прошли:            {stats['passed']}")
-    print(f"❌ Не прошли:         {stats['failed']}")
+    print(f"Всего ключей:     {stats['total_keys']}")
+    print(f"Уникальных:       {stats['unique_servers']}")
+    print(f"✅ Прошли:        {stats['passed']}")
+    print(f"❌ Не прошли:     {stats['failed']}")
     
-    print(f"\n🏆 ПО ПРОФИЛЯМ КАЧЕСТВА:")
-    for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+    print(f"\n📱 МОБИЛЬНАЯ ГОТОВНОСТЬ:")
+    print(f"  📱 Mobile Ready: {stats['mobile_ready']}")
+    print(f"  📡 UDP capable:  {stats['udp_capable']}")
+    print(f"  🌐 DNS capable:  {stats['dns_capable']}")
+    
+    print(f"\n🏆 ПО ПРОФИЛЯМ:")
+    for profile_name in sorted(MOBILE_QUALITY_PROFILES.keys(), key=lambda x: MOBILE_QUALITY_PROFILES[x]["priority"]):
         count = stats["by_profile"].get(profile_name, 0)
         if count > 0:
-            info = QUALITY_PROFILES[profile_name]
+            info = MOBILE_QUALITY_PROFILES[profile_name]
             pct = count / stats["passed"] * 100 if stats["passed"] > 0 else 0
             print(f"  {info['emoji']} {info['label']}: {count} ({pct:.1f}%)")
     
-    if successful:
-        latencies = [r["latency"]["avg"] for r in successful]
-        print(f"\n⚡ LATENCY:")
-        print(f"  Min: {min(latencies):.0f}ms | Avg: {mean(latencies):.0f}ms | Max: {max(latencies):.0f}ms")
+    if all_results:
+        latencies = [r.latency.avg for r in all_results if r.latency]
+        jitters = [r.latency.jitter for r in all_results if r.latency]
+        print(f"\n⚡ Latency: {min(latencies):.0f} / {mean(latencies):.0f} / {max(latencies):.0f} ms")
+        print(f"📈 Jitter:  {min(jitters):.0f} / {mean(jitters):.0f} / {max(jitters):.0f} ms")
     
     print(f"\n⏱️  Время: {total_time}с ({total_time//60}мин)")
     print(f"🚀 Скорость: {len(keys)/max(total_time,1)*60:.1f} ключей/мин")
