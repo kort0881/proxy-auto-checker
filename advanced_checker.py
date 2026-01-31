@@ -250,7 +250,7 @@ class MobileTestResult:
 
 # === ИНИЦИАЛИЗАЦИЯ ===
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR = os.path.join(RESULTS_FOLDER, f"mobile_full_{timestamp}")
+OUTPUT_DIR = os.path.join(RESULTS_FOLDER, "premium")  # ← ИСПРАВЛЕНО: убрали timestamp!
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 seen_servers = set()
@@ -1100,7 +1100,7 @@ def main():
             continue
         
         profile_info = MOBILE_QUALITY_PROFILES[profile_name]
-        filename = os.path.join(OUTPUT_DIR, f"{profile_name}_{timestamp}.txt")
+        filename = os.path.join(OUTPUT_DIR, f"{profile_name}.txt")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
         
         results.sort(key=lambda x: x.score, reverse=True)
         
@@ -1119,7 +1119,7 @@ def main():
     # Mobile Ready отдельно
     mobile_ready_results = [r for r in all_results if r.mobile_ready]
     if mobile_ready_results:
-        mobile_file = os.path.join(OUTPUT_DIR, f"mobile_ready_{timestamp}.txt")
+        mobile_file = os.path.join(OUTPUT_DIR, "mobile_ready.txt")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
         with open(mobile_file, 'w', encoding='utf-8') as f:
             f.write("# 📱 MOBILE READY\n")
             f.write("# Оптимизированы для мобильных клиентов\n")
@@ -1131,7 +1131,7 @@ def main():
         log(f"📱 Mobile Ready: {len(mobile_ready_results)} → {os.path.basename(mobile_file)}")
     
     # JSON
-    detailed_file = os.path.join(OUTPUT_DIR, f"detailed_{timestamp}.json")
+    detailed_file = os.path.join(OUTPUT_DIR, "detailed.json")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
     with open(detailed_file, 'w', encoding='utf-8') as f:
         json_data = []
         for r in all_results:
@@ -1170,7 +1170,7 @@ def main():
     # Сводка
     total_time = int(time.time() - stats["start_time"])
     
-    summary_file = os.path.join(OUTPUT_DIR, f"summary_{timestamp}.txt")
+    summary_file = os.path.join(OUTPUT_DIR, "summary.txt")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
     with open(summary_file, 'w', encoding='utf-8') as f:
         f.write("="*80 + "\n")
         f.write("MOBILE VPN VALIDATOR v3.0 - ПОЛНАЯ СВОДКА\n")
@@ -1246,3 +1246,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
