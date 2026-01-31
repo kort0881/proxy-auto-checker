@@ -2,7 +2,7 @@ name: Premium Proxy Checker
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 6 * * *'  # Каждый день в 6:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -35,42 +35,32 @@ jobs:
     - name: 🔥 Run advanced check
       run: python advanced_checker.py
     
+    # ========== ИСПРАВЛЕНО: Новая структура ==========
     - name: 📁 Upload premium artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: premium-keys
-        path: results/premium_*.txt
+        path: results/premium/*.txt  # ← ИЗМЕНЕНО: теперь папка premium
         retention-days: 30
     
-    # ========== НОВОЕ: Сохранение в репозиторий ==========
-    - name: 💾 Save premium keys to repository
+    - name: 💾 Commit premium results to repository
       if: success()
       run: |
-        # Создаём папку для премиум ключей
-        mkdir -p checked/premium
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
         
-        # Копируем последний premium файл
-        latest_premium=$(ls -t results/premium_*.txt 2>/dev/null | head -1)
+        # Добавляем всю папку results/premium
+        git add results/premium/
         
-        if [ -f "$latest_premium" ]; then
-          # Копируем как latest.txt (всегда актуальный)
-          cp "$latest_premium" checked/premium/latest.txt
-          
-          # Копируем с датой для истории
-          cp "$latest_premium" "checked/premium/premium_$(date +'%Y-%m-%d').txt"
-          
-          # Считаем количество ключей
-          key_count=$(grep -v "^#" checked/premium/latest.txt | grep -v "^$" | wc -l)
-          
-          # Коммитим в репозиторий
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add checked/premium/
-          git commit -m "✨ Update premium keys: ${key_count} keys [$(date +'%Y-%m-%d %H:%M')]" || echo "No changes"
-          git push
-          
-          echo "✅ Premium keys saved: ${key_count} keys"
-        else
-          echo "⚠️ No premium files found"
-        fi
+        # Считаем ключи из всех файлов
+        total_keys=$(find results/premium -name "*.txt" -exec grep -v "^#" {} \; | grep -v "^$" | wc -l)
+        
+        # Коммитим
+        git commit -m "✨ Update premium keys: ${total_keys} total [$(date +'%Y-%m-%d %H:%M UTC')]" || echo "No changes"
+        git push
+        
+        echo "✅ Premium results saved to results/premium/"
+        echo "📊 Files:"
+        ls -lh results/premium/
+
