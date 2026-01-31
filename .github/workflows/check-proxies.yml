@@ -5,6 +5,15 @@ on:
     - cron: '0 */12 * * *'  # Каждые 12 часов (00:00 и 12:00 UTC)
   workflow_dispatch:  # Ручной запуск через Actions
 
+# ✅ ДОБАВЛЕНО: Запрет параллельных запусков
+concurrency:
+  group: proxy-checker-push  # Общая группа для обоих workflow
+  cancel-in-progress: false  # Ждём завершения предыдущего
+
+# ✅ ДОБАВЛЕНО: Permissions для git push
+permissions:
+  contents: write
+
 jobs:
   check-and-post:
     runs-on: ubuntu-latest
@@ -12,10 +21,12 @@ jobs:
     
     steps:
     - name: 📥 Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # ← ОБНОВЛЕНО до v4
+      with:
+        fetch-depth: 0  # ✅ ДОБАВЛЕНО: полная история для git pull
     
     - name: 🐍 Setup Python 3.11
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5  # ← ОБНОВЛЕНО до v5
       with:
         python-version: '3.11'
     
@@ -29,7 +40,6 @@ jobs:
         python check_proxies.py
       continue-on-error: false
     
-    # ========== ДОБАВИТЬ ЭТОТ БЛОК! ==========
     - name: 💾 Save to repository
       if: success()
       run: |
@@ -42,7 +52,6 @@ jobs:
         else
           echo "⚠️ No verified files found"
         fi
-    # ==========================================
     
     - name: 📤 Post to Telegram
       if: success()
@@ -61,16 +70,25 @@ jobs:
         path: results/verified_*.txt
         retention-days: 7
     
-    # ========== ДОБАВИТЬ ЭТОТ БЛОК! ==========
+    # ✅ ИСПРАВЛЕНО: добавлен git pull перед push
     - name: 🚀 Commit to repository
       if: success()
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
+        
+        # Подтягиваем последние изменения из main
+        git fetch origin main
+        git pull origin main --rebase || echo "Nothing to pull"
+        
+        # Добавляем наши изменения
         git add checked/latest/
-        git commit -m "✨ Update verified keys: $(date +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
-        git push
-    # ==========================================
+        
+        # Коммитим (если есть изменения)
+        git diff --cached --quiet || git commit -m "✨ Update verified keys: $(date -u +'%Y-%m-%d %H:%M UTC')"
+        
+        # Пушим
+        git push origin main
 
 
 
