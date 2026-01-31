@@ -1,0 +1,81 @@
+name: Premium Proxy Checker
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Каждый день в 06:00 UTC (09:00 MSK)
+  workflow_dispatch:
+
+jobs:
+  advanced-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Setup Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install requests[socks]
+    
+    # Скачиваем артефакт из check-proxies.yml
+    - name: 📥 Download latest verified keys
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: check-proxies.yml  # ← Ваш существующий workflow
+        name: verified-keys
+        path: results/
+        search_artifacts: true
+      continue-on-error: true
+    
+    # Если артефакта нет, запускаем базовую проверку
+    - name: 🔍 Run basic check if no artifact
+      if: failure()
+      run: |
+        python check_proxies.py
+    
+    - name: 🔥 Run advanced checker
+      run: |
+        python advanced_checker.py
+    
+    - name: 📊 Display statistics
+      if: always()
+      run: |
+        if [ -f results/premium_stats_*.json ]; then
+          echo "📊 Premium Check Statistics:"
+          cat results/premium_stats_*.json
+        fi
+    
+    - name: 📁 Upload premium results
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: premium-keys
+        path: |
+          results/premium_*.txt
+          results/premium_stats_*.json
+        retention-days: 30
+    
+    - name: 💾 Commit premium keys to repo
+      if: success()
+      run: |
+        mkdir -p checked/premium
+        
+        latest_premium=$(ls -t results/premium_*.txt 2>/dev/null | head -1)
+        if [ -f "$latest_premium" ]; then
+          cp "$latest_premium" checked/premium/latest.txt
+          
+          key_count=$(grep -v "^#" checked/premium/latest.txt | grep -v "^$" | wc -l)
+          
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add checked/premium/latest.txt
+          git commit -m "Update premium keys: ${key_count} keys [$(date +'%Y-%m-%d %H:%M')]" || echo "No changes"
+          git push
+        fi
