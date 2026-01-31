@@ -2,7 +2,7 @@ name: Premium Proxy Checker
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # Каждый день в 06:00 UTC (09:00 MSK)
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,71 +11,66 @@ jobs:
     timeout-minutes: 180
     
     steps:
-    - name: 📥 Checkout repository
+    - name: 📥 Checkout
       uses: actions/checkout@v3
     
-    - name: 🐍 Setup Python 3.11
+    - name: 🐍 Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
     
-    - name: 📦 Install dependencies
+    - name: 📦 Install
       run: |
         pip install --upgrade pip
         pip install requests[socks]
     
-    # Скачиваем артефакт из check-proxies.yml
-    - name: 📥 Download latest verified keys
+    - name: 📥 Download verified keys
       uses: dawidd6/action-download-artifact@v2
       with:
-        workflow: check-proxies.yml  # ← Ваш существующий workflow
+        workflow: check-proxies.yml
         name: verified-keys
         path: results/
-        search_artifacts: true
       continue-on-error: true
     
-    # Если артефакта нет, запускаем базовую проверку
-    - name: 🔍 Run basic check if no artifact
-      if: failure()
-      run: |
-        python check_proxies.py
+    - name: 🔥 Run advanced check
+      run: python advanced_checker.py
     
-    - name: 🔥 Run advanced checker
-      run: |
-        python advanced_checker.py
-    
-    - name: 📊 Display statistics
-      if: always()
-      run: |
-        if [ -f results/premium_stats_*.json ]; then
-          echo "📊 Premium Check Statistics:"
-          cat results/premium_stats_*.json
-        fi
-    
-    - name: 📁 Upload premium results
+    - name: 📁 Upload premium artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: premium-keys
-        path: |
-          results/premium_*.txt
-          results/premium_stats_*.json
+        path: results/premium_*.txt
         retention-days: 30
     
-    - name: 💾 Commit premium keys to repo
+    # ========== НОВОЕ: Сохранение в репозиторий ==========
+    - name: 💾 Save premium keys to repository
       if: success()
       run: |
+        # Создаём папку для премиум ключей
         mkdir -p checked/premium
         
+        # Копируем последний premium файл
         latest_premium=$(ls -t results/premium_*.txt 2>/dev/null | head -1)
+        
         if [ -f "$latest_premium" ]; then
+          # Копируем как latest.txt (всегда актуальный)
           cp "$latest_premium" checked/premium/latest.txt
           
+          # Копируем с датой для истории
+          cp "$latest_premium" "checked/premium/premium_$(date +'%Y-%m-%d').txt"
+          
+          # Считаем количество ключей
           key_count=$(grep -v "^#" checked/premium/latest.txt | grep -v "^$" | wc -l)
           
+          # Коммитим в репозиторий
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add checked/premium/latest.txt
-          git commit -m "Update premium keys: ${key_count} keys [$(date +'%Y-%m-%d %H:%M')]" || echo "No changes"
+          git add checked/premium/
+          git commit -m "✨ Update premium keys: ${key_count} keys [$(date +'%Y-%m-%d %H:%M')]" || echo "No changes"
           git push
+          
+          echo "✅ Premium keys saved: ${key_count} keys"
+        else
+          echo "⚠️ No premium files found"
         fi
