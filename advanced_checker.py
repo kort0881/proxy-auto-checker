@@ -1,3 +1,17 @@
+"""
+📱 MOBILE VPN VALIDATOR v2.0
+Продвинутая проверка VPN ключей для мобильных сетей РФ
+
+🎯 Ключевые улучшения:
+- Измерение задержки (Latency) с jitter
+- Проверка стабильности (множественные запросы)
+- Реальные мобильные User-Agents (iOS 17, Android 14)
+- Взвешенный рейтинг (банки важнее новостей)
+- Параллельная обработка (10 ключей одновременно)
+- Дедупликация серверов
+- Профили качества для мобильных
+"""
+
 import os
 import sys
 import json
@@ -7,242 +21,521 @@ import requests
 import subprocess
 import base64
 import hashlib
-import socket
 from datetime import datetime
 from urllib.parse import unquote
-from collections import defaultdict
 import concurrent.futures
-from statistics import mean, stdev
-import warnings
-warnings.filterwarnings('ignore')
+from collections import defaultdict
+from statistics import mean, stdev, median
+import urllib3
+urllib3.disable_warnings()
 
-# === КОНФИГУРАЦИЯ ===
+# === НАСТРОЙКИ ===
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 XRAY_FOLDER = os.path.join(WORK_DIR, "xray")
 
-# === ОПТИМИЗАЦИЯ ДЛЯ БОЛЬШИХ ОБЪЕМОВ ===
-BATCH_SIZE = 50                     # Обрабатываем по 50 ключей параллельно
-MAX_WORKERS_KEYS = 10               # 10 ключей параллельно
-MAX_WORKERS_PER_KEY = 12            # 12 сайтов параллельно на ключ
-CONNECTION_TIMEOUT = 10             # Увеличен для стабильности
-SITE_CHECK_TIMEOUT = 8              # Таймаут проверки сайта
-XRAY_STARTUP = 1.5                  # Время запуска xray
-STABILITY_CHECKS = 3                # Кол-во проверок стабильности
-LATENCY_SAMPLES = 5                 # Проб для измерения задержки
+# === ПАРАМЕТРЫ ПРОИЗВОДИТЕЛЬНОСТИ ===
+MAX_PARALLEL_KEYS = 10          # Параллельных ключей
+MAX_PARALLEL_SITES = 12         # Параллельных сайтов на ключ
+BATCH_SIZE = 50                 # Размер батча
+LATENCY_SAMPLES = 5             # Замеров задержки
+STABILITY_CHECKS = 3            # Проверок стабильности на сайт
+XRAY_STARTUP_DELAY = 1.0        # Пауза на запуск xray
+SITE_TIMEOUT = 8                # Таймаут сайта
+BETWEEN_BATCHES_DELAY = 2       # Пауза между батчами
 
-# === МОБИЛЬНЫЕ СПЕЦИФИЧНЫЕ НАСТРОЙКИ ===
-MOBILE_QUALITY_THRESHOLDS = {
-    "excellent": {"latency": 150, "stability": 95, "success_rate": 90},
-    "good": {"latency": 300, "stability": 85, "success_rate": 75},
-    "acceptable": {"latency": 500, "stability": 70, "success_rate": 60},
-    "poor": {"latency": 1000, "stability": 50, "success_rate": 40}
+# === МОБИЛЬНЫЕ USER-AGENTS (2024) ===
+MOBILE_USER_AGENTS = {
+    "iphone_safari": [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+    ],
+    "android_chrome": [
+        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 13; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; 2312DRA50G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"  # Xiaomi
+    ],
+    "android_app": [
+        # Для эмуляции запросов из VPN-приложений
+        "V2RayNG/1.8.19",
+        "Hiddify/2.0.5",
+        "SagerNet/0.8.1"
+    ]
 }
 
-# === РАСШИРЕННЫЕ КАТЕГОРИИ САЙТОВ ===
+# === САЙТЫ С ВЕСАМИ И МОБИЛЬНЫМИ URL ===
 SITE_CATEGORIES = {
-    "banks_priority": {
-        "label": "🏦 Банки (Приоритет)",
-        "weight": 3.0,  # Высокий вес для рейтинга
+    "banks": {
+        "label": "🏦 Банки",
+        "weight": 3.0,  # Высший приоритет
+        "priority": 1,
         "sites": {
-            "sberbank": "https://online.sberbank.ru",
-            "tbank": "https://www.tbank.ru",
-            "vtb": "https://www.vtb.ru",
-            "alfabank": "https://alfabank.ru",
-            "gazprombank": "https://www.gazprombank.ru",
-            "raiffeisen": "https://www.raiffeisen.ru"
+            "sberbank": {
+                "url": "https://online.sberbank.ru",
+                "mobile_url": "https://online.sberbank.ru/CSAFront/index.do",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["Сбер", "сбербанк"]
+            },
+            "tbank": {
+                "url": "https://www.tbank.ru",
+                "mobile_url": "https://www.tbank.ru",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["Т-Банк", "Tinkoff"]
+            },
+            "vtb": {
+                "url": "https://www.vtb.ru",
+                "mobile_url": "https://www.vtb.ru",
+                "weight": 0.9,
+                "critical": True,
+                "check_content": ["ВТБ", "VTB"]
+            },
+            "alfa": {
+                "url": "https://alfabank.ru",
+                "mobile_url": "https://alfabank.ru",
+                "weight": 0.9,
+                "critical": True,
+                "check_content": ["Альфа", "Alfa"]
+            },
+            "gazprom": {
+                "url": "https://www.gazprombank.ru",
+                "mobile_url": "https://www.gazprombank.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["Газпром"]
+            },
+            "raiffeisen": {
+                "url": "https://www.raiffeisen.ru",
+                "mobile_url": "https://www.raiffeisen.ru",
+                "weight": 0.6,
+                "critical": False,
+                "check_content": ["Райффайзен"]
+            }
         }
     },
-    "gov_priority": {
-        "label": "🏛️ Госуслуги (Приоритет)",
+    
+    "gov": {
+        "label": "🏛️ Госуслуги",
         "weight": 2.5,
+        "priority": 2,
         "sites": {
-            "gosuslugi": "https://www.gosuslugi.ru",
-            "nalog": "https://www.nalog.gov.ru",
-            "esia": "https://esia.gosuslugi.ru",
-            "mos_ru": "https://www.mos.ru"
+            "gosuslugi": {
+                "url": "https://www.gosuslugi.ru",
+                "mobile_url": "https://www.gosuslugi.ru",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["Госуслуги"]
+            },
+            "nalog": {
+                "url": "https://www.nalog.gov.ru",
+                "mobile_url": "https://www.nalog.gov.ru",
+                "weight": 0.9,
+                "critical": True,
+                "check_content": ["налог", "ФНС"]
+            },
+            "mos": {
+                "url": "https://www.mos.ru",
+                "mobile_url": "https://www.mos.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["Москва", "mos.ru"]
+            },
+            "pfr": {
+                "url": "https://sfr.gov.ru",
+                "mobile_url": "https://sfr.gov.ru",
+                "weight": 0.6,
+                "critical": False,
+                "check_content": ["Социальный фонд"]
+            }
         }
     },
+    
     "social": {
         "label": "📱 Соцсети",
         "weight": 2.0,
+        "priority": 3,
         "sites": {
-            "vk": "https://vk.com",
-            "ok": "https://ok.ru",
-            "instagram": "https://www.instagram.com",
-            "twitter": "https://x.com",
-            "facebook": "https://www.facebook.com",
-            "linkedin": "https://www.linkedin.com",
-            "tiktok": "https://www.tiktok.com"
+            "vk": {
+                "url": "https://vk.com",
+                "mobile_url": "https://m.vk.com",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["ВКонтакте", "VK"]
+            },
+            "ok": {
+                "url": "https://ok.ru",
+                "mobile_url": "https://m.ok.ru",
+                "weight": 0.8,
+                "critical": True,
+                "check_content": ["Одноклассники"]
+            },
+            "instagram": {
+                "url": "https://www.instagram.com",
+                "mobile_url": "https://www.instagram.com",
+                "weight": 1.0,
+                "critical": True,
+                "blocked_ru": True,
+                "check_content": ["Instagram"]
+            },
+            "twitter": {
+                "url": "https://x.com",
+                "mobile_url": "https://mobile.twitter.com",
+                "weight": 0.8,
+                "critical": False,
+                "blocked_ru": True,
+                "check_content": ["X.com", "Twitter"]
+            },
+            "facebook": {
+                "url": "https://www.facebook.com",
+                "mobile_url": "https://m.facebook.com",
+                "weight": 0.7,
+                "critical": False,
+                "blocked_ru": True,
+                "check_content": ["Facebook"]
+            },
+            "linkedin": {
+                "url": "https://www.linkedin.com",
+                "mobile_url": "https://www.linkedin.com",
+                "weight": 0.6,
+                "critical": False,
+                "blocked_ru": True,
+                "check_content": ["LinkedIn"]
+            }
         }
     },
+    
     "messengers": {
         "label": "💬 Мессенджеры",
         "weight": 2.0,
+        "priority": 4,
         "sites": {
-            "telegram_web": "https://web.telegram.org",
-            "whatsapp": "https://web.whatsapp.com",
-            "viber": "https://www.viber.com"
+            "telegram": {
+                "url": "https://web.telegram.org",
+                "mobile_url": "https://web.telegram.org/k/",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["Telegram"]
+            },
+            "whatsapp": {
+                "url": "https://web.whatsapp.com",
+                "mobile_url": "https://web.whatsapp.com",
+                "weight": 0.9,
+                "critical": True,
+                "check_content": ["WhatsApp"]
+            },
+            "discord": {
+                "url": "https://discord.com",
+                "mobile_url": "https://discord.com/app",
+                "weight": 0.7,
+                "critical": False,
+                "blocked_ru": True,
+                "check_content": ["Discord"]
+            }
         }
     },
+    
     "video": {
         "label": "📺 Видео",
         "weight": 1.5,
+        "priority": 5,
         "sites": {
-            "youtube": "https://www.youtube.com",
-            "rutube": "https://rutube.ru",
-            "kinopoisk": "https://www.kinopoisk.ru",
-            "ivi": "https://www.ivi.ru"
+            "youtube": {
+                "url": "https://www.youtube.com",
+                "mobile_url": "https://m.youtube.com",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["YouTube"]
+            },
+            "rutube": {
+                "url": "https://rutube.ru",
+                "mobile_url": "https://rutube.ru",
+                "weight": 0.6,
+                "critical": False,
+                "check_content": ["RUTUBE"]
+            },
+            "kinopoisk": {
+                "url": "https://www.kinopoisk.ru",
+                "mobile_url": "https://www.kinopoisk.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["Кинопоиск"]
+            },
+            "ivi": {
+                "url": "https://www.ivi.ru",
+                "mobile_url": "https://www.ivi.ru",
+                "weight": 0.5,
+                "critical": False,
+                "check_content": ["ivi"]
+            }
         }
     },
+    
     "news": {
         "label": "📰 Новости",
         "weight": 1.0,
+        "priority": 6,
         "sites": {
-            "yandex_news": "https://news.yandex.ru",
-            "rbc": "https://www.rbc.ru",
-            "tass": "https://tass.ru",
-            "ria": "https://ria.ru",
-            "lenta": "https://lenta.ru"
+            "dzen": {
+                "url": "https://dzen.ru",
+                "mobile_url": "https://dzen.ru",
+                "weight": 0.8,
+                "critical": False,
+                "check_content": ["Дзен"]
+            },
+            "rbc": {
+                "url": "https://www.rbc.ru",
+                "mobile_url": "https://www.rbc.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["РБК"]
+            },
+            "tass": {
+                "url": "https://tass.ru",
+                "mobile_url": "https://tass.ru",
+                "weight": 0.6,
+                "critical": False,
+                "check_content": ["ТАСС"]
+            },
+            "lenta": {
+                "url": "https://lenta.ru",
+                "mobile_url": "https://m.lenta.ru",
+                "weight": 0.5,
+                "critical": False,
+                "check_content": ["Лента"]
+            }
         }
     },
+    
     "services": {
         "label": "🛍️ Сервисы",
         "weight": 1.5,
+        "priority": 7,
         "sites": {
-            "yandex": "https://ya.ru",
-            "google": "https://www.google.ru",
-            "mail_ru": "https://mail.ru",
-            "ozon": "https://www.ozon.ru",
-            "wildberries": "https://www.wildberries.ru",
-            "avito": "https://www.avito.ru"
+            "yandex": {
+                "url": "https://ya.ru",
+                "mobile_url": "https://ya.ru",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["Яндекс"]
+            },
+            "google": {
+                "url": "https://www.google.ru",
+                "mobile_url": "https://www.google.ru",
+                "weight": 1.0,
+                "critical": True,
+                "check_content": ["Google"]
+            },
+            "mailru": {
+                "url": "https://mail.ru",
+                "mobile_url": "https://mail.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["Mail.ru"]
+            },
+            "ozon": {
+                "url": "https://www.ozon.ru",
+                "mobile_url": "https://www.ozon.ru",
+                "weight": 0.8,
+                "critical": False,
+                "check_content": ["OZON"]
+            },
+            "wildberries": {
+                "url": "https://www.wildberries.ru",
+                "mobile_url": "https://www.wildberries.ru",
+                "weight": 0.8,
+                "critical": False,
+                "check_content": ["Wildberries"]
+            },
+            "avito": {
+                "url": "https://www.avito.ru",
+                "mobile_url": "https://m.avito.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["Авито"]
+            }
         }
     },
-    "mobile_operators": {
+    
+    "operators": {
         "label": "📞 Операторы",
-        "weight": 1.5,
+        "weight": 1.0,
+        "priority": 8,
         "sites": {
-            "mts": "https://www.mts.ru",
-            "beeline": "https://www.beeline.ru",
-            "megafon": "https://www.megafon.ru",
-            "tele2": "https://msk.tele2.ru"
+            "mts": {
+                "url": "https://www.mts.ru",
+                "mobile_url": "https://www.mts.ru",
+                "weight": 0.8,
+                "critical": False,
+                "check_content": ["МТС"]
+            },
+            "beeline": {
+                "url": "https://www.beeline.ru",
+                "mobile_url": "https://www.beeline.ru",
+                "weight": 0.8,
+                "critical": False,
+                "check_content": ["Билайн"]
+            },
+            "megafon": {
+                "url": "https://www.megafon.ru",
+                "mobile_url": "https://www.megafon.ru",
+                "weight": 0.7,
+                "critical": False,
+                "check_content": ["МегаФон"]
+            },
+            "tele2": {
+                "url": "https://msk.tele2.ru",
+                "mobile_url": "https://msk.tele2.ru",
+                "weight": 0.6,
+                "critical": False,
+                "check_content": ["Tele2"]
+            }
         }
     }
 }
 
 # === ПРОФИЛИ КАЧЕСТВА ДЛЯ МОБИЛЬНЫХ ===
-MOBILE_PROFILES = {
-    "premium_mobile": {
-        "label": "💎 ПРЕМИУМ МОБИЛЬНЫЙ",
+QUALITY_PROFILES = {
+    "premium": {
         "emoji": "💎",
-        "description": "Идеально для мобильных - банки, низкая задержка, стабильность",
+        "label": "ПРЕМИУМ",
+        "description": "Идеально для мобильных",
         "requirements": {
             "latency_max": 200,
             "stability_min": 90,
-            "banks_min": 5,
-            "categories_min": 6,
-            "required_categories": ["banks_priority", "gov_priority"]
+            "categories_min": 7,
+            "weighted_score_min": 80,
+            "banks_required": True,
+            "gov_required": True
         },
         "priority": 1
     },
-    "excellent_mobile": {
-        "label": "⭐ ОТЛИЧНЫЙ МОБИЛЬНЫЙ",
+    "excellent": {
         "emoji": "⭐",
-        "description": "Отлично для мобильных - стабильный, быстрый",
+        "label": "ОТЛИЧНЫЙ",
+        "description": "Отлично для мобильных",
         "requirements": {
             "latency_max": 300,
             "stability_min": 85,
-            "banks_min": 4,
-            "categories_min": 5,
-            "required_categories": ["banks_priority"]
+            "categories_min": 6,
+            "weighted_score_min": 65,
+            "banks_required": True,
+            "gov_required": False
         },
         "priority": 2
     },
-    "good_mobile": {
-        "label": "✅ ХОРОШИЙ МОБИЛЬНЫЙ",
+    "good": {
         "emoji": "✅",
-        "description": "Хорошо для мобильных - работают основные сервисы",
+        "label": "ХОРОШИЙ",
+        "description": "Хорошо для мобильных",
         "requirements": {
             "latency_max": 500,
             "stability_min": 75,
-            "banks_min": 3,
-            "categories_min": 4
+            "categories_min": 5,
+            "weighted_score_min": 50,
+            "banks_required": False,
+            "gov_required": False
         },
         "priority": 3
     },
-    "acceptable_mobile": {
-        "label": "👌 ПРИЕМЛЕМЫЙ МОБИЛЬНЫЙ",
+    "acceptable": {
         "emoji": "👌",
-        "description": "Приемлемо для мобильных - может тормозить",
+        "label": "ПРИЕМЛЕМЫЙ",
+        "description": "Нормально для мобильных",
         "requirements": {
             "latency_max": 800,
-            "stability_min": 65,
-            "categories_min": 3
+            "stability_min": 60,
+            "categories_min": 4,
+            "weighted_score_min": 35,
+            "banks_required": False,
+            "gov_required": False
         },
         "priority": 4
     },
-    "basic_mobile": {
-        "label": "⚡ БАЗОВЫЙ МОБИЛЬНЫЙ",
-        "emoji": "⚡",
-        "description": "Минимальная функциональность",
+    "basic": {
+        "emoji": "📶",
+        "label": "БАЗОВЫЙ",
+        "description": "Минимум для мобильных",
         "requirements": {
-            "latency_max": 1500,
+            "latency_max": 1000,
             "stability_min": 50,
-            "categories_min": 2
+            "categories_min": 2,
+            "weighted_score_min": 20,
+            "banks_required": False,
+            "gov_required": False
         },
         "priority": 5
     },
-    "unstable": {
-        "label": "⚠️ НЕСТАБИЛЬНЫЙ",
+    "limited": {
         "emoji": "⚠️",
-        "description": "Работает нестабильно - не рекомендуется",
+        "label": "ОГРАНИЧЕННЫЙ",
+        "description": "Проблемы с мобильными",
         "requirements": {
-            "categories_min": 1
+            "latency_max": 9999,
+            "stability_min": 0,
+            "categories_min": 1,
+            "weighted_score_min": 0,
+            "banks_required": False,
+            "gov_required": False
         },
         "priority": 6
     }
 }
 
-# Кеш для дедупликации серверов
-server_cache = {}
+# === ИНИЦИАЛИЗАЦИЯ ===
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR = os.path.join(RESULTS_FOLDER, f"mobile_quality_{timestamp}")
+OUTPUT_DIR = os.path.join(RESULTS_FOLDER, f"mobile_validated_{timestamp}")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Для дедупликации
+seen_servers = set()
+
 stats = {
-    "source_keys": 0,
-    "checked": 0,
-    "failed": 0,
+    "total_keys": 0,
+    "unique_servers": 0,
     "duplicates_skipped": 0,
+    "checked": 0,
+    "passed": 0,
+    "failed": 0,
     "by_profile": defaultdict(int),
-    "by_category": defaultdict(int),
-    "total_time": 0,
-    "avg_latency": []
+    "by_category": defaultdict(lambda: {"accessible": 0, "total": 0}),
+    "latency_samples": [],
+    "start_time": None
 }
 
 def log(msg):
-    """Потокобезопасный лог"""
     print(msg, flush=True)
 
-# ========== МОБИЛЬНЫЕ USER AGENTS ==========
-MOBILE_USER_AGENTS = [
-    # iOS (самые популярные в РФ)
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
-    
-    # Android (популярные в РФ бренды)
-    'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',  # Samsung
-    'Mozilla/5.0 (Linux; Android 13; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',  # Google
-    'Mozilla/5.0 (Linux; Android 13; Redmi Note 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',  # Xiaomi
-    'Mozilla/5.0 (Linux; Android 12; M2101K9G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',  # Xiaomi
-    
-    # Специфичные для мобильных VPN клиентов
-    'Dalvik/2.1.0 (Linux; U; Android 13; SM-G998B Build/TP1A.220624.014)',  # V2RayNG user agent
-    'okhttp/4.11.0'  # Hiddify/V2Box user agent
-]
+# ========== ПАРСЕРЫ КЛЮЧЕЙ ==========
 
-# ========== ФУНКЦИИ ПАРСИНГА ==========
+def get_server_hash(key):
+    """Получение уникального хеша сервера для дедупликации"""
+    try:
+        # Извлекаем host:port из ключа
+        if "vless://" in key or "trojan://" in key:
+            if "@" in key:
+                server_part = key.split("@")[1].split("?")[0].split("#")[0]
+                return hashlib.md5(server_part.encode()).hexdigest()[:16]
+        elif "vmess://" in key:
+            encoded = key.replace("vmess://", "").split("#")[0]
+            padding = len(encoded) % 4
+            if padding:
+                encoded += '=' * (4 - padding)
+            try:
+                data = json.loads(base64.b64decode(encoded))
+                server = f"{data.get('add')}:{data.get('port')}"
+                return hashlib.md5(server.encode()).hexdigest()[:16]
+            except:
+                pass
+        elif "ss://" in key:
+            if "@" in key:
+                server_part = key.split("@")[1].split("#")[0]
+                return hashlib.md5(server_part.encode()).hexdigest()[:16]
+    except:
+        pass
+    return hashlib.md5(key.encode()).hexdigest()[:16]
 
 def parse_vless(key):
     try:
@@ -254,11 +547,11 @@ def parse_vless(key):
         
         uuid_part, rest = key.split("@", 1)
         
+        params_part = ""
         if "?" in rest:
             server_part, params_part = rest.split("?", 1)
         else:
             server_part = rest
-            params_part = ""
         
         if "#" in params_part:
             params_part = params_part.split("#")[0]
@@ -278,9 +571,6 @@ def parse_vless(key):
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
         
-        # КРИТИЧНО: Валидация для мобильных клиентов
-        flow = params.get("flow", "")
-        
         config = {
             "protocol": "vless",
             "settings": {
@@ -290,7 +580,7 @@ def parse_vless(key):
                     "users": [{
                         "id": uuid_part,
                         "encryption": params.get("encryption", "none"),
-                        "flow": flow if flow else ""
+                        "flow": params.get("flow", "")
                     }]
                 }]
             },
@@ -300,45 +590,49 @@ def parse_vless(key):
             }
         }
         
-        # TLS настройки (важно для мобильных)
-        if params.get("security") in ["tls", "reality"]:
-            tls_settings = {
+        # TLS
+        if params.get("security") == "tls":
+            config["streamSettings"]["tlsSettings"] = {
                 "serverName": params.get("sni", host),
                 "allowInsecure": params.get("allowInsecure", "0") == "1",
-                "fingerprint": params.get("fp", "chrome")  # Важно для обхода блокировок
+                "fingerprint": params.get("fp", "chrome")
             }
-            
-            if params.get("security") == "reality":
-                tls_settings["publicKey"] = params.get("pbk", "")
-                tls_settings["shortId"] = params.get("sid", "")
-                tls_settings["spiderX"] = params.get("spx", "")
-                config["streamSettings"]["realitySettings"] = tls_settings
-            else:
-                config["streamSettings"]["tlsSettings"] = tls_settings
+            if params.get("alpn"):
+                config["streamSettings"]["tlsSettings"]["alpn"] = params.get("alpn").split(",")
         
-        # WebSocket настройки
+        # Reality
+        if params.get("security") == "reality":
+            config["streamSettings"]["realitySettings"] = {
+                "serverName": params.get("sni", ""),
+                "fingerprint": params.get("fp", "chrome"),
+                "publicKey": params.get("pbk", ""),
+                "shortId": params.get("sid", ""),
+                "spiderX": params.get("spx", "")
+            }
+        
+        # WebSocket
         if params.get("type") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
                 "headers": {"Host": params.get("host", host)}
             }
         
-        # gRPC настройки
-        elif params.get("type") == "grpc":
+        # gRPC
+        if params.get("type") == "grpc":
             config["streamSettings"]["grpcSettings"] = {
                 "serviceName": params.get("serviceName", ""),
-                "multiMode": params.get("mode", "gun") == "multi"
+                "multiMode": params.get("mode", "") == "multi"
             }
         
-        # HTTP/2 настройки
-        elif params.get("type") == "h2":
+        # HTTP/2
+        if params.get("type") == "h2":
             config["streamSettings"]["httpSettings"] = {
-                "host": [params.get("host", host)],
-                "path": params.get("path", "/")
+                "path": params.get("path", "/"),
+                "host": [params.get("host", host)]
             }
         
         return config
-    except Exception as e:
+    except:
         return None
 
 def parse_vmess(key):
@@ -389,6 +683,11 @@ def parse_vmess(key):
                 "headers": {"Host": data.get("host", data.get("add"))}
             }
         
+        if data.get("net") == "grpc":
+            config["streamSettings"]["grpcSettings"] = {
+                "serviceName": data.get("path", "")
+            }
+        
         return config
     except:
         return None
@@ -404,11 +703,11 @@ def parse_trojan(key):
         
         password, rest = key.split("@", 1)
         
+        params_part = ""
         if "?" in rest:
             server_part, params_part = rest.split("?", 1)
         else:
             server_part = rest
-            params_part = ""
         
         if "#" in params_part:
             params_part = params_part.split("#")[0]
@@ -429,7 +728,7 @@ def parse_trojan(key):
                     params[k] = unquote(v)
         
         security = params.get("security", "tls")
-        if security == "none" or security == "":
+        if not security:
             security = "tls"
         
         config = {
@@ -493,7 +792,7 @@ def parse_shadowsocks(key):
         else:
             return None
         
-        config = {
+        return {
             "protocol": "shadowsocks",
             "settings": {
                 "servers": [{
@@ -507,13 +806,11 @@ def parse_shadowsocks(key):
                 "network": "tcp"
             }
         }
-        
-        return config
     except:
         return None
 
-def parse_proxy_key(key):
-    """Парсинг прокси ключа с определением протокола"""
+def parse_key(key):
+    key = key.strip()
     key_lower = key.lower()
     
     if key_lower.startswith("vless://"):
@@ -533,38 +830,40 @@ def parse_proxy_key(key):
 
 # ========== XRAY УПРАВЛЕНИЕ ==========
 
-def create_xray_config(proxy_config, socks_port=10808):
-    """Создание конфига Xray с оптимизациями для мобильных"""
+def create_xray_config(proxy_config, socks_port):
     return {
-        "log": {"loglevel": "warning"},
+        "log": {"loglevel": "none"},
         "inbounds": [{
             "port": socks_port,
             "listen": "127.0.0.1",
             "protocol": "socks",
-            "settings": {
-                "udp": True,
-                "auth": "noauth"
-            },
-            "sniffing": {
-                "enabled": True,
-                "destOverride": ["http", "tls"]
-            }
+            "settings": {"udp": True, "auth": "noauth"},
+            "sniffing": {"enabled": True, "destOverride": ["http", "tls"]}
         }],
-        "outbounds": [
-            proxy_config,
-            {
-                "protocol": "freedom",
-                "tag": "direct"
-            }
-        ],
-        "routing": {
-            "domainStrategy": "IPIfNonMatch",
-            "rules": []
-        }
+        "outbounds": [proxy_config]
     }
 
-def kill_process(process):
-    """Безопасное завершение процесса"""
+def start_xray(xray_exe, config, config_path):
+    try:
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+        
+        process = subprocess.Popen(
+            [xray_exe, "run", "-c", config_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        
+        time.sleep(XRAY_STARTUP_DELAY)
+        
+        if process.poll() is not None:
+            return None
+        
+        return process
+    except:
+        return None
+
+def stop_xray(process):
     if not process:
         return
     try:
@@ -573,399 +872,424 @@ def kill_process(process):
     except:
         try:
             process.kill()
-            process.wait(timeout=1)
         except:
             pass
 
-def safe_remove_file(filepath):
-    """Безопасное удаление файла"""
+def cleanup_file(filepath):
     try:
         if os.path.exists(filepath):
             os.remove(filepath)
     except:
         pass
 
-# ========== ПРОВЕРКА КАЧЕСТВА СОЕДИНЕНИЯ ==========
+# ========== ИЗМЕРЕНИЕ LATENCY ==========
 
-def measure_latency(proxies, test_url="https://www.google.com", samples=LATENCY_SAMPLES):
-    """Измерение задержки соединения (критично для мобильных!)"""
+def measure_latency(proxies, samples=5):
+    """Измерение задержки с множественными замерами"""
     latencies = []
+    test_url = "https://ya.ru"  # Быстрый российский сайт
+    
+    headers = {
+        "User-Agent": random.choice(MOBILE_USER_AGENTS["iphone_safari"]),
+        "Accept-Language": "ru-RU,ru;q=0.9"
+    }
     
     for _ in range(samples):
         try:
             start = time.time()
-            requests.head(
+            response = requests.get(
                 test_url,
                 proxies=proxies,
-                timeout=3,
-                allow_redirects=False,
+                headers=headers,
+                timeout=5,
+                allow_redirects=True,
                 verify=False
             )
-            latency = (time.time() - start) * 1000  # в миллисекундах
-            latencies.append(latency)
+            if response.status_code < 400:
+                latency = (time.time() - start) * 1000  # мс
+                latencies.append(latency)
         except:
-            latencies.append(9999)  # Очень высокая задержка при ошибке
-        
-        time.sleep(0.1)  # Небольшая пауза между замерами
+            pass
+        time.sleep(0.1)
     
-    # Убираем экстремальные значения
-    if len(latencies) > 2:
-        latencies.sort()
-        latencies = latencies[1:-1]
+    if not latencies:
+        return None
     
     return {
-        "avg": round(mean(latencies), 1) if latencies else 9999,
-        "min": round(min(latencies), 1) if latencies else 9999,
-        "max": round(max(latencies), 1) if latencies else 9999,
-        "jitter": round(stdev(latencies), 1) if len(latencies) > 1 else 0
+        "avg": round(mean(latencies), 1),
+        "min": round(min(latencies), 1),
+        "max": round(max(latencies), 1),
+        "jitter": round(stdev(latencies), 1) if len(latencies) > 1 else 0,
+        "samples": len(latencies)
     }
 
-def check_stability(proxies, test_urls, checks=STABILITY_CHECKS):
-    """Проверка стабильности соединения (множественные запросы)"""
-    success_count = 0
-    total_checks = len(test_urls) * checks
-    
-    for url in test_urls:
-        for _ in range(checks):
-            try:
-                r = requests.get(
-                    url,
-                    proxies=proxies,
-                    timeout=SITE_CHECK_TIMEOUT,
-                    allow_redirects=True,
-                    verify=False,
-                    headers={'User-Agent': random.choice(MOBILE_USER_AGENTS)}
-                )
-                if r.status_code < 400:
-                    success_count += 1
-            except:
-                pass
-            time.sleep(0.05)  # Минимальная пауза
-    
-    stability = (success_count / total_checks * 100) if total_checks > 0 else 0
-    return round(stability, 1)
+# ========== ПРОВЕРКА САЙТОВ ==========
 
-def check_site_mobile(site_name, site_url, proxies):
-    """Проверка сайта с имитацией мобильного клиента"""
-    headers = {
-        'User-Agent': random.choice(MOBILE_USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'DNT': '1'
+def get_mobile_headers(for_bank=False):
+    """Получение мобильных заголовков"""
+    if for_bank:
+        # Для банков используем Safari (больше доверия)
+        ua = random.choice(MOBILE_USER_AGENTS["iphone_safari"])
+    else:
+        # Для остальных - случайный
+        all_uas = MOBILE_USER_AGENTS["iphone_safari"] + MOBILE_USER_AGENTS["android_chrome"]
+        ua = random.choice(all_uas)
+    
+    return {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.5,en;q=0.3",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0"
     }
-    
-    try:
-        start = time.time()
-        r = requests.get(
-            site_url,
-            proxies=proxies,
-            timeout=SITE_CHECK_TIMEOUT,
-            allow_redirects=True,
-            headers=headers,
-            verify=False
-        )
-        response_time = (time.time() - start) * 1000
-        
-        # Успех: статус < 400 или редирект на рабочую страницу
-        if r.status_code < 400 or (r.status_code in [301, 302, 307, 308] and len(r.history) > 0):
-            return {
-                "site": site_name,
-                "success": True,
-                "status": r.status_code,
-                "response_time": round(response_time, 0)
-            }
-    except requests.exceptions.Timeout:
-        return {"site": site_name, "success": False, "status": "timeout"}
-    except requests.exceptions.ConnectionError:
-        return {"site": site_name, "success": False, "status": "connection_error"}
-    except:
-        pass
-    
-    return {"site": site_name, "success": False, "status": "failed"}
 
-# ========== КОМПЛЕКСНАЯ ПРОВЕРКА КЛЮЧА ==========
-
-def get_server_hash(config):
-    """Получение хеша сервера для дедупликации"""
-    try:
-        if config["protocol"] in ["vless", "vmess"]:
-            server_data = config["settings"]["vnext"][0]
-        else:  # trojan, shadowsocks
-            server_data = config["settings"]["servers"][0]
-        
-        hash_str = f"{server_data['address']}:{server_data['port']}:{config['protocol']}"
-        return hashlib.md5(hash_str.encode()).hexdigest()
-    except:
-        return None
-
-def check_key_mobile_quality(key, xray_exe):
-    """
-    ГЛАВНАЯ ФУНКЦИЯ: Комплексная проверка ключа для мобильных клиентов
+def check_site_with_stability(site_name, site_info, proxies, category_name):
+    """Проверка сайта с замером стабильности"""
+    url = site_info.get("mobile_url", site_info["url"])
+    is_bank = category_name == "banks"
     
-    Этапы проверки:
-    1. Парсинг и валидация конфига
-    2. Дедупликация (пропуск уже проверенных серверов)
-    3. Запуск Xray
-    4. Измерение задержки (latency)
-    5. Проверка стабильности
-    6. Массовая проверка сайтов
-    7. Расчет рейтинга и определение профиля
-    """
-    try:
-        # 1. Парсинг
-        proxy_config, protocol = parse_proxy_key(key)
-        if not proxy_config:
-            return None
-        
-        # 2. Дедупликация
-        server_hash = get_server_hash(proxy_config)
-        if server_hash and server_hash in server_cache:
-            stats["duplicates_skipped"] += 1
-            return None
-        
-        # 3. Запуск Xray
-        socks_port = random.randint(30000, 50000)
-        config = create_xray_config(proxy_config, socks_port)
-        config_file = os.path.join(XRAY_FOLDER, f"check_{socks_port}.json")
-        
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-        
-        process = subprocess.Popen(
-            [xray_exe, "run", "-c", config_file],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        time.sleep(XRAY_STARTUP)
-        
-        if process.poll() is not None:
-            safe_remove_file(config_file)
-            return None
-        
-        proxies = {
-            'http': f'socks5://127.0.0.1:{socks_port}',
-            'https': f'socks5://127.0.0.1:{socks_port}'
-        }
-        
-        # 4. Измерение задержки (КРИТИЧНО!)
-        latency_data = measure_latency(proxies)
-        
-        # Если задержка слишком высокая - сразу отбрасываем
-        if latency_data["avg"] > 2000:
-            kill_process(process)
-            safe_remove_file(config_file)
-            return None
-        
-        # 5. Проверка стабильности на приоритетных сайтах
-        stability_test_urls = [
-            "https://www.google.com",
-            "https://ya.ru",
-            "https://vk.com"
-        ]
-        stability = check_stability(proxies, stability_test_urls)
-        
-        # Если нестабильный - отбрасываем
-        if stability < 40:
-            kill_process(process)
-            safe_remove_file(config_file)
-            return None
-        
-        # 6. Проверка всех сайтов параллельно
-        results_by_category = {}
-        all_site_results = []
-        
-        for category_name, category_data in SITE_CATEGORIES.items():
-            accessible_sites = []
-            site_details = []
+    successes = 0
+    total_time = 0
+    
+    for attempt in range(STABILITY_CHECKS):
+        try:
+            headers = get_mobile_headers(for_bank=is_bank)
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS_PER_KEY) as executor:
-                futures = {
-                    executor.submit(check_site_mobile, site_name, site_url, proxies): site_name
-                    for site_name, site_url in category_data['sites'].items()
-                }
+            start = time.time()
+            response = requests.get(
+                url,
+                proxies=proxies,
+                headers=headers,
+                timeout=SITE_TIMEOUT,
+                allow_redirects=True,
+                verify=False
+            )
+            elapsed = time.time() - start
+            
+            if response.status_code < 400:
+                # Проверка контента (опционально)
+                content_ok = True
+                if site_info.get("check_content"):
+                    content = response.text.lower()
+                    content_ok = any(
+                        text.lower() in content 
+                        for text in site_info["check_content"]
+                    )
                 
-                for future in concurrent.futures.as_completed(futures, timeout=SITE_CHECK_TIMEOUT*2):
-                    try:
-                        result = future.result()
-                        site_details.append(result)
-                        if result["success"]:
-                            accessible_sites.append(result["site"])
-                    except:
-                        pass
-            
-            results_by_category[category_name] = {
-                'accessible': accessible_sites,
-                'total': len(category_data['sites']),
-                'count': len(accessible_sites),
-                'percentage': round(len(accessible_sites) / len(category_data['sites']) * 100, 1),
-                'weight': category_data['weight'],
-                'details': site_details
-            }
-            
-            all_site_results.extend(site_details)
+                if content_ok:
+                    successes += 1
+                    total_time += elapsed
+        except:
+            pass
         
-        kill_process(process)
-        safe_remove_file(config_file)
-        
-        # 7. Определение профиля и качества
-        profile = determine_mobile_profile(results_by_category, latency_data, stability)
-        
-        if not profile:
-            return None
-        
-        # Сохраняем в кеш
-        if server_hash:
-            server_cache[server_hash] = True
-        
-        # Расчет взвешенного рейтинга
-        weighted_score = calculate_weighted_score(results_by_category)
-        
-        result = {
-            'key': key,
-            'protocol': protocol,
-            'profile': profile,
-            'latency': latency_data,
-            'stability': stability,
-            'weighted_score': weighted_score,
-            'categories': results_by_category,
-            'total_sites_accessible': sum(cat['count'] for cat in results_by_category.values()),
-            'total_sites_checked': sum(cat['total'] for cat in results_by_category.values()),
-            'all_site_results': all_site_results
+        if attempt < STABILITY_CHECKS - 1:
+            time.sleep(0.2)
+    
+    stability = (successes / STABILITY_CHECKS) * 100
+    avg_time = (total_time / successes * 1000) if successes > 0 else 0
+    
+    return {
+        "name": site_name,
+        "accessible": successes > 0,
+        "stability": round(stability, 1),
+        "avg_response_ms": round(avg_time, 1),
+        "attempts": STABILITY_CHECKS,
+        "successes": successes,
+        "weight": site_info.get("weight", 1.0),
+        "critical": site_info.get("critical", False)
+    }
+
+def check_all_sites_parallel(proxies):
+    """Параллельная проверка всех сайтов"""
+    results = {}
+    all_tasks = []
+    
+    # Собираем все задачи
+    for cat_name, cat_data in SITE_CATEGORIES.items():
+        results[cat_name] = {
+            "label": cat_data["label"],
+            "weight": cat_data["weight"],
+            "sites": {},
+            "accessible_count": 0,
+            "total_count": len(cat_data["sites"]),
+            "weighted_score": 0,
+            "avg_stability": 0
         }
         
-        stats["avg_latency"].append(latency_data["avg"])
+        for site_name, site_info in cat_data["sites"].items():
+            all_tasks.append((cat_name, site_name, site_info))
+    
+    # Параллельная проверка
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_SITES) as executor:
+        futures = {}
+        for cat_name, site_name, site_info in all_tasks:
+            future = executor.submit(
+                check_site_with_stability,
+                site_name, site_info, proxies, cat_name
+            )
+            futures[future] = (cat_name, site_name)
         
-        return result
-        
-    except Exception as e:
-        return None
+        for future in concurrent.futures.as_completed(futures, timeout=SITE_TIMEOUT * STABILITY_CHECKS * 2):
+            cat_name, site_name = futures[future]
+            try:
+                site_result = future.result()
+                results[cat_name]["sites"][site_name] = site_result
+                
+                if site_result["accessible"]:
+                    results[cat_name]["accessible_count"] += 1
+                    results[cat_name]["weighted_score"] += site_result["weight"]
+            except:
+                results[cat_name]["sites"][site_name] = {
+                    "name": site_name,
+                    "accessible": False,
+                    "stability": 0,
+                    "error": "timeout"
+                }
+    
+    # Подсчет средней стабильности по категории
+    for cat_name, cat_data in results.items():
+        stabilities = [
+            s["stability"] for s in cat_data["sites"].values()
+            if s.get("accessible")
+        ]
+        if stabilities:
+            cat_data["avg_stability"] = round(mean(stabilities), 1)
+    
+    return results
 
-def calculate_weighted_score(results_by_category):
-    """Расчет взвешенного рейтинга (приоритет банкам и госуслугам)"""
+# ========== ПРОФИЛИРОВАНИЕ ==========
+
+def calculate_weighted_score(site_results):
+    """Расчет взвешенного рейтинга"""
     total_score = 0
-    total_weight = 0
+    max_score = 0
     
-    for cat_name, cat_data in results_by_category.items():
-        weight = cat_data['weight']
-        percentage = cat_data['percentage']
-        total_score += percentage * weight
-        total_weight += weight * 100  # 100% = максимум
+    for cat_name, cat_data in site_results.items():
+        cat_weight = SITE_CATEGORIES[cat_name]["weight"]
+        
+        # Максимальный балл категории
+        max_cat_score = sum(
+            s.get("weight", 1.0) 
+            for s in SITE_CATEGORIES[cat_name]["sites"].values()
+        ) * cat_weight
+        max_score += max_cat_score
+        
+        # Набранный балл
+        earned = cat_data["weighted_score"] * cat_weight
+        total_score += earned
     
-    return round(total_score / total_weight * 100, 1) if total_weight > 0 else 0
+    return round((total_score / max_score * 100), 1) if max_score > 0 else 0
 
-def determine_mobile_profile(results_by_category, latency_data, stability):
-    """Определение профиля ключа для мобильных клиентов"""
+def determine_quality_profile(site_results, latency_data):
+    """Определение профиля качества"""
     
+    # Подсчет метрик
     accessible_categories = [
-        cat_name for cat_name, cat_data in results_by_category.items()
-        if cat_data['count'] > 0
+        cat for cat, data in site_results.items()
+        if data["accessible_count"] > 0
     ]
-    
     categories_count = len(accessible_categories)
-    avg_latency = latency_data["avg"]
     
-    # Количество доступных банков
-    banks_count = results_by_category.get('banks_priority', {}).get('count', 0)
+    # Средняя стабильность по всем сайтам
+    all_stabilities = []
+    for cat_data in site_results.values():
+        for site_data in cat_data["sites"].values():
+            if site_data.get("accessible"):
+                all_stabilities.append(site_data["stability"])
     
-    # Проверяем профили в порядке приоритета
-    for profile_name, profile_data in sorted(MOBILE_PROFILES.items(), key=lambda x: x[1]['priority']):
-        reqs = profile_data['requirements']
+    avg_stability = mean(all_stabilities) if all_stabilities else 0
+    
+    # Взвешенный рейтинг
+    weighted_score = calculate_weighted_score(site_results)
+    
+    # Latency
+    avg_latency = latency_data["avg"] if latency_data else 9999
+    
+    # Проверка банков и госуслуг
+    has_banks = site_results.get("banks", {}).get("accessible_count", 0) >= 3
+    has_gov = site_results.get("gov", {}).get("accessible_count", 0) >= 2
+    
+    # Проход по профилям
+    for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+        profile = QUALITY_PROFILES[profile_name]
+        req = profile["requirements"]
         
-        # Проверка всех требований
-        if avg_latency > reqs.get('latency_max', 9999):
+        # Проверка требований
+        if avg_latency > req["latency_max"]:
             continue
-        
-        if stability < reqs.get('stability_min', 0):
+        if avg_stability < req["stability_min"]:
             continue
-        
-        if categories_count < reqs.get('categories_min', 0):
+        if categories_count < req["categories_min"]:
             continue
-        
-        if banks_count < reqs.get('banks_min', 0):
+        if weighted_score < req["weighted_score_min"]:
             continue
-        
-        # Проверка обязательных категорий
-        required_cats = reqs.get('required_categories', [])
-        if required_cats and not all(cat in accessible_categories for cat in required_cats):
+        if req["banks_required"] and not has_banks:
+            continue
+        if req["gov_required"] and not has_gov:
             continue
         
         return profile_name
     
-    return None
+    return "limited"
 
-# ========== ФОРМАТИРОВАНИЕ ВЫВОДА ==========
+# ========== ОСНОВНАЯ ПРОВЕРКА КЛЮЧА ==========
 
-def format_key_result(key, result):
-    """Форматирование ключа с детальной информацией для мобильных"""
-    profile_data = MOBILE_PROFILES[result['profile']]
+def check_single_key(key, xray_exe, key_index, total_keys):
+    """Полная проверка одного ключа"""
+    try:
+        # Дедупликация
+        server_hash = get_server_hash(key)
+        if server_hash in seen_servers:
+            return {"status": "duplicate", "key": key}
+        seen_servers.add(server_hash)
+        
+        # Парсинг
+        proxy_config, protocol = parse_key(key)
+        if not proxy_config:
+            return {"status": "parse_error", "key": key}
+        
+        # Запуск Xray
+        socks_port = random.randint(20000, 50000)
+        config = create_xray_config(proxy_config, socks_port)
+        config_path = os.path.join(XRAY_FOLDER, f"mobile_{socks_port}.json")
+        
+        process = start_xray(xray_exe, config, config_path)
+        if not process:
+            cleanup_file(config_path)
+            return {"status": "xray_error", "key": key}
+        
+        try:
+            proxies = {
+                'http': f'socks5h://127.0.0.1:{socks_port}',
+                'https': f'socks5h://127.0.0.1:{socks_port}'
+            }
+            
+            # 1. Измерение latency
+            latency_data = measure_latency(proxies, LATENCY_SAMPLES)
+            if not latency_data:
+                return {"status": "latency_fail", "key": key}
+            
+            # 2. Проверка всех сайтов
+            site_results = check_all_sites_parallel(proxies)
+            
+            # 3. Определение профиля
+            profile = determine_quality_profile(site_results, latency_data)
+            
+            # 4. Подсчет статистики
+            total_accessible = sum(
+                cat["accessible_count"] for cat in site_results.values()
+            )
+            total_sites = sum(
+                cat["total_count"] for cat in site_results.values()
+            )
+            weighted_score = calculate_weighted_score(site_results)
+            
+            # Средняя стабильность
+            all_stabilities = []
+            for cat_data in site_results.values():
+                for site_data in cat_data["sites"].values():
+                    if site_data.get("accessible"):
+                        all_stabilities.append(site_data["stability"])
+            avg_stability = mean(all_stabilities) if all_stabilities else 0
+            
+            return {
+                "status": "success",
+                "key": key,
+                "protocol": protocol,
+                "profile": profile,
+                "latency": latency_data,
+                "stability": round(avg_stability, 1),
+                "weighted_score": weighted_score,
+                "categories": site_results,
+                "accessible_categories": [
+                    cat for cat, data in site_results.items()
+                    if data["accessible_count"] > 0
+                ],
+                "total_accessible": total_accessible,
+                "total_sites": total_sites
+            }
+            
+        finally:
+            stop_xray(process)
+            cleanup_file(config_path)
+            
+    except Exception as e:
+        return {"status": "error", "key": key, "error": str(e)}
+
+# ========== БАТЧЕВАЯ ОБРАБОТКА ==========
+
+def process_batch(batch, xray_exe, batch_num, total_batches, start_idx):
+    """Обработка батча ключей параллельно"""
+    results = []
     
-    # Краткие теги категорий
-    category_tags = []
-    for cat_name, cat_data in result['categories'].items():
-        if cat_data['count'] > 0:
-            cat_emoji = SITE_CATEGORIES[cat_name]['label'].split()[0]
-            category_tags.append(f"{cat_emoji}{cat_data['count']}/{cat_data['total']}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_KEYS) as executor:
+        futures = {}
+        for i, key in enumerate(batch):
+            key_idx = start_idx + i + 1
+            future = executor.submit(
+                check_single_key, key, xray_exe, key_idx, stats["total_keys"]
+            )
+            futures[future] = (key, key_idx)
+        
+        for future in concurrent.futures.as_completed(futures):
+            key, key_idx = futures[future]
+            try:
+                result = future.result()
+                results.append(result)
+                
+                # Логирование
+                if result["status"] == "success":
+                    profile_info = QUALITY_PROFILES[result["profile"]]
+                    log(f"  [{key_idx}] {profile_info['emoji']} {result['profile'].upper()}: "
+                        f"Lat:{result['latency']['avg']:.0f}ms Stab:{result['stability']:.0f}% "
+                        f"Score:{result['weighted_score']:.0f} Sites:{result['total_accessible']}/{result['total_sites']}")
+                elif result["status"] == "duplicate":
+                    log(f"  [{key_idx}] 🔄 Дубликат - пропущен")
+                else:
+                    log(f"  [{key_idx}] ❌ {result['status']}")
+                    
+            except Exception as e:
+                log(f"  [{key_idx}] ❌ Ошибка: {e}")
+                results.append({"status": "error", "key": key})
     
-    # Качество соединения
-    latency_tag = f"⚡{result['latency']['avg']}ms"
-    stability_tag = f"📊{result['stability']}%"
-    score_tag = f"💯{result['weighted_score']}"
+    return results
+
+# ========== ФОРМАТИРОВАНИЕ ==========
+
+def format_result_line(result):
+    """Форматирование строки результата"""
+    key = result["key"]
+    profile = result["profile"]
+    profile_info = QUALITY_PROFILES[profile]
     
-    comment = f"#{profile_data['emoji']} {latency_tag} {stability_tag} {score_tag} [{', '.join(category_tags)}]"
+    # Категории
+    cats = []
+    for cat_name in result["accessible_categories"]:
+        cat_label = SITE_CATEGORIES[cat_name]["label"].split()[0]
+        count = result["categories"][cat_name]["accessible_count"]
+        total = result["categories"][cat_name]["total_count"]
+        cats.append(f"{cat_label}{count}/{total}")
+    
+    cats_str = " ".join(cats[:6])
+    
+    # Метрики
+    lat = result["latency"]["avg"]
+    stab = result["stability"]
+    score = result["weighted_score"]
+    
+    comment = (f"#{profile_info['emoji']} Lat:{lat:.0f}ms Stab:{stab:.0f}% "
+               f"Score:{score:.0f} [{cats_str}]")
     
     return f"{key} {comment}"
 
-# ========== БАТЧ-ОБРАБОТКА ==========
-
-def process_keys_batch(keys_batch, xray_exe, batch_num, total_batches):
-    """Обработка батча ключей параллельно"""
-    log(f"\n{'='*100}")
-    log(f"📦 БАТЧ {batch_num}/{total_batches} | Ключей в батче: {len(keys_batch)}")
-    log(f"{'='*100}\n")
-    
-    batch_results = []
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS_KEYS) as executor:
-        future_to_key = {
-            executor.submit(check_key_mobile_quality, key, xray_exe): (idx, key)
-            for idx, key in enumerate(keys_batch, 1)
-        }
-        
-        for future in concurrent.futures.as_completed(future_to_key):
-            idx, key = future_to_key[future]
-            stats["checked"] += 1
-            
-            try:
-                result = future.result()
-                
-                if result:
-                    batch_results.append((key, result))
-                    profile_data = MOBILE_PROFILES[result['profile']]
-                    
-                    log(f"[{idx}/{len(keys_batch)}] {profile_data['emoji']} "
-                        f"Latency:{result['latency']['avg']}ms | "
-                        f"Stability:{result['stability']}% | "
-                        f"Score:{result['weighted_score']} | "
-                        f"Sites:{result['total_sites_accessible']}/{result['total_sites_checked']}")
-                    
-                    stats["by_profile"][result['profile']] += 1
-                else:
-                    stats["failed"] += 1
-                    if stats["checked"] % 20 == 0:
-                        log(f"[{idx}/{len(keys_batch)}] ❌ Failed")
-                        
-            except Exception as e:
-                stats["failed"] += 1
-    
-    return batch_results
-
-# ========== ГЛАВНАЯ ФУНКЦИЯ ==========
+# ========== MAIN ==========
 
 def find_latest_verified():
-    """Поиск последнего verified файла"""
     if not os.path.exists(RESULTS_FOLDER):
         return None
     
@@ -985,29 +1309,43 @@ def find_latest_verified():
     return os.path.join(RESULTS_FOLDER, latest)
 
 def main():
-    start_time = time.time()
+    stats["start_time"] = time.time()
     
     print("\n" + "="*100)
-    print(" "*25 + "📱 MOBILE VPN KEY QUALITY CHECKER")
-    print(" "*20 + "Оптимизировано для Hiddify, V2RayNG, V2Box")
-    print("="*100 + "\n")
+    print(" "*20 + "📱 MOBILE VPN VALIDATOR v2.0")
+    print(" "*15 + "Продвинутая проверка для мобильных сетей РФ")
+    print("="*100)
     
-    # Проверка Xray
+    print("""
+🎯 Что проверяем:
+   ⚡ Latency (задержка) - {samples} замеров с jitter
+   📊 Стабильность - {stability} попыток на сайт
+   🌐 {sites} сайтов в {cats} категориях
+   📱 Mobile User-Agent (iOS 17, Android 14)
+   🇷🇺 Accept-Language: ru-RU
+   ⚖️ Взвешенный рейтинг (банки важнее новостей)
+""".format(
+        samples=LATENCY_SAMPLES,
+        stability=STABILITY_CHECKS,
+        sites=sum(len(c["sites"]) for c in SITE_CATEGORIES.values()),
+        cats=len(SITE_CATEGORIES)
+    ))
+    
+    # Xray
     xray_exe = os.path.join(XRAY_FOLDER, "xray.exe" if os.name == 'nt' else "xray")
     if not os.path.exists(xray_exe):
-        log("❌ XRAY не найден в папке xray/")
+        log(f"❌ Xray не найден: {xray_exe}")
         return 1
     
-    # Поиск исходного файла
+    # Источник
     source_file = find_latest_verified()
     if not source_file:
         log("❌ Не найден verified файл в results/")
-        log("💡 Создайте файл verified_YYYY-MM-DD.txt с ключами")
         return 1
     
-    log(f"📁 Источник: {os.path.basename(source_file)}\n")
+    log(f"📁 Источник: {os.path.basename(source_file)}")
     
-    # Загрузка ключей
+    # Загрузка
     with open(source_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     
@@ -1015,163 +1353,168 @@ def main():
     for line in lines:
         line = line.strip()
         if line and not line.startswith('#'):
-            if '#' in line:
-                key = line.split('#')[0].strip()
-            else:
-                key = line
-            keys.append(key)
+            key = line.split('#')[0].strip()
+            if key:
+                keys.append(key)
     
-    stats["source_keys"] = len(keys)
+    stats["total_keys"] = len(keys)
     
     log(f"📦 Загружено ключей: {len(keys)}")
-    log(f"🔧 Конфигурация:")
-    log(f"   - Батчей параллельно: {MAX_WORKERS_KEYS}")
-    log(f"   - Сайтов параллельно на ключ: {MAX_WORKERS_PER_KEY}")
-    log(f"   - Размер батча: {BATCH_SIZE}")
-    log(f"   - Проверок стабильности: {STABILITY_CHECKS}")
-    log(f"   - Замеров задержки: {LATENCY_SAMPLES}\n")
     
-    log("🎯 Категории проверки:")
-    total_sites = 0
-    for cat_name, cat_data in SITE_CATEGORIES.items():
-        sites_count = len(cat_data['sites'])
-        total_sites += sites_count
-        log(f"   {cat_data['label']} (вес {cat_data['weight']}): {sites_count} сайтов")
-    log(f"\n📊 Всего: {total_sites} сайтов на ключ\n")
+    # Оценка времени
+    # ~4 сек на ключ при параллельной обработке
+    est_seconds = (len(keys) / MAX_PARALLEL_KEYS) * 6
+    log(f"⏱️  Оценка времени: ~{int(est_seconds//60)} мин")
+    log(f"🔧 Параллельность: {MAX_PARALLEL_KEYS} ключей × {MAX_PARALLEL_SITES} сайтов")
     
-    # Разбивка на батчи
-    batches = [keys[i:i + BATCH_SIZE] for i in range(0, len(keys), BATCH_SIZE)]
-    total_batches = len(batches)
+    print("\n" + "="*100)
+    log("🚀 Начинаем проверку...")
+    print("="*100 + "\n")
     
-    log(f"🔄 Обработка разбита на {total_batches} батч(ей)\n")
-    
+    # Батчевая обработка
     all_results = []
+    batches = [keys[i:i+BATCH_SIZE] for i in range(0, len(keys), BATCH_SIZE)]
     
-    # Обработка батчами
     for batch_num, batch in enumerate(batches, 1):
-        batch_results = process_keys_batch(batch, xray_exe, batch_num, total_batches)
+        start_idx = (batch_num - 1) * BATCH_SIZE
+        
+        elapsed = time.time() - stats["start_time"]
+        if batch_num > 1:
+            avg_per_key = elapsed / start_idx
+            remaining = avg_per_key * (len(keys) - start_idx)
+            log(f"\n📦 Батч {batch_num}/{len(batches)} | "
+                f"Прогресс: {start_idx}/{len(keys)} | "
+                f"Осталось: ~{int(remaining//60)}мин")
+        else:
+            log(f"\n📦 Батч {batch_num}/{len(batches)}")
+        
+        batch_results = process_batch(batch, xray_exe, batch_num, len(batches), start_idx)
         all_results.extend(batch_results)
         
-        # Промежуточная статистика
-        if batch_num < total_batches:
-            passed = len(all_results)
-            elapsed = int(time.time() - start_time)
-            remaining = int((elapsed / stats["checked"]) * (stats["source_keys"] - stats["checked"]))
-            log(f"\n📊 Промежуточная статистика:")
-            log(f"   Проверено: {stats['checked']}/{stats['source_keys']}")
-            log(f"   Пройдено: {passed}")
-            log(f"   Не прошло: {stats['failed']}")
-            log(f"   Дубликатов пропущено: {stats['duplicates_skipped']}")
-            log(f"   Время: {elapsed//60}мин {elapsed%60}сек")
-            log(f"   Осталось: ~{remaining//60}мин {remaining%60}сек\n")
+        if batch_num < len(batches):
+            time.sleep(BETWEEN_BATCHES_DELAY)
     
-    # ========== СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ==========
+    # Фильтрация успешных
+    successful = [r for r in all_results if r["status"] == "success"]
+    duplicates = [r for r in all_results if r["status"] == "duplicate"]
+    failed = [r for r in all_results if r["status"] not in ["success", "duplicate"]]
     
+    stats["passed"] = len(successful)
+    stats["failed"] = len(failed)
+    stats["duplicates_skipped"] = len(duplicates)
+    stats["unique_servers"] = len(seen_servers)
+    
+    # Группировка по профилям
+    by_profile = defaultdict(list)
+    for r in successful:
+        by_profile[r["profile"]].append(r)
+        stats["by_profile"][r["profile"]] += 1
+    
+    # === СОХРАНЕНИЕ ===
     log("\n" + "="*100)
     log("💾 СОХРАНЕНИЕ РЕЗУЛЬТАТОВ")
     log("="*100 + "\n")
     
-    # Группировка по профилям
-    results_by_profile = defaultdict(list)
-    for key, result in all_results:
-        results_by_profile[result['profile']].append((key, result))
-    
-    # Сохранение по профилям
-    for profile_name, profile_data in MOBILE_PROFILES.items():
-        keys_in_profile = results_by_profile.get(profile_name, [])
-        if not keys_in_profile:
+    # По профилям
+    for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+        results = by_profile.get(profile_name, [])
+        if not results:
             continue
         
-        # Сортировка: сначала лучшие по задержке
-        keys_in_profile.sort(key=lambda x: x[1]['latency']['avg'])
-        
+        profile_info = QUALITY_PROFILES[profile_name]
         filename = os.path.join(OUTPUT_DIR, f"{profile_name}_{timestamp}.txt")
         
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(f"# {profile_data['label']} - {profile_data['description']}\n")
-            f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"# Всего: {len(keys_in_profile)} ключей\n")
-            f.write(f"# Отсортировано по задержке (лучшие сверху)\n\n")
-            
-            for key, result in keys_in_profile:
-                f.write(format_key_result(key, result) + "\n")
+        # Сортировка по weighted_score
+        results.sort(key=lambda x: x["weighted_score"], reverse=True)
         
-        log(f"{profile_data['emoji']} {profile_data['label']}: {len(keys_in_profile)} ключей → {os.path.basename(filename)}")
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"# {profile_info['emoji']} {profile_info['label']}\n")
+            f.write(f"# {profile_info['description']}\n")
+            f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"# Количество: {len(results)}\n")
+            f.write(f"# Метрики: Latency, Stability, Weighted Score\n\n")
+            
+            for r in results:
+                f.write(format_result_line(r) + "\n")
+        
+        log(f"{profile_info['emoji']} {profile_info['label']}: {len(results)} → {os.path.basename(filename)}")
     
     # Детальный JSON
     detailed_file = os.path.join(OUTPUT_DIR, f"detailed_{timestamp}.json")
     with open(detailed_file, 'w', encoding='utf-8') as f:
-        json.dump([result for _, result in all_results], f, indent=2, ensure_ascii=False)
-    log(f"📄 Детальный отчет → {os.path.basename(detailed_file)}")
+        json.dump(successful, f, indent=2, ensure_ascii=False, default=str)
+    log(f"📄 Детальный JSON → {os.path.basename(detailed_file)}")
     
     # Сводка
-    stats["total_time"] = int(time.time() - start_time)
-    stats["avg_time_per_key"] = round(stats["total_time"] / max(stats["checked"], 1), 2)
-    stats["avg_latency_all"] = round(mean(stats["avg_latency"]), 1) if stats["avg_latency"] else 0
+    total_time = int(time.time() - stats["start_time"])
     
     summary_file = os.path.join(OUTPUT_DIR, f"summary_{timestamp}.txt")
     with open(summary_file, 'w', encoding='utf-8') as f:
-        f.write(f"МОБИЛЬНАЯ ПРОВЕРКА VPN КЛЮЧЕЙ\n")
-        f.write(f"{'='*80}\n\n")
+        f.write("="*80 + "\n")
+        f.write("MOBILE VPN VALIDATOR v2.0 - СВОДКА\n")
+        f.write("="*80 + "\n\n")
+        
         f.write(f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Исходных ключей: {stats['source_keys']}\n")
-        f.write(f"Проверено: {stats['checked']}\n")
-        f.write(f"Пройдено: {len(all_results)}\n")
-        f.write(f"Не прошло: {stats['failed']}\n")
+        f.write(f"Всего ключей: {stats['total_keys']}\n")
+        f.write(f"Уникальных серверов: {stats['unique_servers']}\n")
         f.write(f"Дубликатов пропущено: {stats['duplicates_skipped']}\n")
-        f.write(f"Процент успеха: {round(len(all_results)/stats['checked']*100, 1)}%\n")
-        f.write(f"Средняя задержка: {stats['avg_latency_all']}ms\n")
-        f.write(f"Время работы: {stats['total_time']}с ({stats['total_time']//60}мин)\n")
-        f.write(f"Среднее время на ключ: {stats['avg_time_per_key']}с\n\n")
-        f.write(f"ПО ПРОФИЛЯМ КАЧЕСТВА:\n")
-        for profile_name in sorted(stats["by_profile"].keys(), key=lambda x: MOBILE_PROFILES[x]['priority']):
-            count = stats["by_profile"][profile_name]
-            profile_data = MOBILE_PROFILES[profile_name]
-            percentage = round(count / len(all_results) * 100, 1) if all_results else 0
-            f.write(f"  {profile_data['emoji']} {profile_data['label']}: {count} ({percentage}%)\n")
+        f.write(f"Прошли проверку: {stats['passed']}\n")
+        f.write(f"Не прошли: {stats['failed']}\n")
+        f.write(f"Время: {total_time}с ({total_time//60}мин)\n")
+        f.write(f"Среднее на ключ: {total_time/max(len(keys),1):.1f}с\n\n")
+        
+        f.write("ПАРАМЕТРЫ ПРОВЕРКИ:\n")
+        f.write(f"  Замеров latency: {LATENCY_SAMPLES}\n")
+        f.write(f"  Проверок стабильности: {STABILITY_CHECKS}\n")
+        f.write(f"  Параллельных ключей: {MAX_PARALLEL_KEYS}\n")
+        f.write(f"  Параллельных сайтов: {MAX_PARALLEL_SITES}\n\n")
+        
+        f.write("ПО ПРОФИЛЯМ КАЧЕСТВА:\n")
+        for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+            count = stats["by_profile"].get(profile_name, 0)
+            if count > 0:
+                info = QUALITY_PROFILES[profile_name]
+                pct = count / stats["passed"] * 100 if stats["passed"] > 0 else 0
+                f.write(f"  {info['emoji']} {info['label']}: {count} ({pct:.1f}%)\n")
+        
+        # Статистика latency
+        if successful:
+            latencies = [r["latency"]["avg"] for r in successful]
+            f.write(f"\nСТАТИСТИКА LATENCY:\n")
+            f.write(f"  Минимум: {min(latencies):.0f}ms\n")
+            f.write(f"  Среднее: {mean(latencies):.0f}ms\n")
+            f.write(f"  Медиана: {median(latencies):.0f}ms\n")
+            f.write(f"  Максимум: {max(latencies):.0f}ms\n")
     
     log(f"📊 Сводка → {os.path.basename(summary_file)}")
     
-    # ========== ФИНАЛЬНАЯ СТАТИСТИКА ==========
-    
+    # === ФИНАЛЬНАЯ СТАТИСТИКА ===
     print("\n" + "="*100)
-    print("🏆 ИТОГОВАЯ СТАТИСТИКА")
+    print("📊 ИТОГОВАЯ СТАТИСТИКА")
     print("="*100)
-    print(f"📦 Исходных ключей:     {stats['source_keys']}")
-    print(f"✅ Проверено:           {stats['checked']}")
-    print(f"🎯 Пройдено:            {len(all_results)} ({round(len(all_results)/stats['checked']*100, 1)}%)")
-    print(f"❌ Не прошло:           {stats['failed']}")
-    print(f"🔄 Дубликатов:          {stats['duplicates_skipped']}")
-    print(f"⚡ Средняя задержка:    {stats['avg_latency_all']}ms")
-    print(f"\n💎 ПО ПРОФИЛЯМ КАЧЕСТВА:")
+    print(f"Всего ключей:         {stats['total_keys']}")
+    print(f"Уникальных серверов:  {stats['unique_servers']}")
+    print(f"Дубликатов пропущено: {stats['duplicates_skipped']}")
+    print(f"✅ Прошли:            {stats['passed']}")
+    print(f"❌ Не прошли:         {stats['failed']}")
     
-    for profile_name in sorted(stats["by_profile"].keys(), key=lambda x: MOBILE_PROFILES[x]['priority']):
-        count = stats["by_profile"][profile_name]
-        profile_data = MOBILE_PROFILES[profile_name]
-        percentage = round(count / len(all_results) * 100, 1) if all_results else 0
-        avg_latency_profile = round(mean([
-            r[1]['latency']['avg'] for r in all_results if r[1]['profile'] == profile_name
-        ]), 1) if count > 0 else 0
-        
-        print(f"  {profile_data['emoji']} {profile_data['label']}: {count} ({percentage}%) | avg {avg_latency_profile}ms")
+    print(f"\n🏆 ПО ПРОФИЛЯМ КАЧЕСТВА:")
+    for profile_name in sorted(QUALITY_PROFILES.keys(), key=lambda x: QUALITY_PROFILES[x]["priority"]):
+        count = stats["by_profile"].get(profile_name, 0)
+        if count > 0:
+            info = QUALITY_PROFILES[profile_name]
+            pct = count / stats["passed"] * 100 if stats["passed"] > 0 else 0
+            print(f"  {info['emoji']} {info['label']}: {count} ({pct:.1f}%)")
     
-    print(f"\n⏱️  Время работы:        {stats['total_time']}с ({stats['total_time']//60}мин {stats['total_time']%60}сек)")
-    print(f"⚡ Среднее на ключ:     {stats['avg_time_per_key']}с")
-    print(f"📂 Результаты:          {OUTPUT_DIR}")
+    if successful:
+        latencies = [r["latency"]["avg"] for r in successful]
+        print(f"\n⚡ LATENCY:")
+        print(f"  Min: {min(latencies):.0f}ms | Avg: {mean(latencies):.0f}ms | Max: {max(latencies):.0f}ms")
+    
+    print(f"\n⏱️  Время: {total_time}с ({total_time//60}мин)")
+    print(f"🚀 Скорость: {len(keys)/max(total_time,1)*60:.1f} ключей/мин")
+    print(f"📂 Результаты: {OUTPUT_DIR}")
     print("="*100 + "\n")
-    
-    # Топ-10 лучших ключей
-    if all_results:
-        print("🥇 ТОП-10 ЛУЧШИХ КЛЮЧЕЙ (по задержке):")
-        print("="*100)
-        top_keys = sorted(all_results, key=lambda x: x[1]['latency']['avg'])[:10]
-        for idx, (key, result) in enumerate(top_keys, 1):
-            profile_emoji = MOBILE_PROFILES[result['profile']]['emoji']
-            print(f"{idx}. {profile_emoji} {result['latency']['avg']}ms | "
-                  f"Stability:{result['stability']}% | "
-                  f"Score:{result['weighted_score']} | "
-                  f"Sites:{result['total_sites_accessible']}/{result['total_sites_checked']}")
-        print("="*100 + "\n")
     
     return 0
 
