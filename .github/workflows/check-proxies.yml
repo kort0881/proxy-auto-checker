@@ -29,21 +29,6 @@ jobs:
         python check_proxies.py
       continue-on-error: false
     
-    # ========== НОВОЕ: Сохранение в репозиторий ==========
-    - name: 💾 Save to repository
-      if: success()
-      run: |
-        mkdir -p checked/latest
-        latest_verified=$(ls -t results/verified_*.txt 2>/dev/null | head -1)
-        if [ -f "$latest_verified" ]; then
-          cp "$latest_verified" checked/latest/verified.txt
-          key_count=$(grep -v "^#" checked/latest/verified.txt | grep -v "^$" | wc -l)
-          echo "✅ Copied: ${key_count} keys to checked/latest/verified.txt"
-        else
-          echo "⚠️ No verified files found"
-        fi
-    # ======================================================
-    
     - name: 📤 Post to Telegram
       if: success()
       env:
@@ -60,17 +45,9 @@ jobs:
         name: verified-keys
         path: results/verified_*.txt
         retention-days: 7
-    
-    # ========== НОВОЕ: Коммит в репозиторий ==========
-    - name: 🚀 Commit to repository
-      if: success()
-      run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git add checked/latest/
-        git commit -m "✨ Update verified keys: $(date +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
-        git push
-    # =================================================
+
+
+
 
 
 
