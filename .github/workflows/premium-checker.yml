@@ -33,29 +33,28 @@ jobs:
         pip install --upgrade pip
         pip install requests[socks]
     
-    - name: 📥 Download verified keys
-      uses: dawidd6/action-download-artifact@v6
-      with:
-        workflow: check-proxies.yml
-        name: verified-keys
-        path: results/
-        search_artifacts: true
-        if_no_artifact_found: warn
-      continue-on-error: true
-    
-    - name: 🔍 Check downloaded files
+    # ✅ ИСПРАВЛЕНО: Копируем из репозитория вместо скачивания артефакта
+    - name: 📥 Copy verified keys from repository
       run: |
-        echo "📂 Содержимое results/:"
-        ls -lah results/ || mkdir -p results
+        echo "📂 Копируем verified.txt из репозитория"
+        mkdir -p results
         
-        if ls results/verified_*.txt 1> /dev/null 2>&1; then
-          echo "✅ Найдены verified файлы!"
-          key_count=$(cat results/verified_*.txt | grep -v "^#" | grep -v "^$" | wc -l)
-          echo "📊 Ключей: ${key_count}"
+        if [ -f "checked/latest/verified.txt" ]; then
+          # Копируем с timestamp
+          TIMESTAMP=$(date -u +'%Y-%m-%d_%H-%M-%S')
+          cp checked/latest/verified.txt results/verified_${TIMESTAMP}.txt
+          
+          key_count=$(grep -v "^#" results/verified_${TIMESTAMP}.txt | grep -v "^$" | wc -l)
+          echo "✅ Скопировано: ${key_count} ключей из checked/latest/verified.txt"
+          echo "📁 Сохранено как: results/verified_${TIMESTAMP}.txt"
+          
+          echo ""
+          echo "📊 Содержимое results/:"
+          ls -lh results/
         else
-          echo "⚠️ Не найден verified файл, создаём пустой"
-          mkdir -p results
-          touch results/verified_empty.txt
+          echo "❌ ОШИБКА: Файл checked/latest/verified.txt не найден!"
+          echo "Auto Proxy Checker должен запуститься первым"
+          exit 1
         fi
     
     - name: 🔥 Run advanced check
