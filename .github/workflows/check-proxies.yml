@@ -21,12 +21,12 @@ jobs:
     
     steps:
     - name: 📥 Checkout repository
-      uses: actions/checkout@v4  # ← ОБНОВЛЕНО до v4
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0  # ✅ ДОБАВЛЕНО: полная история для git pull
     
     - name: 🐍 Setup Python 3.11
-      uses: actions/setup-python@v5  # ← ОБНОВЛЕНО до v5
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
@@ -70,7 +70,6 @@ jobs:
         path: results/verified_*.txt
         retention-days: 7
     
-    # ✅ ИСПРАВЛЕНО: добавлен git pull перед push
     - name: 🚀 Commit to repository
       if: success()
       run: |
@@ -78,8 +77,7 @@ jobs:
         git config user.email "actions@github.com"
         
         # Подтягиваем последние изменения из main
-        git fetch origin main
-        git pull origin main --rebase || echo "Nothing to pull"
+        git pull origin main --rebase --autostash || git pull origin main || echo "Nothing to pull"
         
         # Добавляем наши изменения
         git add checked/latest/
