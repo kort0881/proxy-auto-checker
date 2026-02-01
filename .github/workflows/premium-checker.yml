@@ -81,7 +81,8 @@ jobs:
         git fetch origin main
         git pull origin main --rebase || echo "Nothing to pull"
         
-        git add results/premium/
+        # ✅ ИСПРАВЛЕНО: добавлен флаг -f для игнорирования .gitignore
+        git add -f results/premium/
         
         total_keys=$(find results/premium -name "*.txt" -exec grep -v "^#" {} \; | grep -v "^$" | wc -l 2>/dev/null || echo "0")
         
