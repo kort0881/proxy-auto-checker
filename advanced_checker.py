@@ -1,14 +1,13 @@
 """
-📱 MOBILE VPN VALIDATOR v3.0 (FULL MOBILE SIMULATION)
-Полная имитация мобильного трафика для проверки VPN ключей
+📱 REAL MOBILE VPN VALIDATOR v4.2 (XRAY-POWERED)
+Полная проверка VPN с реальными HTTP запросами через Xray
 
-🎯 Что проверяем:
-- UDP connectivity (критично для мобильных)
-- DNS резолвинг через сервер
-- Множественные параллельные соединения
-- Стабильность под нагрузкой
-- Latency и Jitter
-- Специфичные для мобильных настройки протоколов
+Изменения v4.2:
+- Повышенные пороги стабильности
+- Параллельная проверка категорий
+- Retry логика для запросов
+- Экспоненциальный backoff
+- Улучшенная обработка ошибок
 """
 
 import os
@@ -17,1239 +16,1372 @@ import json
 import time
 import random
 import socket
-import ssl
-import struct
+import subprocess
+import platform
 import base64
 import hashlib
-import threading
+import logging
+import contextlib
+import tempfile
+import functools
 from datetime import datetime
 from urllib.parse import unquote, quote
+from pathlib import Path
 import concurrent.futures
 from collections import defaultdict
-from statistics import mean, stdev, median
-from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+from statistics import mean, stdev
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple, Any, Generator, Callable, TypeVar
+from abc import ABC, abstractmethod
+from enum import Enum
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import urllib3
 urllib3.disable_warnings()
 
-# === НАСТРОЙКИ ===
-WORK_DIR = os.path.dirname(os.path.abspath(__file__))
-RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
+# === НАСТРОЙКА ЛОГИРОВАНИЯ ===
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-# === ПАРАМЕТРЫ ТЕСТИРОВАНИЯ ===
+
+# === КОНФИГУРАЦИЯ ===
+@dataclass(frozen=True)
 class TestConfig:
-    # Параллельность
-    MAX_PARALLEL_KEYS = 20
-    BATCH_SIZE = 100
+    """Конфигурация тестирования"""
+    # Параллелизм
+    MAX_PARALLEL: int = 15
+    CATEGORY_PARALLEL: int = 5  # Параллельные запросы внутри категории
     
-    # Latency тесты
-    LATENCY_SAMPLES = 10          # Замеров ping
-    LATENCY_TIMEOUT = 3           # Секунд на замер
-    
-    # Стабильность
-    STABILITY_DURATION = 5        # Секунд теста стабильности
-    STABILITY_CONNECTIONS = 10    # Параллельных соединений
-    
-    # Нагрузка
-    LOAD_TEST_REQUESTS = 20       # Запросов в тесте нагрузки
-    LOAD_TEST_PARALLEL = 5        # Параллельных запросов
-    
-    # UDP
-    UDP_TEST_PACKETS = 5          # UDP пакетов
-    UDP_TIMEOUT = 2               # Таймаут UDP
-    
-    # DNS
-    DNS_TEST_DOMAINS = [
-        "google.com",
-        "youtube.com", 
-        "facebook.com",
-        "telegram.org"
-    ]
+    # Количество проверок
+    LATENCY_SAMPLES: int = 15
+    STABILITY_CHECKS: int = 15
+    CATEGORY_SAMPLES: int = 3
     
     # Таймауты
-    TCP_TIMEOUT = 5
-    TLS_TIMEOUT = 5
+    TIMEOUT: float = 5.0
+    XRAY_STARTUP: float = 0.8
+    PROCESS_TERMINATE_TIMEOUT: float = 2.0
+    
+    # Пороги
+    MIN_LATENCY_SAMPLES: int = 5
+    MIN_STABILITY_PERCENT: float = 70.0  # Повышено с 50%
+    
+    # Retry настройки
+    MAX_RETRIES: int = 2
+    RETRY_BACKOFF: float = 0.5  # Начальная задержка
+    RETRY_BACKOFF_MAX: float = 2.0  # Максимальная задержка
 
-# === МОБИЛЬНЫЕ USER-AGENTS ===
-MOBILE_USER_AGENTS = [
-    # iPhone
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/123.0.6312.52 Mobile/15E148 Safari/604.1",
-    # Android
-    "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
-    "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
-    # VPN Apps
-    "V2RayNG/1.8.19 (Android 14; SDK 34)",
-    "Hiddify/2.5.7 (iOS 17.4)",
-    "Shadowrocket/2.2.45 (iPhone; iOS 17.4.1)"
+
+# Глобальный конфиг
+CONFIG = TestConfig()
+
+
+# === ДИРЕКТОРИИ ===
+WORK_DIR = Path(__file__).parent.absolute()
+RESULTS_FOLDER = WORK_DIR / "results"
+XRAY_FOLDER = WORK_DIR / "xray"
+OUTPUT_DIR = RESULTS_FOLDER / "premium"
+
+for dir_path in [RESULTS_FOLDER, XRAY_FOLDER, OUTPUT_DIR]:
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+
+# === САЙТЫ ДЛЯ ПРОВЕРКИ ===
+CHECK_SITES: Dict[str, List[Tuple[str, str]]] = {
+    "banks": [
+        ("https://www.sberbank.ru", "Сбербанк"),
+        ("https://www.tbank.ru", "Т-Банк"),
+        ("https://www.vtb.ru", "ВТБ"),
+        ("https://alfabank.ru", "Альфа-Банк"),
+        ("https://www.gazprombank.ru", "Газпромбанк")
+    ],
+    "gov": [
+        ("https://www.gosuslugi.ru", "Госуслуги"),
+        ("https://www.nalog.gov.ru", "Налоговая"),
+        ("https://esia.gosuslugi.ru", "ЕСИА")
+    ],
+    "social": [
+        ("https://vk.com", "VK"),
+        ("https://ok.ru", "OK"),
+        ("https://www.instagram.com", "Instagram"),
+        ("https://x.com", "Twitter/X"),
+        ("https://www.facebook.com", "Facebook"),
+        ("https://www.linkedin.com", "LinkedIn")
+    ],
+    "messengers": [
+        ("https://web.telegram.org", "Telegram Web"),
+        ("https://web.whatsapp.com", "WhatsApp Web"),
+        ("https://www.viber.com", "Viber")
+    ],
+    "video": [
+        ("https://www.youtube.com", "YouTube"),
+        ("https://rutube.ru", "Rutube"),
+        ("https://www.kinopoisk.ru", "Кинопоиск"),
+        ("https://www.ivi.ru", "Ivi")
+    ],
+    "news": [
+        ("https://news.yandex.ru", "Яндекс.Новости"),
+        ("https://www.rbc.ru", "РБК"),
+        ("https://tass.ru", "ТАСС"),
+        ("https://ria.ru", "РИА")
+    ],
+    "services": [
+        ("https://www.google.com", "Google"),
+        ("https://yandex.ru", "Яндекс"),
+        ("https://mail.ru", "Mail.ru"),
+        ("https://www.ozon.ru", "Ozon"),
+        ("https://www.wildberries.ru", "Wildberries"),
+        ("https://www.avito.ru", "Avito")
+    ],
+    "telecom": [
+        ("https://www.mts.ru", "МТС"),
+        ("https://moskva.beeline.ru", "Билайн"),
+        ("https://www.megafon.ru", "Мегафон"),
+        ("https://msk.tele2.ru", "Tele2")
+    ]
+}
+
+QUICK_CHECK_SITES: List[str] = [
+    "http://www.gstatic.com/generate_204",
+    "http://cp.cloudflare.com/generate_204",
+    "http://connectivitycheck.android.com/generate_204"
 ]
 
-# === ПРОФИЛИ КАЧЕСТВА ДЛЯ МОБИЛЬНЫХ ===
-MOBILE_QUALITY_PROFILES = {
-    "elite": {
-        "emoji": "💎",
-        "label": "ЭЛИТНЫЙ",
-        "description": "Идеально для мобильных игр и видеозвонков",
-        "thresholds": {
-            "latency_avg_max": 100,
-            "latency_jitter_max": 30,
-            "stability_min": 95,
-            "load_success_min": 95,
-            "udp_success": True,
-            "dns_success": True
-        },
-        "priority": 1
-    },
-    "premium": {
-        "emoji": "⭐",
-        "label": "ПРЕМИУМ", 
-        "description": "Отлично для стриминга и соцсетей",
-        "thresholds": {
-            "latency_avg_max": 200,
-            "latency_jitter_max": 50,
-            "stability_min": 90,
-            "load_success_min": 90,
-            "udp_success": True,
-            "dns_success": True
-        },
-        "priority": 2
-    },
-    "good": {
-        "emoji": "✅",
-        "label": "ХОРОШИЙ",
-        "description": "Хорошо для браузинга и мессенджеров",
-        "thresholds": {
-            "latency_avg_max": 350,
-            "latency_jitter_max": 100,
-            "stability_min": 80,
-            "load_success_min": 80,
-            "udp_success": False,
-            "dns_success": True
-        },
-        "priority": 3
-    },
-    "acceptable": {
-        "emoji": "👌",
-        "label": "ПРИЕМЛЕМЫЙ",
-        "description": "Нормально для базового использования",
-        "thresholds": {
-            "latency_avg_max": 500,
-            "latency_jitter_max": 150,
-            "stability_min": 70,
-            "load_success_min": 70,
-            "udp_success": False,
-            "dns_success": False
-        },
-        "priority": 4
-    },
-    "basic": {
-        "emoji": "📶",
-        "label": "БАЗОВЫЙ",
-        "description": "Минимально рабочий",
-        "thresholds": {
-            "latency_avg_max": 1000,
-            "latency_jitter_max": 300,
-            "stability_min": 50,
-            "load_success_min": 50,
-            "udp_success": False,
-            "dns_success": False
-        },
-        "priority": 5
-    },
-    "poor": {
-        "emoji": "⚠️",
-        "label": "ПЛОХОЙ",
-        "description": "Проблемы со стабильностью",
-        "thresholds": {
-            "latency_avg_max": 9999,
-            "latency_jitter_max": 9999,
-            "stability_min": 0,
-            "load_success_min": 0,
-            "udp_success": False,
-            "dns_success": False
-        },
-        "priority": 6
-    }
+MOBILE_USER_AGENTS: List[str] = [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
+    "V2RayNG/1.8.19 (Android 14)",
+    "Hiddify/2.5.7 (iOS 17.4)"
+]
+
+
+# === ПРОФИЛИ КАЧЕСТВА (УЖЕСТОЧЁННЫЕ) ===
+class QualityProfile(Enum):
+    ELITE = "elite"
+    PREMIUM = "premium"
+    GOOD = "good"
+
+
+@dataclass(frozen=True)
+class ProfileThresholds:
+    """Пороговые значения для профиля качества"""
+    label: str
+    latency_max: float
+    jitter_max: float
+    stability_min: float  # Теперь выше!
+    categories_min: int
+    priority: int
+
+
+QUALITY_PROFILES: Dict[QualityProfile, ProfileThresholds] = {
+    QualityProfile.ELITE: ProfileThresholds(
+        label="ELITE",
+        latency_max=80,
+        jitter_max=20,
+        stability_min=98,  # Очень высокий
+        categories_min=7,
+        priority=1
+    ),
+    QualityProfile.PREMIUM: ProfileThresholds(
+        label="PREM",
+        latency_max=150,
+        jitter_max=35,
+        stability_min=95,  # Повышено
+        categories_min=6,
+        priority=2
+    ),
+    QualityProfile.GOOD: ProfileThresholds(
+        label="GOOD",
+        latency_max=250,
+        jitter_max=60,
+        stability_min=85,  # Повышено с 90 → 85 для баланса
+        categories_min=5,
+        priority=3
+    )
 }
 
-# === МОБИЛЬНЫЕ КЛИЕНТЫ И ИХ ОСОБЕННОСТИ ===
-MOBILE_CLIENTS = {
-    "ios": {
-        "happ": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400},
-        "streisand": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400},
-        "shadowrocket": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
-        "foxray": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400},
-        "v2box": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400}
-    },
-    "android": {
-        "v2rayng": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
-        "hiddify": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
-        "nekobox": {"supports_udp": True, "supports_reality": True, "max_mtu": 1500},
-        "v2box": {"supports_udp": True, "supports_reality": True, "max_mtu": 1400}
-    }
-}
 
 # === СТРУКТУРЫ ДАННЫХ ===
 @dataclass
-class LatencyResult:
-    avg: float
-    min: float
-    max: float
-    jitter: float
-    samples: int
-    success_rate: float
-
-@dataclass
-class StabilityResult:
-    success_rate: float
-    avg_response_time: float
-    failed_connections: int
-    total_connections: int
-    
-@dataclass
-class LoadTestResult:
-    success_rate: float
-    avg_response_time: float
-    requests_per_second: float
-    failed_requests: int
-    total_requests: int
-
-@dataclass
-class UDPTestResult:
-    success: bool
-    packets_sent: int
-    packets_received: int
-    avg_latency: float
-
-@dataclass
-class DNSTestResult:
-    success: bool
-    resolved_domains: int
-    total_domains: int
-    avg_resolve_time: float
-
-@dataclass 
-class MobileTestResult:
-    key: str
+class ServerInfo:
+    """Информация о VPN сервере"""
     protocol: str
     host: str
     port: int
-    security: str
-    transport: str
-    
-    latency: Optional[LatencyResult]
-    stability: Optional[StabilityResult]
-    load_test: Optional[LoadTestResult]
-    udp_test: Optional[UDPTestResult]
-    dns_test: Optional[DNSTestResult]
-    
-    profile: str
+    uuid: Optional[str] = None
+    security: str = "none"
+    sni: Optional[str] = None
+    network_type: str = "tcp"
+    flow: str = ""
+    pbk: str = ""
+    sid: str = ""
+    fp: str = ""
+    path: str = ""
+    service_name: str = ""
+    method: Optional[str] = None
+    password: Optional[str] = None
+
+
+@dataclass
+class TestResult:
+    """Результат тестирования ключа"""
+    key: str
+    latency_avg: float
+    latency_jitter: float
+    stability_rate: float
+    categories_passed: int
+    category_details: Dict[str, int]
+    profile: QualityProfile
     score: int
-    mobile_ready: bool
-    issues: List[str]
+    retries_used: int = 0  # Сколько retry понадобилось
 
-# === ИНИЦИАЛИЗАЦИЯ ===
-timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_DIR = os.path.join(RESULTS_FOLDER, "premium")  # ← ИСПРАВЛЕНО: убрали timestamp!
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-seen_servers = set()
+@dataclass
+class XraySession:
+    """Сессия Xray с открытым SOCKS5 прокси"""
+    process: subprocess.Popen
+    socks_port: int
+    config_file: Path
+    _http_session: Optional[requests.Session] = field(default=None, repr=False)
+    
+    @property
+    def proxies(self) -> Dict[str, str]:
+        return {
+            "http": f"socks5://127.0.0.1:{self.socks_port}",
+            "https": f"socks5://127.0.0.1:{self.socks_port}"
+        }
+    
+    def is_alive(self) -> bool:
+        return self.process.poll() is None
+    
+    def get_http_session(self) -> requests.Session:
+        """Получить HTTP сессию с настроенными retry"""
+        if self._http_session is None:
+            self._http_session = create_retry_session(self.proxies)
+        return self._http_session
+    
+    def close_http_session(self) -> None:
+        """Закрыть HTTP сессию"""
+        if self._http_session is not None:
+            self._http_session.close()
+            self._http_session = None
 
-stats = {
-    "total_keys": 0,
-    "unique_servers": 0,
-    "duplicates": 0,
-    "checked": 0,
-    "passed": 0,
-    "failed": 0,
-    "by_profile": defaultdict(int),
-    "mobile_ready": 0,
-    "udp_capable": 0,
-    "dns_capable": 0,
-    "start_time": None
-}
 
-def log(msg):
-    print(msg, flush=True)
+@dataclass
+class ValidationStats:
+    """Статистика валидации"""
+    total: int = 0
+    passed: int = 0
+    failed: int = 0
+    total_retries: int = 0
+    by_profile: Dict[QualityProfile, int] = field(default_factory=lambda: defaultdict(int))
 
-# ========== ПАРСИНГ КЛЮЧЕЙ ==========
 
-def get_server_hash(key: str) -> str:
-    """Хеш сервера для дедупликации"""
+# === RETRY ЛОГИКА ===
+T = TypeVar('T')
+
+
+def create_retry_session(
+    proxies: Dict[str, str],
+    retries: int = CONFIG.MAX_RETRIES,
+    backoff_factor: float = CONFIG.RETRY_BACKOFF
+) -> requests.Session:
+    """Создание сессии requests с настроенными retry"""
+    session = requests.Session()
+    
+    # Настраиваем retry стратегию
+    retry_strategy = Retry(
+        total=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["GET", "HEAD"],
+        raise_on_status=False
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    # Устанавливаем прокси
+    session.proxies.update(proxies)
+    
+    return session
+
+
+def retry_with_backoff(
+    func: Callable[..., Optional[T]],
+    max_retries: int = CONFIG.MAX_RETRIES,
+    backoff: float = CONFIG.RETRY_BACKOFF,
+    backoff_max: float = CONFIG.RETRY_BACKOFF_MAX,
+    exceptions: Tuple = (requests.RequestException, socket.error)
+) -> Callable[..., Tuple[Optional[T], int]]:
+    """
+    Декоратор для retry с экспоненциальным backoff.
+    Возвращает (результат, количество_retry).
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs) -> Tuple[Optional[T], int]:
+        retries = 0
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                result = func(*args, **kwargs)
+                if result is not None:
+                    return result, retries
+                
+                # None результат - пробуем ещё
+                retries += 1
+                
+            except exceptions as e:
+                last_exception = e
+                retries += 1
+                
+                if attempt < max_retries:
+                    # Экспоненциальный backoff с jitter
+                    delay = min(backoff * (2 ** attempt), backoff_max)
+                    delay *= (0.5 + random.random())  # Jitter
+                    time.sleep(delay)
+        
+        if last_exception:
+            logger.debug(f"All retries failed: {last_exception}")
+        
+        return None, retries
+    
+    return wrapper
+
+
+class RetryableRequest:
+    """Класс для выполнения HTTP запросов с retry"""
+    
+    def __init__(
+        self,
+        session: requests.Session,
+        max_retries: int = CONFIG.MAX_RETRIES,
+        backoff: float = CONFIG.RETRY_BACKOFF
+    ):
+        self.session = session
+        self.max_retries = max_retries
+        self.backoff = backoff
+        self.total_retries = 0
+    
+    def get(
+        self,
+        url: str,
+        timeout: float = CONFIG.TIMEOUT,
+        **kwargs
+    ) -> Tuple[Optional[requests.Response], int]:
+        """GET запрос с retry. Возвращает (response, retries_used)"""
+        retries = 0
+        
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self.session.get(url, timeout=timeout, **kwargs)
+                return response, retries
+                
+            except (requests.RequestException, socket.error) as e:
+                retries += 1
+                self.total_retries += 1
+                
+                if attempt < self.max_retries:
+                    delay = min(
+                        self.backoff * (2 ** attempt),
+                        CONFIG.RETRY_BACKOFF_MAX
+                    )
+                    delay *= (0.5 + random.random())
+                    logger.debug(f"Retry {attempt + 1}/{self.max_retries} after {delay:.2f}s: {e}")
+                    time.sleep(delay)
+        
+        return None, retries
+
+
+# === УТИЛИТЫ ===
+def get_free_port() -> int:
+    """Получение гарантированно свободного порта"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('127.0.0.1', 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
+
+
+def get_random_user_agent() -> str:
+    return random.choice(MOBILE_USER_AGENTS)
+
+
+def safe_remove(path: Path) -> None:
+    with contextlib.suppress(OSError, FileNotFoundError):
+        path.unlink()
+
+
+# === УПРАВЛЕНИЕ XRAY ПРОЦЕССОМ ===
+@contextlib.contextmanager
+def xray_session(
+    xray_exe: Path, 
+    config: Dict[str, Any],
+    startup_delay: float = CONFIG.XRAY_STARTUP
+) -> Generator[Optional[XraySession], None, None]:
+    """Context manager для безопасного управления Xray процессом"""
+    process: Optional[subprocess.Popen] = None
+    config_file: Optional[Path] = None
+    session: Optional[XraySession] = None
+    
     try:
-        if "vless://" in key or "trojan://" in key:
-            if "@" in key:
-                server_part = key.split("@")[1].split("?")[0].split("#")[0]
-                return hashlib.md5(server_part.encode()).hexdigest()[:16]
-        elif "vmess://" in key:
-            encoded = key.replace("vmess://", "").split("#")[0]
+        fd, config_path = tempfile.mkstemp(suffix='.json', prefix='xray_', dir=XRAY_FOLDER)
+        config_file = Path(config_path)
+        
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(config, f)
+        
+        process = subprocess.Popen(
+            [str(xray_exe), "run", "-c", str(config_file)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
+        )
+        
+        time.sleep(startup_delay)
+        
+        if process.poll() is not None:
+            stderr = process.stderr.read().decode('utf-8', errors='ignore') if process.stderr else ""
+            logger.debug(f"Xray failed to start: {stderr[:200]}")
+            yield None
+            return
+        
+        socks_port = config["inbounds"][0]["port"]
+        
+        session = XraySession(
+            process=process,
+            socks_port=socks_port,
+            config_file=config_file
+        )
+        
+        yield session
+        
+    except Exception as e:
+        logger.debug(f"Xray session error: {e}")
+        yield None
+        
+    finally:
+        # Закрываем HTTP сессию
+        if session is not None:
+            session.close_http_session()
+        
+        # Завершаем процесс
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=CONFIG.PROCESS_TERMINATE_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        
+        if config_file is not None:
+            safe_remove(config_file)
+
+
+# === УСТАНОВКА XRAY ===
+class XrayInstaller:
+    """Установщик Xray-core"""
+    
+    @staticmethod
+    def get_platform_info() -> Tuple[str, str]:
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+        
+        if system == "windows":
+            arch = "64" if "64" in machine or "amd64" in machine else "32"
+            return "windows", arch
+        elif system == "linux":
+            if "aarch64" in machine or "arm64" in machine:
+                arch = "arm64-v8a"
+            elif "64" in machine or "x86_64" in machine:
+                arch = "64"
+            else:
+                arch = "32"
+            return "linux", arch
+        elif system == "darwin":
+            arch = "arm64-v8a" if "arm" in machine else "64"
+            return "macos", arch
+        
+        raise RuntimeError(f"Unsupported platform: {system} {machine}")
+    
+    @staticmethod
+    def get_exe_name() -> str:
+        return "xray.exe" if os.name == 'nt' else "xray"
+    
+    @classmethod
+    def setup(cls) -> Optional[Path]:
+        exe_path = XRAY_FOLDER / cls.get_exe_name()
+        
+        if exe_path.exists():
+            logger.info(f"✅ Xray найден: {exe_path}")
+            return exe_path
+        
+        logger.info("🔽 Скачиваем Xray-core...")
+        
+        try:
+            system, arch = cls.get_platform_info()
+            
+            if system == "macos":
+                filename = f"Xray-macos-{arch}.zip"
+            else:
+                filename = f"Xray-{system}-{arch}.zip"
+            
+            url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
+            
+            zip_path = XRAY_FOLDER / "xray.zip"
+            
+            response = requests.get(url, stream=True, timeout=60)
+            response.raise_for_status()
+            
+            with open(zip_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(XRAY_FOLDER)
+            
+            zip_path.unlink()
+            
+            if os.name != 'nt':
+                exe_path.chmod(0o755)
+            
+            logger.info(f"✅ Xray установлен: {exe_path}")
+            return exe_path
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка установки Xray: {e}")
+            return None
+
+
+# === ПАРСИНГ КЛЮЧЕЙ ===
+class KeyParser:
+    """Парсер VPN ключей"""
+    
+    @classmethod
+    def parse(cls, key: str) -> Optional[ServerInfo]:
+        key = key.strip()
+        
+        if '#' in key:
+            key = key.split('#')[0].strip()
+        
+        if not key:
+            return None
+        
+        parsers = {
+            "vless://": cls._parse_vless,
+            "ss://": cls._parse_shadowsocks,
+            "vmess://": cls._parse_vmess,
+            "trojan://": cls._parse_trojan,
+        }
+        
+        for prefix, parser in parsers.items():
+            if key.startswith(prefix):
+                return parser(key)
+        
+        return None
+    
+    @classmethod
+    def _parse_vless(cls, key: str) -> Optional[ServerInfo]:
+        try:
+            key_data = key[8:]
+            
+            if "@" not in key_data:
+                return None
+            
+            uuid_part, rest = key_data.split("@", 1)
+            server_part = rest.split("?")[0].split("#")[0]
+            
+            if "]:" in server_part:
+                host, port = server_part.rsplit(":", 1)
+                host = host.strip("[]")
+            else:
+                host, port = server_part.rsplit(":", 1)
+            
+            params: Dict[str, str] = {}
+            if "?" in rest:
+                params_str = rest.split("?")[1].split("#")[0]
+                for p in params_str.split("&"):
+                    if "=" in p:
+                        k, v = p.split("=", 1)
+                        params[k] = unquote(v)
+            
+            return ServerInfo(
+                protocol="vless",
+                host=host,
+                port=int(port),
+                uuid=uuid_part,
+                security=params.get("security", "none"),
+                sni=params.get("sni", host),
+                network_type=params.get("type", "tcp"),
+                flow=params.get("flow", ""),
+                pbk=params.get("pbk", ""),
+                sid=params.get("sid", ""),
+                fp=params.get("fp", "chrome"),
+                path=params.get("path", "/"),
+                service_name=params.get("serviceName", "")
+            )
+        except Exception as e:
+            logger.debug(f"VLESS parse error: {e}")
+            return None
+    
+    @classmethod
+    def _parse_shadowsocks(cls, key: str) -> Optional[ServerInfo]:
+        try:
+            key_data = key[5:].split("#")[0]
+            
+            if "@" not in key_data:
+                padding = len(key_data) % 4
+                if padding:
+                    key_data += '=' * (4 - padding)
+                
+                try:
+                    decoded = base64.urlsafe_b64decode(key_data).decode('utf-8')
+                    if "@" in decoded:
+                        key_data = decoded
+                    else:
+                        return None
+                except:
+                    return None
+            
+            encoded, server = key_data.rsplit("@", 1)
+            
+            if "]:" in server:
+                host, port = server.rsplit(":", 1)
+                host = host.strip("[]")
+            else:
+                host, port = server.rsplit(":", 1)
+            
             padding = len(encoded) % 4
             if padding:
                 encoded += '=' * (4 - padding)
+            
             try:
-                data = json.loads(base64.b64decode(encoded))
-                server = f"{data.get('add')}:{data.get('port')}"
-                return hashlib.md5(server.encode()).hexdigest()[:16]
+                decoded = base64.urlsafe_b64decode(encoded).decode('utf-8')
             except:
-                pass
-        elif "ss://" in key:
-            if "@" in key:
-                server_part = key.split("@")[1].split("#")[0]
-                return hashlib.md5(server_part.encode()).hexdigest()[:16]
-    except:
-        pass
-    return hashlib.md5(key.encode()).hexdigest()[:16]
-
-def parse_key(key: str) -> Optional[Dict]:
-    """Парсинг ключа с извлечением всех параметров"""
-    try:
-        key = key.strip()
-        
-        if key.startswith("vless://"):
-            return parse_vless(key)
-        elif key.startswith("vmess://"):
-            return parse_vmess(key)
-        elif key.startswith("trojan://"):
-            return parse_trojan(key)
-        elif key.startswith("ss://"):
-            return parse_shadowsocks(key)
-    except:
-        pass
-    return None
-
-def parse_vless(key: str) -> Optional[Dict]:
-    key_data = key[8:]
-    if "@" not in key_data:
-        return None
-    
-    uuid_part, rest = key_data.split("@", 1)
-    server_part = rest.split("?")[0].split("#")[0]
-    host, port = server_part.rsplit(":", 1)
-    
-    params = {}
-    if "?" in rest:
-        params_str = rest.split("?")[1].split("#")[0]
-        for p in params_str.split("&"):
-            if "=" in p:
-                k, v = p.split("=", 1)
-                params[k] = unquote(v)
-    
-    return {
-        "protocol": "vless",
-        "host": host,
-        "port": int(port),
-        "uuid": uuid_part,
-        "security": params.get("security", "none"),
-        "sni": params.get("sni", host),
-        "type": params.get("type", "tcp"),
-        "flow": params.get("flow", ""),
-        "pbk": params.get("pbk", ""),
-        "sid": params.get("sid", ""),
-        "fp": params.get("fp", ""),
-        "path": params.get("path", ""),
-        "serviceName": params.get("serviceName", "")
-    }
-
-def parse_vmess(key: str) -> Optional[Dict]:
-    encoded = key[8:].split("#")[0]
-    padding = len(encoded) % 4
-    if padding:
-        encoded += '=' * (4 - padding)
-    
-    data = json.loads(base64.b64decode(encoded).decode('utf-8'))
-    
-    return {
-        "protocol": "vmess",
-        "host": data.get("add"),
-        "port": int(data.get("port", 443)),
-        "uuid": data.get("id"),
-        "security": data.get("tls", "none"),
-        "sni": data.get("sni", data.get("add")),
-        "type": data.get("net", "tcp"),
-        "aid": data.get("aid", 0),
-        "path": data.get("path", ""),
-        "flow": ""
-    }
-
-def parse_trojan(key: str) -> Optional[Dict]:
-    key_data = key[9:]
-    if "@" not in key_data:
-        return None
-    
-    password, rest = key_data.split("@", 1)
-    server_part = rest.split("?")[0].split("#")[0]
-    host, port = server_part.rsplit(":", 1)
-    
-    params = {}
-    if "?" in rest:
-        params_str = rest.split("?")[1].split("#")[0]
-        for p in params_str.split("&"):
-            if "=" in p:
-                k, v = p.split("=", 1)
-                params[k] = unquote(v)
-    
-    return {
-        "protocol": "trojan",
-        "host": host,
-        "port": int(port),
-        "password": password,
-        "security": params.get("security", "tls"),
-        "sni": params.get("sni", host),
-        "type": params.get("type", "tcp"),
-        "flow": "",
-        "path": params.get("path", "")
-    }
-
-def parse_shadowsocks(key: str) -> Optional[Dict]:
-    key_data = key[5:].split("#")[0]
-    if "@" not in key_data:
-        return None
-    
-    encoded, server = key_data.rsplit("@", 1)
-    host, port = server.rsplit(":", 1)
-    
-    padding = len(encoded) % 4
-    if padding:
-        encoded += '=' * (4 - padding)
-    
-    decoded = base64.b64decode(encoded).decode('utf-8')
-    method, password = decoded.split(":", 1)
-    
-    return {
-        "protocol": "shadowsocks",
-        "host": host,
-        "port": int(port),
-        "method": method,
-        "password": password,
-        "security": "none",
-        "sni": host,
-        "type": "tcp",
-        "flow": ""
-    }
-
-# ========== ТЕСТЫ ПОДКЛЮЧЕНИЯ ==========
-
-def test_tcp_connection(host: str, port: int, timeout: float = 5) -> Tuple[bool, float]:
-    """Базовый TCP тест с измерением времени"""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        
-        start = time.time()
-        result = sock.connect_ex((host, port))
-        latency = (time.time() - start) * 1000
-        
-        sock.close()
-        return result == 0, latency
-    except:
-        return False, 0
-
-def test_tls_connection(host: str, port: int, sni: str, timeout: float = 5) -> Tuple[bool, float, dict]:
-    """TLS тест с проверкой сертификата"""
-    try:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        
-        start = time.time()
-        sock.connect((host, port))
-        
-        with context.wrap_socket(sock, server_hostname=sni) as ssock:
-            latency = (time.time() - start) * 1000
+                decoded = base64.b64decode(encoded).decode('utf-8')
             
-            cert = ssock.getpeercert(binary_form=False)
-            cipher = ssock.cipher()
-            version = ssock.version()
+            method, password = decoded.split(":", 1)
             
-            return True, latency, {
-                "cipher": cipher[0] if cipher else None,
-                "version": version,
-                "cert_valid": cert is not None
+            return ServerInfo(
+                protocol="shadowsocks",
+                host=host,
+                port=int(port),
+                method=method,
+                password=password
+            )
+        except Exception as e:
+            logger.debug(f"Shadowsocks parse error: {e}")
+            return None
+    
+    @classmethod
+    def _parse_vmess(cls, key: str) -> Optional[ServerInfo]:
+        try:
+            encoded = key[8:]
+            
+            padding = len(encoded) % 4
+            if padding:
+                encoded += '=' * (4 - padding)
+            
+            decoded = base64.urlsafe_b64decode(encoded).decode('utf-8')
+            data = json.loads(decoded)
+            
+            return ServerInfo(
+                protocol="vmess",
+                host=data.get("add", ""),
+                port=int(data.get("port", 443)),
+                uuid=data.get("id", ""),
+                security=data.get("tls", "none"),
+                sni=data.get("sni", data.get("add", "")),
+                network_type=data.get("net", "tcp"),
+                path=data.get("path", "/")
+            )
+        except Exception as e:
+            logger.debug(f"VMess parse error: {e}")
+            return None
+    
+    @classmethod
+    def _parse_trojan(cls, key: str) -> Optional[ServerInfo]:
+        try:
+            key_data = key[9:]
+            
+            if "@" not in key_data:
+                return None
+            
+            password, rest = key_data.split("@", 1)
+            server_part = rest.split("?")[0].split("#")[0]
+            
+            if "]:" in server_part:
+                host, port = server_part.rsplit(":", 1)
+                host = host.strip("[]")
+            else:
+                host, port = server_part.rsplit(":", 1)
+            
+            params: Dict[str, str] = {}
+            if "?" in rest:
+                params_str = rest.split("?")[1].split("#")[0]
+                for p in params_str.split("&"):
+                    if "=" in p:
+                        k, v = p.split("=", 1)
+                        params[k] = unquote(v)
+            
+            return ServerInfo(
+                protocol="trojan",
+                host=host,
+                port=int(port),
+                password=password,
+                security=params.get("security", "tls"),
+                sni=params.get("sni", host),
+                network_type=params.get("type", "tcp")
+            )
+        except Exception as e:
+            logger.debug(f"Trojan parse error: {e}")
+            return None
+
+
+# === СОЗДАНИЕ КОНФИГА XRAY ===
+class XrayConfigBuilder:
+    """Построитель конфигурации Xray"""
+    
+    @classmethod
+    def build(cls, server: ServerInfo, socks_port: int) -> Optional[Dict[str, Any]]:
+        outbound = cls._build_outbound(server)
+        if not outbound:
+            return None
+        
+        return {
+            "log": {"loglevel": "none"},
+            "inbounds": [{
+                "port": socks_port,
+                "listen": "127.0.0.1",
+                "protocol": "socks",
+                "settings": {"udp": True}
+            }],
+            "outbounds": [outbound]
+        }
+    
+    @classmethod
+    def _build_outbound(cls, server: ServerInfo) -> Optional[Dict[str, Any]]:
+        builders = {
+            "vless": cls._build_vless_outbound,
+            "shadowsocks": cls._build_shadowsocks_outbound,
+            "vmess": cls._build_vmess_outbound,
+            "trojan": cls._build_trojan_outbound,
+        }
+        
+        builder = builders.get(server.protocol)
+        if builder:
+            return builder(server)
+        return None
+    
+    @classmethod
+    def _build_vless_outbound(cls, server: ServerInfo) -> Dict[str, Any]:
+        user: Dict[str, Any] = {"id": server.uuid, "encryption": "none"}
+        if server.flow:
+            user["flow"] = server.flow
+        
+        return {
+            "protocol": "vless",
+            "settings": {
+                "vnext": [{
+                    "address": server.host,
+                    "port": server.port,
+                    "users": [user]
+                }]
+            },
+            "streamSettings": cls._build_stream_settings(server)
+        }
+    
+    @classmethod
+    def _build_shadowsocks_outbound(cls, server: ServerInfo) -> Dict[str, Any]:
+        return {
+            "protocol": "shadowsocks",
+            "settings": {
+                "servers": [{
+                    "address": server.host,
+                    "port": server.port,
+                    "method": server.method,
+                    "password": server.password
+                }]
+            },
+            "streamSettings": {"network": "tcp"}
+        }
+    
+    @classmethod
+    def _build_vmess_outbound(cls, server: ServerInfo) -> Dict[str, Any]:
+        return {
+            "protocol": "vmess",
+            "settings": {
+                "vnext": [{
+                    "address": server.host,
+                    "port": server.port,
+                    "users": [{
+                        "id": server.uuid,
+                        "alterId": 0,
+                        "security": "auto"
+                    }]
+                }]
+            },
+            "streamSettings": cls._build_stream_settings(server)
+        }
+    
+    @classmethod
+    def _build_trojan_outbound(cls, server: ServerInfo) -> Dict[str, Any]:
+        return {
+            "protocol": "trojan",
+            "settings": {
+                "servers": [{
+                    "address": server.host,
+                    "port": server.port,
+                    "password": server.password
+                }]
+            },
+            "streamSettings": cls._build_stream_settings(server)
+        }
+    
+    @classmethod
+    def _build_stream_settings(cls, server: ServerInfo) -> Dict[str, Any]:
+        settings: Dict[str, Any] = {
+            "network": server.network_type,
+            "security": server.security
+        }
+        
+        if server.security == "reality":
+            settings["realitySettings"] = {
+                "serverName": server.sni or server.host,
+                "publicKey": server.pbk,
+                "shortId": server.sid,
+                "fingerprint": server.fp or "chrome"
             }
-    except Exception as e:
-        return False, 0, {"error": str(e)}
-
-def test_udp_connectivity(host: str, port: int, timeout: float = 2) -> UDPTestResult:
-    """
-    Тест UDP connectivity
-    Отправляем DNS-like пакеты для проверки UDP
-    """
-    packets_sent = 0
-    packets_received = 0
-    latencies = []
-    
-    for _ in range(TestConfig.UDP_TEST_PACKETS):
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(timeout)
-            
-            # Формируем простой UDP пакет (DNS query format)
-            transaction_id = random.randint(0, 65535)
-            dns_query = struct.pack(">H", transaction_id)  # Transaction ID
-            dns_query += b'\x01\x00'  # Flags: standard query
-            dns_query += b'\x00\x01'  # Questions: 1
-            dns_query += b'\x00\x00'  # Answer RRs: 0
-            dns_query += b'\x00\x00'  # Authority RRs: 0
-            dns_query += b'\x00\x00'  # Additional RRs: 0
-            dns_query += b'\x06google\x03com\x00'  # Query: google.com
-            dns_query += b'\x00\x01'  # Type: A
-            dns_query += b'\x00\x01'  # Class: IN
-            
-            start = time.time()
-            sock.sendto(dns_query, (host, port))
-            packets_sent += 1
-            
-            try:
-                data, addr = sock.recvfrom(512)
-                latency = (time.time() - start) * 1000
-                packets_received += 1
-                latencies.append(latency)
-            except socket.timeout:
-                pass
-            
-            sock.close()
-        except:
-            pass
+        elif server.security == "tls":
+            settings["tlsSettings"] = {
+                "serverName": server.sni or server.host,
+                "allowInsecure": True,
+                "fingerprint": server.fp or "chrome"
+            }
         
-        time.sleep(0.1)
-    
-    return UDPTestResult(
-        success=packets_received > 0,
-        packets_sent=packets_sent,
-        packets_received=packets_received,
-        avg_latency=mean(latencies) if latencies else 0
-    )
-
-def test_dns_resolution(host: str, port: int) -> DNSTestResult:
-    """
-    Тест DNS резолвинга
-    Проверяем способность резолвить домены
-    """
-    resolved = 0
-    resolve_times = []
-    
-    for domain in TestConfig.DNS_TEST_DOMAINS:
-        try:
-            start = time.time()
-            # Пытаемся резолвить через системный DNS
-            socket.gethostbyname(domain)
-            resolve_time = (time.time() - start) * 1000
-            resolved += 1
-            resolve_times.append(resolve_time)
-        except:
-            pass
-    
-    return DNSTestResult(
-        success=resolved > 0,
-        resolved_domains=resolved,
-        total_domains=len(TestConfig.DNS_TEST_DOMAINS),
-        avg_resolve_time=mean(resolve_times) if resolve_times else 0
-    )
-
-# ========== КОМПЛЕКСНЫЕ ТЕСТЫ ==========
-
-def measure_latency(server_info: Dict) -> Optional[LatencyResult]:
-    """Измерение latency с множественными замерами"""
-    host = server_info["host"]
-    port = server_info["port"]
-    security = server_info.get("security", "none")
-    sni = server_info.get("sni", host)
-    
-    latencies = []
-    successes = 0
-    
-    for _ in range(TestConfig.LATENCY_SAMPLES):
-        try:
-            if security in ["tls", "reality"]:
-                success, latency, _ = test_tls_connection(
-                    host, port, sni, TestConfig.LATENCY_TIMEOUT
-                )
-            else:
-                success, latency = test_tcp_connection(
-                    host, port, TestConfig.LATENCY_TIMEOUT
-                )
-            
-            if success and latency > 0:
-                latencies.append(latency)
-                successes += 1
-        except:
-            pass
+        if server.network_type == "ws":
+            settings["wsSettings"] = {"path": server.path or "/"}
+            if server.sni:
+                settings["wsSettings"]["headers"] = {"Host": server.sni}
+        elif server.network_type == "grpc":
+            settings["grpcSettings"] = {"serviceName": server.service_name or ""}
+        elif server.network_type == "tcp" and server.security != "reality":
+            settings["tcpSettings"] = {"header": {"type": "none"}}
         
-        time.sleep(0.05)
-    
-    if not latencies:
-        return None
-    
-    return LatencyResult(
-        avg=round(mean(latencies), 1),
-        min=round(min(latencies), 1),
-        max=round(max(latencies), 1),
-        jitter=round(stdev(latencies), 1) if len(latencies) > 1 else 0,
-        samples=len(latencies),
-        success_rate=round(successes / TestConfig.LATENCY_SAMPLES * 100, 1)
-    )
+        return settings
 
-def test_stability(server_info: Dict) -> Optional[StabilityResult]:
-    """
-    Тест стабильности соединения
-    Множественные параллельные подключения
-    """
-    host = server_info["host"]
-    port = server_info["port"]
-    security = server_info.get("security", "none")
-    sni = server_info.get("sni", host)
+
+# === ТЕСТЫ ===
+class BaseTest(ABC):
+    """Базовый класс для тестов"""
     
-    successes = 0
-    failures = 0
-    response_times = []
+    def __init__(self, xray_exe: Path):
+        self.xray_exe = xray_exe
+        self.total_retries = 0
     
-    def single_connection():
-        nonlocal successes, failures
-        try:
-            if security in ["tls", "reality"]:
-                success, latency, _ = test_tls_connection(host, port, sni, 3)
-            else:
-                success, latency = test_tcp_connection(host, port, 3)
-            
-            if success:
-                successes += 1
-                return latency
-            else:
-                failures += 1
+    @abstractmethod
+    def run(self, session: XraySession) -> Any:
+        pass
+    
+    def execute(self, key: str) -> Optional[Any]:
+        server = KeyParser.parse(key)
+        if not server:
+            return None
+        
+        port = get_free_port()
+        config = XrayConfigBuilder.build(server, port)
+        if not config:
+            return None
+        
+        with xray_session(self.xray_exe, config) as session:
+            if session is None:
                 return None
-        except:
-            failures += 1
-            return None
-    
-    # Параллельные подключения
-    with concurrent.futures.ThreadPoolExecutor(max_workers=TestConfig.STABILITY_CONNECTIONS) as executor:
-        futures = [executor.submit(single_connection) for _ in range(TestConfig.STABILITY_CONNECTIONS)]
-        
-        for future in concurrent.futures.as_completed(futures, timeout=TestConfig.STABILITY_DURATION):
-            try:
-                result = future.result()
-                if result:
-                    response_times.append(result)
-            except:
-                failures += 1
-    
-    total = successes + failures
-    if total == 0:
-        return None
-    
-    return StabilityResult(
-        success_rate=round(successes / total * 100, 1),
-        avg_response_time=round(mean(response_times), 1) if response_times else 0,
-        failed_connections=failures,
-        total_connections=total
-    )
+            return self.run(session)
 
-def test_load(server_info: Dict) -> Optional[LoadTestResult]:
-    """
-    Тест под нагрузкой
-    Имитация реального мобильного использования
-    """
-    host = server_info["host"]
-    port = server_info["port"]
-    security = server_info.get("security", "none")
-    sni = server_info.get("sni", host)
+
+class LatencyTest(BaseTest):
+    """Тест задержки и джиттера с retry"""
     
-    successes = 0
-    failures = 0
-    response_times = []
-    start_time = time.time()
-    
-    def single_request():
-        nonlocal successes, failures
-        try:
-            if security in ["tls", "reality"]:
-                success, latency, _ = test_tls_connection(host, port, sni, 2)
-            else:
-                success, latency = test_tcp_connection(host, port, 2)
+    def run(self, session: XraySession) -> Optional[Tuple[float, float, int]]:
+        """Возвращает (avg, jitter, retries_used)"""
+        latencies: List[float] = []
+        total_retries = 0
+        
+        http_session = session.get_http_session()
+        requester = RetryableRequest(http_session)
+        
+        for _ in range(CONFIG.LATENCY_SAMPLES):
+            latency, retries = self._measure_request_with_retry(requester)
+            total_retries += retries
             
-            if success:
-                successes += 1
-                return latency
-            else:
-                failures += 1
-                return None
-        except:
-            failures += 1
-            return None
-    
-    # Серия параллельных запросов
-    with concurrent.futures.ThreadPoolExecutor(max_workers=TestConfig.LOAD_TEST_PARALLEL) as executor:
-        futures = [executor.submit(single_request) for _ in range(TestConfig.LOAD_TEST_REQUESTS)]
+            if latency is not None:
+                latencies.append(latency)
         
-        for future in concurrent.futures.as_completed(futures, timeout=30):
-            try:
-                result = future.result()
-                if result:
-                    response_times.append(result)
-            except:
-                failures += 1
-    
-    elapsed = time.time() - start_time
-    total = successes + failures
-    
-    if total == 0:
-        return None
-    
-    return LoadTestResult(
-        success_rate=round(successes / total * 100, 1),
-        avg_response_time=round(mean(response_times), 1) if response_times else 0,
-        requests_per_second=round(total / elapsed, 2) if elapsed > 0 else 0,
-        failed_requests=failures,
-        total_requests=total
-    )
-
-# ========== ВАЛИДАЦИЯ МОБИЛЬНЫХ ПРОТОКОЛОВ ==========
-
-def validate_mobile_protocol(server_info: Dict) -> Tuple[bool, List[str]]:
-    """
-    Проверка специфичных для мобильных настроек протокола
-    """
-    issues = []
-    
-    protocol = server_info.get("protocol", "")
-    security = server_info.get("security", "none")
-    transport = server_info.get("type", "tcp")
-    flow = server_info.get("flow", "")
-    
-    # Reality проверки
-    if security == "reality":
-        if not server_info.get("pbk"):
-            issues.append("Reality: отсутствует publicKey")
-        if not server_info.get("fp"):
-            issues.append("Reality: отсутствует fingerprint")
-        if not server_info.get("sni"):
-            issues.append("Reality: отсутствует SNI")
-    
-    # XTLS Flow проверки для iOS
-    if flow:
-        if "splice" in flow.lower():
-            issues.append("Flow splice не поддерживается на iOS")
-    
-    # gRPC проверки
-    if transport == "grpc":
-        if not server_info.get("serviceName"):
-            issues.append("gRPC: отсутствует serviceName")
-    
-    # WebSocket проверки
-    if transport == "ws":
-        if not server_info.get("path"):
-            issues.append("WebSocket: отсутствует path (будет использован /)")
-    
-    # VMess alterId
-    if protocol == "vmess":
-        if server_info.get("aid", 0) > 0:
-            issues.append("VMess: alterId > 0 устарел")
-    
-    # Общие проверки
-    if not server_info.get("sni") and security in ["tls", "reality"]:
-        issues.append("TLS/Reality: пустой SNI может вызвать проблемы")
-    
-    is_valid = len([i for i in issues if "не поддерживается" in i or "отсутствует publicKey" in i]) == 0
-    
-    return is_valid, issues
-
-# ========== ОПРЕДЕЛЕНИЕ ПРОФИЛЯ ==========
-
-def determine_profile(
-    latency: Optional[LatencyResult],
-    stability: Optional[StabilityResult],
-    load_test: Optional[LoadTestResult],
-    udp_test: Optional[UDPTestResult],
-    dns_test: Optional[DNSTestResult]
-) -> Tuple[str, int]:
-    """Определение профиля качества для мобильных"""
-    
-    # Базовые проверки
-    if not latency:
-        return "poor", 0
-    
-    # Расчет score
-    score = 0
-    
-    # Latency (до 30 баллов)
-    if latency.avg < 100:
-        score += 30
-    elif latency.avg < 200:
-        score += 25
-    elif latency.avg < 350:
-        score += 20
-    elif latency.avg < 500:
-        score += 15
-    elif latency.avg < 1000:
-        score += 10
-    else:
-        score += 5
-    
-    # Jitter (до 20 баллов)
-    if latency.jitter < 30:
-        score += 20
-    elif latency.jitter < 50:
-        score += 15
-    elif latency.jitter < 100:
-        score += 10
-    elif latency.jitter < 150:
-        score += 5
-    
-    # Стабильность (до 25 баллов)
-    if stability:
-        if stability.success_rate >= 95:
-            score += 25
-        elif stability.success_rate >= 90:
-            score += 20
-        elif stability.success_rate >= 80:
-            score += 15
-        elif stability.success_rate >= 70:
-            score += 10
-        else:
-            score += 5
-    
-    # Нагрузка (до 15 баллов)
-    if load_test:
-        if load_test.success_rate >= 95:
-            score += 15
-        elif load_test.success_rate >= 90:
-            score += 12
-        elif load_test.success_rate >= 80:
-            score += 9
-        elif load_test.success_rate >= 70:
-            score += 6
-        else:
-            score += 3
-    
-    # UDP (до 5 баллов)
-    if udp_test and udp_test.success:
-        score += 5
-    
-    # DNS (до 5 баллов)
-    if dns_test and dns_test.success:
-        score += 5
-    
-    # Определение профиля
-    for profile_name, profile_data in sorted(
-        MOBILE_QUALITY_PROFILES.items(),
-        key=lambda x: x[1]["priority"]
-    ):
-        thresholds = profile_data["thresholds"]
+        self.total_retries = total_retries
         
-        if latency.avg > thresholds["latency_avg_max"]:
-            continue
-        if latency.jitter > thresholds["latency_jitter_max"]:
-            continue
-        if stability and stability.success_rate < thresholds["stability_min"]:
-            continue
-        if load_test and load_test.success_rate < thresholds["load_success_min"]:
-            continue
-        if thresholds["udp_success"] and (not udp_test or not udp_test.success):
-            continue
-        if thresholds["dns_success"] and (not dns_test or not dns_test.success):
-            continue
-        
-        return profile_name, score
-    
-    return "poor", score
-
-# ========== ПОЛНЫЙ АНАЛИЗ КЛЮЧА ==========
-
-def analyze_key_full(key: str) -> Optional[MobileTestResult]:
-    """Полный анализ ключа для мобильных"""
-    try:
-        # Дедупликация
-        server_hash = get_server_hash(key)
-        if server_hash in seen_servers:
-            return None  # Дубликат
-        seen_servers.add(server_hash)
-        
-        # Парсинг
-        server_info = parse_key(key)
-        if not server_info:
+        if len(latencies) < CONFIG.MIN_LATENCY_SAMPLES:
             return None
         
-        host = server_info["host"]
-        port = server_info["port"]
+        avg = round(mean(latencies), 1)
+        jitter = round(stdev(latencies), 1) if len(latencies) > 1 else 0.0
         
-        # 1. Latency тест
-        latency = measure_latency(server_info)
-        if not latency:
-            return None  # Сервер недоступен
+        return (avg, jitter, total_retries)
+    
+    def _measure_request_with_retry(
+        self, 
+        requester: RetryableRequest
+    ) -> Tuple[Optional[float], int]:
+        """Измерение с retry"""
+        url = random.choice(QUICK_CHECK_SITES)
+        headers = {"User-Agent": get_random_user_agent()}
         
-        # 2. Стабильность
-        stability = test_stability(server_info)
-        
-        # 3. Нагрузка
-        load_test = test_load(server_info)
-        
-        # 4. UDP тест
-        udp_test = test_udp_connectivity(host, port)
-        
-        # 5. DNS тест
-        dns_test = test_dns_resolution(host, port)
-        
-        # 6. Валидация протокола
-        protocol_valid, protocol_issues = validate_mobile_protocol(server_info)
-        
-        # 7. Определение профиля
-        profile, score = determine_profile(latency, stability, load_test, udp_test, dns_test)
-        
-        # 8. Mobile ready?
-        mobile_ready = (
-            profile in ["elite", "premium", "good"] and
-            protocol_valid and
-            stability and stability.success_rate >= 80
+        start = time.time()
+        response, retries = requester.get(
+            url,
+            headers=headers,
+            allow_redirects=False
         )
         
-        return MobileTestResult(
-            key=key,
-            protocol=server_info["protocol"].upper(),
-            host=host,
-            port=port,
-            security=server_info.get("security", "none"),
-            transport=server_info.get("type", "tcp"),
-            latency=latency,
-            stability=stability,
-            load_test=load_test,
-            udp_test=udp_test,
-            dns_test=dns_test,
-            profile=profile,
-            score=score,
-            mobile_ready=mobile_ready,
-            issues=protocol_issues
+        if response is not None and response.status_code in [200, 204]:
+            latency = (time.time() - start) * 1000
+            # Корректируем на retry delays
+            if retries > 0:
+                latency = latency / (retries + 1)  # Примерная корректировка
+            return latency, retries
+        
+        return None, retries
+
+
+class CategoryTest(BaseTest):
+    """Тест доступности категорий сайтов (ПАРАЛЛЕЛЬНЫЙ)"""
+    
+    def run(self, session: XraySession) -> Tuple[Dict[str, int], int]:
+        """Возвращает (results, retries_used)"""
+        results: Dict[str, int] = {}
+        total_retries = 0
+        
+        http_session = session.get_http_session()
+        
+        for category, sites in CHECK_SITES.items():
+            passed, retries = self._check_category_parallel(
+                http_session, 
+                sites[:CONFIG.CATEGORY_SAMPLES]
+            )
+            results[category] = passed
+            total_retries += retries
+        
+        self.total_retries = total_retries
+        return (results, total_retries)
+    
+    def _check_category_parallel(
+        self,
+        http_session: requests.Session,
+        sites: List[Tuple[str, str]]
+    ) -> Tuple[int, int]:
+        """Параллельная проверка сайтов в категории"""
+        passed = 0
+        total_retries = 0
+        
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=CONFIG.CATEGORY_PARALLEL
+        ) as executor:
+            futures = {
+                executor.submit(
+                    self._check_site_with_retry, 
+                    http_session, 
+                    url
+                ): name
+                for url, name in sites
+            }
+            
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    success, retries = future.result()
+                    total_retries += retries
+                    if success:
+                        passed += 1
+                except Exception as e:
+                    logger.debug(f"Category check error: {e}")
+        
+        return passed, total_retries
+    
+    def _check_site_with_retry(
+        self,
+        http_session: requests.Session,
+        url: str
+    ) -> Tuple[bool, int]:
+        """Проверка сайта с retry"""
+        requester = RetryableRequest(http_session)
+        headers = {"User-Agent": get_random_user_agent()}
+        
+        response, retries = requester.get(
+            url,
+            headers=headers,
+            allow_redirects=True
         )
         
-    except Exception as e:
+        success = response is not None and response.status_code < 500
+        return success, retries
+
+
+class StabilityTest:
+    """Тест стабильности (множество подключений)"""
+    
+    def __init__(self, xray_exe: Path):
+        self.xray_exe = xray_exe
+        self.total_retries = 0
+    
+    def execute(self, key: str) -> Optional[Tuple[float, int]]:
+        """Возвращает (stability_percent, retries_used)"""
+        server = KeyParser.parse(key)
+        if not server:
+            return None
+        
+        successes = 0
+        total_retries = 0
+        
+        for i in range(CONFIG.STABILITY_CHECKS):
+            success, retries = self._single_check_with_retry(server)
+            total_retries += retries
+            if success:
+                successes += 1
+        
+        self.total_retries = total_retries
+        
+        if successes == 0:
+            return None
+        
+        return (round(successes / CONFIG.STABILITY_CHECKS * 100, 1), total_retries)
+    
+    def _single_check_with_retry(self, server: ServerInfo) -> Tuple[bool, int]:
+        """Одна проверка с retry"""
+        port = get_free_port()
+        config = XrayConfigBuilder.build(server, port)
+        if not config:
+            return False, 0
+        
+        with xray_session(self.xray_exe, config, startup_delay=0.5) as session:
+            if session is None:
+                return False, 0
+            
+            requester = RetryableRequest(
+                session.get_http_session(),
+                max_retries=1  # Для stability теста меньше retry
+            )
+            
+            response, retries = requester.get(
+                "http://www.gstatic.com/generate_204",
+                timeout=3,
+                allow_redirects=False
+            )
+            
+            success = response is not None and response.status_code in [200, 204]
+            return success, retries
+
+
+# === ВАЛИДАТОР ===
+class VPNValidator:
+    """Главный валидатор VPN ключей"""
+    
+    def __init__(self, xray_exe: Path):
+        self.xray_exe = xray_exe
+        self.latency_test = LatencyTest(xray_exe)
+        self.category_test = CategoryTest(xray_exe)
+        self.stability_test = StabilityTest(xray_exe)
+    
+    def validate(self, key: str) -> Optional[TestResult]:
+        """Полная валидация одного ключа"""
+        total_retries = 0
+        
+        try:
+            # 1. Latency & Jitter
+            latency_result = self.latency_test.execute(key)
+            if not latency_result:
+                return None
+            
+            latency_avg, jitter, retries = latency_result
+            total_retries += retries
+            
+            # 2. Категории (параллельно!)
+            category_result = self.category_test.execute(key)
+            if not category_result:
+                return None
+            
+            categories, retries = category_result
+            total_retries += retries
+            categories_passed = sum(1 for count in categories.values() if count > 0)
+            
+            # 3. Stability
+            stability_result = self.stability_test.execute(key)
+            if not stability_result:
+                return None
+            
+            stability, retries = stability_result
+            total_retries += retries
+            
+            if stability < CONFIG.MIN_STABILITY_PERCENT:
+                return None
+            
+            # 4. Определение профиля
+            profile, score = self._determine_profile(
+                latency_avg, jitter, stability, categories_passed
+            )
+            
+            return TestResult(
+                key=key,
+                latency_avg=latency_avg,
+                latency_jitter=jitter,
+                stability_rate=stability,
+                categories_passed=categories_passed,
+                category_details=categories,
+                profile=profile,
+                score=score,
+                retries_used=total_retries
+            )
+            
+        except Exception as e:
+            logger.debug(f"Validation error: {e}")
+            return None
+    
+    def _determine_profile(
+        self,
+        latency: float,
+        jitter: float,
+        stability: float,
+        categories: int
+    ) -> Tuple[QualityProfile, int]:
+        """Определение профиля качества"""
+        sorted_profiles = sorted(
+            QUALITY_PROFILES.items(),
+            key=lambda x: x[1].priority
+        )
+        
+        for profile, thresholds in sorted_profiles:
+            if (latency <= thresholds.latency_max and
+                jitter <= thresholds.jitter_max and
+                stability >= thresholds.stability_min and
+                categories >= thresholds.categories_min):
+                
+                score = (
+                    100 
+                    - int(latency / 10) 
+                    + int(stability) 
+                    + (categories * 5)
+                )
+                return profile, max(0, min(score, 200))
+        
+        return QualityProfile.GOOD, 50
+
+
+# === ФОРМАТИРОВАНИЕ И СОХРАНЕНИЕ ===
+class ResultFormatter:
+    @staticmethod
+    def format_key(result: TestResult) -> str:
+        profile_label = QUALITY_PROFILES[result.profile].label
+        
+        parts = [
+            f"{result.latency_avg:.0f}ms",
+            profile_label,
+            f"stab{result.stability_rate:.0f}%",
+            f"{result.categories_passed}cat",
+            "@vlesstrojan"
+        ]
+        
+        comment = "[" + "|".join(parts) + "]"
+        comment_encoded = quote(comment, safe='')
+        
+        base_key = result.key.split('#')[0]
+        return f"{base_key}#{comment_encoded}"
+
+
+class ResultSaver:
+    @staticmethod
+    def save(results: List[TestResult], output_dir: Path) -> Dict[QualityProfile, int]:
+        by_profile: Dict[QualityProfile, List[TestResult]] = defaultdict(list)
+        
+        for result in results:
+            by_profile[result.profile].append(result)
+        
+        saved_counts = {}
+        
+        for profile in QualityProfile:
+            profile_results = by_profile.get(profile, [])
+            if not profile_results:
+                continue
+            
+            profile_results.sort(key=lambda x: x.score, reverse=True)
+            
+            filename = output_dir / f"{profile.value}.txt"
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(f"# {QUALITY_PROFILES[profile].label}\n")
+                f.write(f"# Канал: @vlesstrojan\n")
+                f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+                f.write(f"# Ключей: {len(profile_results)}\n\n")
+                
+                for result in profile_results:
+                    f.write(ResultFormatter.format_key(result) + "\n")
+            
+            saved_counts[profile] = len(profile_results)
+            logger.info(f"💾 {QUALITY_PROFILES[profile].label}: {len(profile_results)} → {filename.name}")
+        
+        return saved_counts
+
+
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+def find_latest_verified() -> Optional[Path]:
+    if not RESULTS_FOLDER.exists():
         return None
-
-# ========== ФОРМАТИРОВАНИЕ ==========
-
-def format_result(result: MobileTestResult) -> str:
-    """Формат с URL encoding - работает везде (Hiddify PC, V2RayNG Android)"""
     
-    quality_map = {
-        "elite": "ELITE",
-        "premium": "PREM",
-        "good": "GOOD",
-        "acceptable": "OK"
-    }
-    quality = quality_map.get(result.profile, "")
-    
-    # Собираем данные как в рабочем примере
-    parts = []
-    parts.append(f"{result.latency.avg:.0f}ms")
-    
-    if quality:
-        parts.append(quality)
-    
-    if result.mobile_ready:
-        parts.append("Mobile")
-    
-    if result.stability:
-        parts.append(f"stab{result.stability.success_rate:.0f}%")
-    
-    parts.append("@vlesstrojan")
-    
-    # В квадратных скобках с разделителем |
-    comment = "[" + "|".join(parts) + "]"
-    
-    # URL encode всего комментария
-    comment_encoded = quote(comment, safe='')
-    
-    return f"{result.key}#{comment_encoded}"
-
-
-
-# ========== MAIN ==========
-
-def find_latest_verified() -> Optional[str]:
-    """Поиск последнего verified файла"""
-    if not os.path.exists(RESULTS_FOLDER):
+    files = list(RESULTS_FOLDER.glob("verified_*.txt"))
+    if not files:
         return None
     
-    verified_files = [
-        f for f in os.listdir(RESULTS_FOLDER)
-        if f.startswith("verified_") and f.endswith(".txt")
-    ]
-    
-    if not verified_files:
-        return None
-    
-    latest = max(
-        verified_files,
-        key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
-    )
-    
-    return os.path.join(RESULTS_FOLDER, latest)
+    return max(files, key=lambda f: f.stat().st_mtime)
 
-def main():
-    stats["start_time"] = time.time()
-    
-    print("\n" + "="*100)
-    print(" "*15 + "📱 MOBILE VPN VALIDATOR v3.0 (FULL SIMULATION)")
-    print(" "*20 + "Полная имитация мобильного трафика")
-    print("="*100)
-    
-    print(f"""
-🎯 Что тестируем:
-   ⚡ Latency - {TestConfig.LATENCY_SAMPLES} замеров с jitter
-   📊 Стабильность - {TestConfig.STABILITY_CONNECTIONS} параллельных соединений
-   🔥 Нагрузка - {TestConfig.LOAD_TEST_REQUESTS} запросов ({TestConfig.LOAD_TEST_PARALLEL} параллельно)
-   📡 UDP connectivity - {TestConfig.UDP_TEST_PACKETS} пакетов
-   🌐 DNS резолвинг - {len(TestConfig.DNS_TEST_DOMAINS)} доменов
-   ✅ Валидация мобильных протоколов
 
-📱 Мобильные клиенты:
-   🍎 iOS: Happ, Streisand, Shadowrocket, FoXray, V2Box
-   🤖 Android: V2RayNG, Hiddify, NekoBox, V2Box
-""")
+def load_keys(filepath: Path) -> List[str]:
+    keys: List[str] = []
     
-    # Источник
-    source_file = find_latest_verified()
-    if not source_file:
-        log("❌ Не найден verified файл в results/")
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                key = line.split('#')[0].strip()
+                if key:
+                    keys.append(key)
+    
+    return keys
+
+
+# === MAIN ===
+def print_banner():
+    print("=" * 100)
+    print(" " * 30 + "📱 REAL MOBILE VPN VALIDATOR v4.2")
+    print(" " * 35 + "(XRAY-POWERED)")
+    print("=" * 100)
+
+
+def print_config():
+    print(f"\n🎯 Проверки:")
+    print(f"   ⚡ Latency - {CONFIG.LATENCY_SAMPLES} замеров (retry: {CONFIG.MAX_RETRIES})")
+    print(f"   🏦 Категории - {len(CHECK_SITES)} × {CONFIG.CATEGORY_SAMPLES} (parallel: {CONFIG.CATEGORY_PARALLEL})")
+    print(f"   📊 Stability - {CONFIG.STABILITY_CHECKS} подключений (min: {CONFIG.MIN_STABILITY_PERCENT}%)")
+    
+    print(f"\n🔄 Retry: max={CONFIG.MAX_RETRIES}, backoff={CONFIG.RETRY_BACKOFF}s-{CONFIG.RETRY_BACKOFF_MAX}s")
+    
+    print(f"\n🌐 {sum(len(sites) for sites in CHECK_SITES.values())} сайтов:")
+    for category, sites in CHECK_SITES.items():
+        names = ', '.join([s[1] for s in sites[:3]])
+        if len(sites) > 3:
+            names += f" (+{len(sites) - 3})"
+        print(f"   {category}: {names}")
+
+
+def main() -> int:
+    print_banner()
+    print_config()
+    
+    # Установка Xray
+    xray_exe = XrayInstaller.setup()
+    if not xray_exe:
+        logger.error("❌ Не удалось установить Xray")
         return 1
     
-    log(f"📁 Источник: {os.path.basename(source_file)}")
+    # Загрузка ключей
+    source_file = find_latest_verified()
+    if not source_file:
+        logger.error("❌ Не найден verified файл")
+        return 1
     
-    # Загрузка
-    with open(source_file, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
+    logger.info(f"\n📁 Источник: {source_file.name}")
     
-    keys = []
-    for line in lines:
-        line = line.strip()
-        if line and not line.startswith('#'):
-            key = line.split('#')[0].strip()
-            if key:
-                keys.append(key)
+    keys = load_keys(source_file)
+    if not keys:
+        logger.error("❌ Нет ключей для проверки")
+        return 1
     
-    stats["total_keys"] = len(keys)
-    log(f"📦 Загружено ключей: {len(keys)}")
+    stats = ValidationStats(total=len(keys))
     
-    # Оценка времени
-    est_seconds = (len(keys) / TestConfig.MAX_PARALLEL_KEYS) * 8
-    log(f"⏱️  Оценка времени: ~{int(est_seconds//60)} мин")
-    log(f"🚀 Параллельность: {TestConfig.MAX_PARALLEL_KEYS} ключей")
+    logger.info(f"📦 Ключей: {len(keys)}")
+    logger.info(f"⏱️  Оценка: ~{int(len(keys) * 15 / 60)} минут\n")  # Быстрее из-за параллелизма
     
-    print("\n" + "="*100)
-    log("🔍 Начинаем полное тестирование...")
-    print("="*100 + "\n")
+    print("=" * 100)
+    logger.info("🔍 Начинаем проверку...")
+    print("=" * 100 + "\n")
     
-    # Обработка
-    all_results: List[MobileTestResult] = []
+    # Валидация
+    validator = VPNValidator(xray_exe)
+    all_results: List[TestResult] = []
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=TestConfig.MAX_PARALLEL_KEYS) as executor:
-        futures = {executor.submit(analyze_key_full, key): key for key in keys}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.MAX_PARALLEL) as executor:
+        future_to_key = {
+            executor.submit(validator.validate, key): key 
+            for key in keys
+        }
         
         completed = 0
-        for future in concurrent.futures.as_completed(futures):
+        for future in concurrent.futures.as_completed(future_to_key):
             completed += 1
-            stats["checked"] += 1
             
-            result = future.result()
-            
-            if result is None:
-                stats["duplicates"] += 1
-                continue
+            try:
+                result = future.result()
+            except Exception as e:
+                logger.debug(f"Future exception: {e}")
+                result = None
             
             if result:
                 all_results.append(result)
-                stats["passed"] += 1
-                stats["by_profile"][result.profile] += 1
+                stats.passed += 1
+                stats.total_retries += result.retries_used
+                stats.by_profile[result.profile] += 1
                 
-                if result.mobile_ready:
-                    stats["mobile_ready"] += 1
-                if result.udp_test and result.udp_test.success:
-                    stats["udp_capable"] += 1
-                if result.dns_test and result.dns_test.success:
-                    stats["dns_capable"] += 1
-                
-                profile_info = MOBILE_QUALITY_PROFILES[result.profile]
-                mobile_icon = "📱" if result.mobile_ready else ""
-                
-                log(f"[{completed}/{len(keys)}] {profile_info['emoji']} {result.profile.upper()}: "
-                    f"Score:{result.score} Lat:{result.latency.avg:.0f}ms "
-                    f"Jit:{result.latency.jitter:.0f}ms {mobile_icon}")
+                label = QUALITY_PROFILES[result.profile].label
+                retry_info = f" (retry:{result.retries_used})" if result.retries_used > 0 else ""
+                logger.info(
+                    f"[{completed}/{len(keys)}] {label}: "
+                    f"Lat:{result.latency_avg:.0f}ms "
+                    f"Stab:{result.stability_rate:.0f}% "
+                    f"Cat:{result.categories_passed}/8{retry_info}"
+                )
             else:
-                stats["failed"] += 1
-                if completed % 20 == 0:
-                    log(f"[{completed}/{len(keys)}] ❌ Не прошел")
-            
-            # Прогресс
-            if completed % 50 == 0 and completed > 0:
-                elapsed = time.time() - stats["start_time"]
-                remaining = (elapsed / completed) * (len(keys) - completed)
-                log(f"\n📊 Прогресс: {completed}/{len(keys)} | "
-                    f"✅ {stats['passed']} | 📱 {stats['mobile_ready']} | "
-                    f"⏱️ ~{int(remaining//60)}мин\n")
+                stats.failed += 1
+                if completed % 10 == 0:
+                    logger.info(f"[{completed}/{len(keys)}] ...")
     
-    stats["unique_servers"] = len(seen_servers)
+    # Сохранение
+    print("\n" + "=" * 100)
+    logger.info("💾 СОХРАНЕНИЕ")
+    print("=" * 100 + "\n")
     
-    # === СОХРАНЕНИЕ ===
-    log("\n" + "="*100)
-    log("💾 СОХРАНЕНИЕ РЕЗУЛЬТАТОВ")
-    log("="*100 + "\n")
+    ResultSaver.save(all_results, OUTPUT_DIR)
     
-    # По профилям
-    by_profile = defaultdict(list)
-    for r in all_results:
-        by_profile[r.profile].append(r)
+    # Итоги
+    print("\n" + "=" * 100)
+    print(f"✅ Готово! Прошло: {stats.passed}/{stats.total}")
+    print(f"🔄 Всего retry: {stats.total_retries}")
     
-    for profile_name in sorted(MOBILE_QUALITY_PROFILES.keys(), key=lambda x: MOBILE_QUALITY_PROFILES[x]["priority"]):
-        results = by_profile.get(profile_name, [])
-        if not results:
-            continue
-        
-        profile_info = MOBILE_QUALITY_PROFILES[profile_name]
-        filename = os.path.join(OUTPUT_DIR, f"{profile_name}.txt")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
-        
-        results.sort(key=lambda x: x.score, reverse=True)
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(f"# {profile_info['emoji']} {profile_info['label']}\n")
-            f.write(f"# {profile_info['description']}\n")
-            f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"# Количество: {len(results)}\n")
-            f.write(f"# Mobile Ready: {sum(1 for r in results if r.mobile_ready)}\n\n")
-            
-            for r in results:
-                f.write(format_result(r) + "\n")
-        
-        log(f"{profile_info['emoji']} {profile_info['label']}: {len(results)} → {os.path.basename(filename)}")
-    
-    # Mobile Ready отдельно
-    mobile_ready_results = [r for r in all_results if r.mobile_ready]
-    if mobile_ready_results:
-        mobile_file = os.path.join(OUTPUT_DIR, "mobile_ready.txt")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
-        with open(mobile_file, 'w', encoding='utf-8') as f:
-            f.write("# 📱 MOBILE READY\n")
-            f.write("# Оптимизированы для мобильных клиентов\n")
-            f.write(f"# Количество: {len(mobile_ready_results)}\n\n")
-            
-            for r in sorted(mobile_ready_results, key=lambda x: x.score, reverse=True):
-                f.write(format_result(r) + "\n")
-        
-        log(f"📱 Mobile Ready: {len(mobile_ready_results)} → {os.path.basename(mobile_file)}")
-    
-    # JSON
-    detailed_file = os.path.join(OUTPUT_DIR, "detailed.json")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
-    with open(detailed_file, 'w', encoding='utf-8') as f:
-        json_data = []
-        for r in all_results:
-            json_data.append({
-                "key": r.key,
-                "protocol": r.protocol,
-                "host": r.host,
-                "port": r.port,
-                "security": r.security,
-                "transport": r.transport,
-                "profile": r.profile,
-                "score": r.score,
-                "mobile_ready": r.mobile_ready,
-                "latency": {
-                    "avg": r.latency.avg,
-                    "min": r.latency.min,
-                    "max": r.latency.max,
-                    "jitter": r.latency.jitter
-                } if r.latency else None,
-                "stability": {
-                    "success_rate": r.stability.success_rate,
-                    "avg_response": r.stability.avg_response_time
-                } if r.stability else None,
-                "load_test": {
-                    "success_rate": r.load_test.success_rate,
-                    "rps": r.load_test.requests_per_second
-                } if r.load_test else None,
-                "udp_capable": r.udp_test.success if r.udp_test else False,
-                "dns_capable": r.dns_test.success if r.dns_test else False,
-                "issues": r.issues
-            })
-        json.dump(json_data, f, indent=2, ensure_ascii=False)
-    
-    log(f"📄 JSON → {os.path.basename(detailed_file)}")
-    
-    # Сводка
-    total_time = int(time.time() - stats["start_time"])
-    
-    summary_file = os.path.join(OUTPUT_DIR, "summary.txt")  # ← ИСПРАВЛЕНО: убрали _{timestamp}
-    with open(summary_file, 'w', encoding='utf-8') as f:
-        f.write("="*80 + "\n")
-        f.write("MOBILE VPN VALIDATOR v3.0 - ПОЛНАЯ СВОДКА\n")
-        f.write("="*80 + "\n\n")
-        
-        f.write(f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Всего ключей: {stats['total_keys']}\n")
-        f.write(f"Уникальных: {stats['unique_servers']}\n")
-        f.write(f"Дубликатов: {stats['duplicates']}\n")
-        f.write(f"Прошли: {stats['passed']}\n")
-        f.write(f"Не прошли: {stats['failed']}\n")
-        f.write(f"Время: {total_time}с ({total_time//60}мин)\n\n")
-        
-        f.write("МОБИЛЬНАЯ ГОТОВНОСТЬ:\n")
-        f.write(f"  📱 Mobile Ready: {stats['mobile_ready']}\n")
-        f.write(f"  📡 UDP capable: {stats['udp_capable']}\n")
-        f.write(f"  🌐 DNS capable: {stats['dns_capable']}\n\n")
-        
-        f.write("ПО ПРОФИЛЯМ:\n")
-        for profile_name in sorted(MOBILE_QUALITY_PROFILES.keys(), key=lambda x: MOBILE_QUALITY_PROFILES[x]["priority"]):
-            count = stats["by_profile"].get(profile_name, 0)
-            if count > 0:
-                info = MOBILE_QUALITY_PROFILES[profile_name]
-                pct = count / stats["passed"] * 100 if stats["passed"] > 0 else 0
-                f.write(f"  {info['emoji']} {info['label']}: {count} ({pct:.1f}%)\n")
-        
-        if all_results:
-            latencies = [r.latency.avg for r in all_results if r.latency]
-            jitters = [r.latency.jitter for r in all_results if r.latency]
-            scores = [r.score for r in all_results]
-            
-            f.write(f"\nСТАТИСТИКА:\n")
-            f.write(f"  Latency: min={min(latencies):.0f} avg={mean(latencies):.0f} max={max(latencies):.0f}ms\n")
-            f.write(f"  Jitter: min={min(jitters):.0f} avg={mean(jitters):.0f} max={max(jitters):.0f}ms\n")
-            f.write(f"  Score: min={min(scores)} avg={mean(scores):.0f} max={max(scores)}\n")
-    
-    log(f"📊 Сводка → {os.path.basename(summary_file)}")
-    
-    # === ФИНАЛ ===
-    print("\n" + "="*100)
-    print("📊 ИТОГОВАЯ СТАТИСТИКА")
-    print("="*100)
-    print(f"Всего ключей:     {stats['total_keys']}")
-    print(f"Уникальных:       {stats['unique_servers']}")
-    print(f"✅ Прошли:        {stats['passed']}")
-    print(f"❌ Не прошли:     {stats['failed']}")
-    
-    print(f"\n📱 МОБИЛЬНАЯ ГОТОВНОСТЬ:")
-    print(f"  📱 Mobile Ready: {stats['mobile_ready']}")
-    print(f"  📡 UDP capable:  {stats['udp_capable']}")
-    print(f"  🌐 DNS capable:  {stats['dns_capable']}")
-    
-    print(f"\n🏆 ПО ПРОФИЛЯМ:")
-    for profile_name in sorted(MOBILE_QUALITY_PROFILES.keys(), key=lambda x: MOBILE_QUALITY_PROFILES[x]["priority"]):
-        count = stats["by_profile"].get(profile_name, 0)
+    for profile in QualityProfile:
+        count = stats.by_profile.get(profile, 0)
         if count > 0:
-            info = MOBILE_QUALITY_PROFILES[profile_name]
-            pct = count / stats["passed"] * 100 if stats["passed"] > 0 else 0
-            print(f"  {info['emoji']} {info['label']}: {count} ({pct:.1f}%)")
+            print(f"   {QUALITY_PROFILES[profile].label}: {count}")
     
-    if all_results:
-        latencies = [r.latency.avg for r in all_results if r.latency]
-        jitters = [r.latency.jitter for r in all_results if r.latency]
-        print(f"\n⚡ Latency: {min(latencies):.0f} / {mean(latencies):.0f} / {max(latencies):.0f} ms")
-        print(f"📈 Jitter:  {min(jitters):.0f} / {mean(jitters):.0f} / {max(jitters):.0f} ms")
-    
-    print(f"\n⏱️  Время: {total_time}с ({total_time//60}мин)")
-    print(f"🚀 Скорость: {len(keys)/max(total_time,1)*60:.1f} ключей/мин")
-    print(f"📂 Результаты: {OUTPUT_DIR}")
-    print("="*100 + "\n")
+    print("=" * 100)
     
     return 0
 
+
 if __name__ == "__main__":
     sys.exit(main())
-
