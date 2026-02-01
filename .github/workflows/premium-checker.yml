@@ -33,7 +33,6 @@ jobs:
         pip install --upgrade pip
         pip install requests[socks]
     
-    # ✅ ИСПРАВЛЕНО: v6 вместо v2 + дополнительные параметры
     - name: 📥 Download verified keys
       uses: dawidd6/action-download-artifact@v6
       with:
@@ -44,7 +43,6 @@ jobs:
         if_no_artifact_found: warn
       continue-on-error: true
     
-    # ✅ ДОБАВЛЕНО: Проверка файлов
     - name: 🔍 Check downloaded files
       run: |
         echo "📂 Содержимое results/:"
@@ -78,8 +76,8 @@ jobs:
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
         
-        git fetch origin main
-        git pull origin main --rebase || echo "Nothing to pull"
+        # Подтягиваем последние изменения
+        git pull origin main --rebase --autostash || git pull origin main || echo "Nothing to pull"
         
         # ✅ ИСПРАВЛЕНО: добавлен флаг -f для игнорирования .gitignore
         git add -f results/premium/
