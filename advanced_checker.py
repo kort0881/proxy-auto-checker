@@ -23,7 +23,7 @@ import base64
 import hashlib
 import threading
 from datetime import datetime
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 import concurrent.futures
 from collections import defaultdict
 from statistics import mean, stdev, median
@@ -929,41 +929,39 @@ def analyze_key_full(key: str) -> Optional[MobileTestResult]:
 # ========== ФОРМАТИРОВАНИЕ ==========
 
 def format_result(result: MobileTestResult) -> str:
-    """Форматирование результата для мобильных клиентов"""
-    profile_info = MOBILE_QUALITY_PROFILES[result.profile]
+    """Формат с URL encoding - работает везде (Hiddify PC, V2RayNG Android)"""
     
-    # Создаём компактный комментарий БЕЗ emoji (для совместимости)
-    stats = []
-    stats.append(f"Lat:{result.latency.avg:.0f}ms")
+    quality_map = {
+        "elite": "ELITE",
+        "premium": "PREM",
+        "good": "GOOD",
+        "acceptable": "OK"
+    }
+    quality = quality_map.get(result.profile, "")
+    
+    # Собираем данные как в рабочем примере
+    parts = []
+    parts.append(f"{result.latency.avg:.0f}ms")
+    
+    if quality:
+        parts.append(quality)
+    
+    if result.mobile_ready:
+        parts.append("Mobile")
     
     if result.stability:
-        stats.append(f"Stab:{result.stability.success_rate:.0f}%")
+        parts.append(f"stab{result.stability.success_rate:.0f}%")
     
-    # Определяем качество одним словом
-    quality_labels = {
-        "elite": "ELITE",
-        "premium": "PREMIUM", 
-        "good": "GOOD",
-        "acceptable": "OK",
-        "basic": "BASIC",
-        "poor": "POOR"
-    }
-    quality = quality_labels.get(result.profile, "")
+    parts.append("@vlesstrojan")
     
-    # Мобильная готовность
-    mobile = "Mobile" if result.mobile_ready else ""
+    # В квадратных скобках с разделителем |
+    comment = "[" + "|".join(parts) + "]"
     
-    # Формируем комментарий: @канал | качество | статы
-    comment_parts = ["@vlesstrojan"]
-    if quality:
-        comment_parts.append(quality)
-    if mobile:
-        comment_parts.append(mobile)
-    comment_parts.extend(stats)
+    # URL encode всего комментария
+    comment_encoded = quote(comment, safe='')
     
-    comment = "  ".join(comment_parts)
-    
-    return f"{result.key}#{comment}"
+    return f"{result.key}#{comment_encoded}"
+
 
 
 # ========== MAIN ==========
