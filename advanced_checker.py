@@ -961,7 +961,7 @@ def format_result(result: MobileTestResult) -> str:
         comment_parts.append(mobile)
     comment_parts.extend(stats)
     
-    comment = " | ".join(comment_parts)
+    comment = "  ".join(comment_parts)
     
     return f"{result.key}#{comment}"
 
