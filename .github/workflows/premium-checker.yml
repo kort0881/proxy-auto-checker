@@ -5,12 +5,10 @@ on:
     - cron: '0 6 * * *'  # Каждый день в 6:00 UTC
   workflow_dispatch:
 
-# ✅ ДОБАВЛЕНО: та же concurrency группа
 concurrency:
-  group: proxy-checker-push  # Общая группа с check-proxies.yml
+  group: proxy-checker-push
   cancel-in-progress: false
 
-# ✅ ДОБАВЛЕНО: Permissions
 permissions:
   contents: write
 
@@ -21,12 +19,12 @@ jobs:
     
     steps:
     - name: 📥 Checkout
-      uses: actions/checkout@v4  # ← ОБНОВЛЕНО до v4
+      uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # ✅ ДОБАВЛЕНО
+        fetch-depth: 0
     
     - name: 🐍 Setup Python
-      uses: actions/setup-python@v5  # ← ОБНОВЛЕНО до v5
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
@@ -35,16 +33,36 @@ jobs:
         pip install --upgrade pip
         pip install requests[socks]
     
+    # ✅ ИСПРАВЛЕНО: v6 вместо v2 + дополнительные параметры
     - name: 📥 Download verified keys
-      uses: dawidd6/action-download-artifact@v2
+      uses: dawidd6/action-download-artifact@v6
       with:
         workflow: check-proxies.yml
         name: verified-keys
         path: results/
+        search_artifacts: true
+        if_no_artifact_found: warn
       continue-on-error: true
+    
+    # ✅ ДОБАВЛЕНО: Проверка файлов
+    - name: 🔍 Check downloaded files
+      run: |
+        echo "📂 Содержимое results/:"
+        ls -lah results/ || mkdir -p results
+        
+        if ls results/verified_*.txt 1> /dev/null 2>&1; then
+          echo "✅ Найдены verified файлы!"
+          key_count=$(cat results/verified_*.txt | grep -v "^#" | grep -v "^$" | wc -l)
+          echo "📊 Ключей: ${key_count}"
+        else
+          echo "⚠️ Не найден verified файл, создаём пустой"
+          mkdir -p results
+          touch results/verified_empty.txt
+        fi
     
     - name: 🔥 Run advanced check
       run: python advanced_checker.py
+      continue-on-error: true
     
     - name: 📁 Upload premium artifact
       if: success()
@@ -54,31 +72,26 @@ jobs:
         path: results/premium/*.txt
         retention-days: 30
     
-    # ✅ ИСПРАВЛЕНО: добавлен git pull перед push
     - name: 💾 Commit premium results to repository
       if: success()
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
         
-        # Подтягиваем последние изменения
         git fetch origin main
         git pull origin main --rebase || echo "Nothing to pull"
         
-        # Добавляем всю папку results/premium
         git add results/premium/
         
-        # Считаем ключи
-        total_keys=$(find results/premium -name "*.txt" -exec grep -v "^#" {} \; | grep -v "^$" | wc -l)
+        total_keys=$(find results/premium -name "*.txt" -exec grep -v "^#" {} \; | grep -v "^$" | wc -l 2>/dev/null || echo "0")
         
-        # Коммитим (если есть изменения)
         git diff --cached --quiet || git commit -m "✨ Update premium keys: ${total_keys} total [$(date -u +'%Y-%m-%d %H:%M UTC')]"
         
-        # Пушим
         git push origin main
         
         echo "✅ Premium results saved to results/premium/"
         echo "📊 Files:"
-        ls -lh results/premium/
+        ls -lh results/premium/ || echo "No files yet"
+
 
 
