@@ -929,34 +929,42 @@ def analyze_key_full(key: str) -> Optional[MobileTestResult]:
 # ========== ФОРМАТИРОВАНИЕ ==========
 
 def format_result(result: MobileTestResult) -> str:
-    """Форматирование результата"""
+    """Форматирование результата для мобильных клиентов"""
     profile_info = MOBILE_QUALITY_PROFILES[result.profile]
     
-    parts = [
-        f"#{profile_info['emoji']}",
-        f"Score:{result.score}",
-        f"Lat:{result.latency.avg:.0f}ms",
-        f"Jit:{result.latency.jitter:.0f}ms"
-    ]
+    # Создаём компактный комментарий БЕЗ emoji (для совместимости)
+    stats = []
+    stats.append(f"Lat:{result.latency.avg:.0f}ms")
     
     if result.stability:
-        parts.append(f"Stab:{result.stability.success_rate:.0f}%")
+        stats.append(f"Stab:{result.stability.success_rate:.0f}%")
     
-    if result.load_test:
-        parts.append(f"Load:{result.load_test.success_rate:.0f}%")
+    # Определяем качество одним словом
+    quality_labels = {
+        "elite": "ELITE",
+        "premium": "PREMIUM", 
+        "good": "GOOD",
+        "acceptable": "OK",
+        "basic": "BASIC",
+        "poor": "POOR"
+    }
+    quality = quality_labels.get(result.profile, "")
     
-    if result.udp_test and result.udp_test.success:
-        parts.append("UDP:✓")
+    # Мобильная готовность
+    mobile = "Mobile" if result.mobile_ready else ""
     
-    if result.dns_test and result.dns_test.success:
-        parts.append("DNS:✓")
+    # Формируем комментарий: @канал | качество | статы
+    comment_parts = ["@vlesstrojan"]
+    if quality:
+        comment_parts.append(quality)
+    if mobile:
+        comment_parts.append(mobile)
+    comment_parts.extend(stats)
     
-    parts.append(f"[{result.security}/{result.transport}]")
+    comment = " | ".join(comment_parts)
     
-    if result.mobile_ready:
-        parts.append("📱")
-    
-    return f"{result.key} {' '.join(parts)}"
+    return f"{result.key}#{comment}"
+
 
 # ========== MAIN ==========
 
