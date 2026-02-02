@@ -1329,27 +1329,85 @@ def get_raw_key(uri: str) -> str:
 # ------------------ ЗАГРУЗКА КЛЮЧЕЙ ------------------
 def download_keys():
     all_keys = []
-    log("📥 Загрузка ключей...")
+    
+    # В GitHub Actions используем локальные файлы
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        log("📥 Загрузка из локальных файлов (GitHub Actions)...")
+        
+        premium_dir = os.path.join(RESULTS_FOLDER, 'premium')
+        if os.path.exists(premium_dir):
+            log(f"\n🌍 LOCAL PREMIUM:")
+            for filename in ['good.txt', 'elite.txt', 'premium.txt']:
+                filepath = os.path.join(premium_dir, filename)
+                if os.path.exists(filepath):
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            lines = f.read().strip().split('\n')
+                        valid_lines = []
+                        for line in lines:
+                            line = html.unescape(line.strip())
+                            if line and not line.startswith('#') and line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
+                                valid_lines.append(line)
+                        all_keys.extend(valid_lines)
+                        log(f"  ✅ {filename}: {len(valid_lines)} ключей")
+                    except Exception as e:
+                        log(f"  ❌ {filename}: {e}")
+        
+        if all_keys:
+            all_keys = list(set(all_keys))
+            log(f"\n📦 Уникальных: {len(all_keys)}")
+            return all_keys
+        else:
+            log("⚠️ Локальные файлы пусты, переключаюсь на GitHub...")
+    
+    # Загрузка с GitHub (если не Actions или локальные файлы пусты)
+    log("📥 Загрузка ключей с GitHub...")
+    
+    # Получить токен из переменной окружения
+    github_token = os.environ.get('GITHUB_TOKEN', '')
+    headers = {}
+    if github_token:
+        headers['Authorization'] = f'token {github_token}'
+        log("🔐 Используется GitHub токен")
     
     for region, urls in KEY_SOURCES.items():
         log(f"\n🌍 {region}:")
         for url in urls:
+            filename = url.split("/")[-1].split("?")[0]
             try:
-                r = requests.get(url, timeout=30)
+                r = requests.get(url, timeout=30, headers=headers)
+                r.raise_for_status()
+                
                 lines = r.text.strip().split('\n')
+                log(f"  📄 {filename}: получено {len(lines)} строк")
+                
                 valid_lines = []
                 for line in lines:
                     line = html.unescape(line.strip())
-                    if line and line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
+                    if line and not line.startswith('#') and line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
                         valid_lines.append(line)
+                
                 all_keys.extend(valid_lines)
-                log(f"  ✅ {url.split('/')[-1]}: {len(valid_lines)} ключей")
+                log(f"  ✅ {filename}: {len(valid_lines)} ключей")
+                
+            except requests.exceptions.Timeout:
+                log(f"  ⏱️  {filename}: timeout")
+            except requests.exceptions.HTTPError as e:
+                log(f"  ❌ {filename}: HTTP {e.response.status_code}")
             except Exception as e:
-                log(f"  ❌ {e}")
+                log(f"  ❌ {filename}: {e}")
+    
+    if not all_keys:
+        log("\n❌ Не удалось загрузить ключи!")
+        log("💡 Проверьте:")
+        log("   1. Репозиторий публичный или есть GITHUB_TOKEN")
+        log("   2. Локальные файлы существуют: results/premium/*.txt")
+        return []
     
     all_keys = list(set(all_keys))
     log(f"\n📦 Уникальных: {len(all_keys)}")
     return all_keys
+
 
 # ------------------ MAIN ------------------
 def main():
