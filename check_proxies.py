@@ -1,6 +1,6 @@
 import os
 import re
-import html  # FIX 1: Added missing import
+import html
 import socket
 import ssl
 import time
@@ -56,17 +56,11 @@ BLACKLIST_CACHE_TIME = 3600             # Время кэша блэклиста
 
 # Источники ключей
 KEY_SOURCES = {
-    "RU": [
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part2.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part3.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part4.txt",
+    "PREMIUM": [
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/premium/good.txt",
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/premium/elite.txt",
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/premium/premium.txt",
     ],
-    "EU": [
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part2.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
-    ]
 }
 
 MY_CHANNEL = "@vlesstrojan"
@@ -761,14 +755,14 @@ def kill_process(process):
         except:
             pass
 
-# FIX 4: Improved file cleanup with error handling
+
 def safe_remove_file(filepath):
     """Безопасное удаление файла с обработкой ошибок"""
     try:
         if os.path.exists(filepath):
             os.remove(filepath)
     except Exception:
-        pass  # Игнорируем ошибки удаления
+        pass
 
 # ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА ------------------
 def stage2_xray_check(key, xray_exe):
@@ -888,7 +882,7 @@ def stage3_ip_reputation_check(proxy_data, xray_exe):
         try:
             ip = str(ipaddress.ip_address(host))
         except ValueError:
-            # Это домен, пропускаем проверку (можно добавить DNS resolver)
+            # Это домен, пропускаем проверку
             return proxy_data
         
         # Проверяем кэш
@@ -908,7 +902,6 @@ def stage3_ip_reputation_check(proxy_data, xray_exe):
             'checks': {}
         }
         
-        # FIX 2: Исправлена логика DNSBL - IP в блэклисте если запрос УСПЕШЕН
         try:
             reversed_ip = '.'.join(reversed(ip.split('.')))
             dnsbl_hosts = [
@@ -920,18 +913,13 @@ def stage3_ip_reputation_check(proxy_data, xray_exe):
             for dnsbl in dnsbl_hosts:
                 try:
                     query = f"{reversed_ip}.{dnsbl}"
-                    # Если IP В БЛЭКЛИСТЕ, то запрос УСПЕШЕН (возвращает IP)
                     socket.gethostbyname(query)
                     reputation['checks'][dnsbl] = 'BLOCKED'
                     reputation['blacklisted'] = True
                 except socket.gaierror:
-                    # NXDOMAIN означает что IP НЕ в блэклисте
                     reputation['checks'][dnsbl] = 'OK'
         except:
             pass
-        
-        # Проверяем AbuseIPDB (если есть API ключ)
-        # Можно добавить: reputation['checks']['abuseipdb'] = check_abuseipdb(ip)
         
         # Сохраняем в кэш
         save_ip_cache(ip, {'reputation': reputation})
@@ -944,7 +932,6 @@ def stage3_ip_reputation_check(proxy_data, xray_exe):
         return proxy_data
         
     except Exception as e:
-        # В случае ошибки не отфильтровываем прокси
         return proxy_data
 
 # ------------------ СТУПЕНЬ 4: ТЕСТ СКОРОСТИ ------------------
@@ -985,7 +972,6 @@ def stage4_speed_test(proxy_data, xray_exe):
                 'https': f'socks5://127.0.0.1:{socks_port}'
             }
             
-            # Тест скорости - загружаем тестовый файл
             speed_test_urls = [
                 'https://cachefly.cachefly.net/10mb.test',
                 'http://speedtest.tele2.net/10MB.zip',
@@ -1002,12 +988,12 @@ def stage4_speed_test(proxy_data, xray_exe):
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             total_bytes += len(chunk)
-                        if time.time() - start_time > 10:  # Макс 10 секунд
+                        if time.time() - start_time > 10:
                             break
                     
                     elapsed = time.time() - start_time
                     if elapsed > 0:
-                        speed_mbps = (total_bytes * 8) / (elapsed * 1000000)  # Mbps
+                        speed_mbps = (total_bytes * 8) / (elapsed * 1000000)
                         break
                 except:
                     continue
@@ -1087,7 +1073,7 @@ def stage5_stability_check(proxy_data, xray_exe):
                 kill_process(process)
                 safe_remove_file(config_file)
                 
-                time.sleep(0.5)  # Небольшая пауза между проверками
+                time.sleep(0.5)
                 
             except Exception:
                 kill_process(process)
@@ -1147,7 +1133,6 @@ def stage6_route_quality_check(proxy_data, xray_exe):
                 'https': f'socks5://127.0.0.1:{socks_port}'
             }
             
-            # FIX 3: Используем реальные URL вместо прямых IP-адресов
             route_quality = {}
             total_latency = 0
             successful_checks = 0
@@ -1207,7 +1192,6 @@ def stage7_tls_validation(proxy_data):
         host = proxy_data['host']
         port = proxy_data['port']
         
-        # Проверяем только если используется TLS
         if 'streamSettings' not in config:
             return proxy_data
         
@@ -1215,14 +1199,11 @@ def stage7_tls_validation(proxy_data):
         if security not in ['tls', 'reality']:
             return proxy_data
         
-        # Для TLS проверяем сертификат
         if security == 'tls':
             try:
-                # Получаем настройки TLS
                 tls_settings = config['streamSettings'].get('tlsSettings', {})
                 sni = tls_settings.get('serverName', host)
                 
-                # Проверяем сертификат
                 context = ssl.create_default_context()
                 context.check_hostname = True
                 context.verify_mode = ssl.CERT_REQUIRED
@@ -1231,7 +1212,6 @@ def stage7_tls_validation(proxy_data):
                     with context.wrap_socket(sock, server_hostname=sni) as ssock:
                         cert = ssock.getpeercert()
                         
-                        # Проверяем валидность сертификата
                         not_before = cert.get('notBefore')
                         not_after = cert.get('notAfter')
                         
@@ -1250,7 +1230,6 @@ def stage7_tls_validation(proxy_data):
                     'error': str(e)
                 }
                 
-                # Разрешаем self-signed если allowInsecure=True
                 tls_settings = config['streamSettings'].get('tlsSettings', {})
                 if tls_settings.get('allowInsecure', False):
                     return proxy_data
@@ -1258,7 +1237,6 @@ def stage7_tls_validation(proxy_data):
                 stats["stage7_tls_failed"] += 1
                 return None
                 
-        # Для Reality просто помечаем как проверенный
         elif security == 'reality':
             proxy_data['tls_validation'] = {
                 'valid': True,
@@ -1280,7 +1258,6 @@ def add_comment_to_uri(uri: str, proxy_data: dict) -> str:
     quality = proxy_data['quality']
     protocol = proxy_data['protocol']
     
-    # Формируем тег с дополнительной информацией
     extra_info = []
     
     if 'speed_mbps' in proxy_data:
@@ -1301,7 +1278,6 @@ def add_comment_to_uri(uri: str, proxy_data: dict) -> str:
     extra_str = f"|{'|'.join(extra_info)}" if extra_info else ""
     tag = f"[{latency}ms {quality} {protocol}{extra_str} {MY_CHANNEL}]"
     
-    # VMess - меняем поле ps внутри JSON
     if uri.lower().startswith("vmess://"):
         try:
             b64_part = uri[8:]
@@ -1322,7 +1298,6 @@ def add_comment_to_uri(uri: str, proxy_data: dict) -> str:
         except:
             pass
     
-    # Остальные - добавляем фрагмент
     base_uri = uri.split("#")[0]
     return f"{base_uri}#{quote(tag)}"
 
@@ -1379,7 +1354,7 @@ def download_keys():
 # ------------------ MAIN ------------------
 def main():
     print("\n" + "="*80)
-    print(" " * 15 + "🔥 XRAY CHECKER - ENHANCED EDITION (DEBUGGED) 🔥")
+    print(" " * 15 + "🔥 XRAY CHECKER - ENHANCED EDITION 🔥")
     print("="*80)
     print(f"⚙️  TCP: {TCP_TIMEOUT}s | HTTP: {HTTP_TIMEOUT}s | Max Latency: {MAX_LATENCY}ms")
     print(f"⚙️  Speed Test: {'ON' if ENABLE_STAGE4_SPEED_TEST else 'OFF'}")
@@ -1474,7 +1449,7 @@ def main():
         stage4_start = time.time()
         stage4_results = []
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:  # Меньше потоков для точности
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(stage4_speed_test, data, xray_exe): data for data in stage2_results}
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
@@ -1495,7 +1470,7 @@ def main():
         stage5_start = time.time()
         stage5_results = []
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:  # Меньше потоков для точности
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(stage5_stability_check, data, xray_exe): data for data in stage2_results}
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
@@ -1554,10 +1529,8 @@ def main():
     stats["final_results"] = len(stage2_results)
     
     if stage2_results:
-        # Сортируем по латентности
         stage2_results.sort(key=lambda x: x['latency'])
         
-        # Файл с тегами
         with open(FINAL_FILE, 'w', encoding='utf-8') as f:
             f.write(f"# {MY_CHANNEL} - Enhanced Quality Filter\n")
             f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -1567,14 +1540,12 @@ def main():
             for data in stage2_results:
                 f.write(add_comment_to_uri(data['key'], data) + "\n")
         
-        # Сырой файл
         with open(RAW_FILE, 'w', encoding='utf-8') as f:
             f.write(f"# {MY_CHANNEL} - RAW (Enhanced)\n")
             f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             for data in stage2_results:
                 f.write(get_raw_key(data['key']) + "\n")
         
-        # Детальный JSON
         with open(DETAILED_FILE, 'w', encoding='utf-8') as f:
             detailed_data = []
             for data in stage2_results:
@@ -1587,7 +1558,6 @@ def main():
                     'port': data['port']
                 }
                 
-                # Добавляем дополнительную информацию
                 if 'speed_mbps' in data:
                     detailed['speed_mbps'] = data['speed_mbps']
                 if 'stability' in data:
@@ -1617,7 +1587,6 @@ def main():
                 'results': detailed_data
             }, f, indent=2, ensure_ascii=False)
         
-        # Статистика
         by_quality = {}
         for data in stage2_results:
             q = data['quality']
@@ -1676,5 +1645,4 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-
 
