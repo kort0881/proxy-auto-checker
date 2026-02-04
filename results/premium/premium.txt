@@ -1,7 +1,6 @@
 # PREM
 # @vlesstrojan
-# 2026-02-03 07:15
-# Ключей: 2
+# 2026-02-04 07:04
+# Ключей: 1
 
-vless://e108f3eb-4d3a-4e20-a09b-7008e333bc23@us01-gmn-vlr02.tcp-reset-club.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=d3b13f31&sni=hls-svod.itunes.apple.com#%5B27ms%7CPREM%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTp3d3pWbjJabkhmcVlhNmw4RVdoM2VZ@switcher-nick-croquet.freesocks.work:443#%5B112ms%7CPREM%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
+vless://93a20fae-54f4-4e25-93ef-995b3e52fc04@45.83.140.204:8443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=61Svf2Pd08DRvSgCHyI_J-F7lhPLd_hg3mS_byFl_h0&sid=cefa7ca418bd0dcb&sni=tradingview.com#%5B37ms%7CPREM%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
