@@ -14,9 +14,6 @@ PUBLIC_CHANNEL = "@vlesstrojan"
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 
-# Путь к файлу с подписками (создается скриптом-чекером)
-SUBSCRIPTIONS_FILE = os.path.join(WORK_DIR, "checked", "subscriptions_list.txt")
-
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
@@ -40,48 +37,53 @@ REACTIONS_TEXT = (
     "Юзаешь? отмечай 😎, если нет — выбирай 🤔"
 )
 
+# URL с подписками из первого репозитория
+SUBSCRIPTIONS_URL = (
+    "https://raw.githubusercontent.com/"
+    "kort0881/vpn-checker-backend/refs/heads/main/checked/subscriptions_list.txt"
+)
+
 
 def load_subscriptions():
-    """Загрузить ссылки на подписки из subscriptions_list.txt"""
-    if not os.path.exists(SUBSCRIPTIONS_FILE):
-        print(f"⚠️ Файл подписок не найден: {SUBSCRIPTIONS_FILE}")
-        return None
-    
+    """Загрузить ссылки на подписки по HTTP из первого репозитория."""
     try:
-        with open(SUBSCRIPTIONS_FILE, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        if not content.strip():
+        resp = requests.get(SUBSCRIPTIONS_URL, timeout=15)
+        if resp.status_code != 200:
+            print(f"⚠️ Не удалось получить подписки: HTTP {resp.status_code}")
             return None
-            
+
+        content = resp.text.strip()
+        if not content:
+            print("⚠️ Подписки пустые")
+            return None
+
         return content
     except Exception as e:
-        print(f"❌ Ошибка чтения подписок: {e}")
+        print(f"❌ Ошибка загрузки подписок: {e}")
         return None
 
 
 def format_subscriptions_for_telegram(subscriptions_text):
-    """Форматировать подписки для Telegram (HTML)"""
+    """Форматировать подписки для Telegram (HTML)."""
     if not subscriptions_text:
         return ""
-    
-    lines = subscriptions_text.strip().split('\n')
+
+    lines = subscriptions_text.strip().split("\n")
     formatted_lines = []
-    
+
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        
+
         # Заголовки разделов
-        if line.startswith('==='):
+        if line.startswith("==="):
             formatted_lines.append(f"\n<b>{line}</b>")
         # Ссылки
-        elif line.startswith('http'):
-            # Извлекаем имя файла из URL для отображения
-            filename = line.split('/')[-1]
+        elif line.startswith("http"):
+            filename = line.split("/")[-1]
             formatted_lines.append(f"📥 <a href='{line}'>{filename}</a>")
-    
+
     return "\n".join(formatted_lines)
 
 
@@ -96,7 +98,7 @@ def clean_key(k: str) -> str:
 def fix_universal(key: str) -> str:
     """
     Делает VLESS-ключ универсальным:
-    - Меняет type=xhttp на type=http для совместимости с Hiddify Desktop
+    - Меняет type=xhttp на type=http для совместимости с Hiddify Desktop.
     """
     key = key.strip()
     if not key.startswith("vless://") or "type=xhttp" not in key:
@@ -110,14 +112,16 @@ def fix_universal(key: str) -> str:
             query["type"] = ["http"]
 
         new_query = urllib.parse.urlencode(query, doseq=True)
-        return urllib.parse.urlunparse((
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            new_query,
-            parsed.fragment,
-        ))
+        return urllib.parse.urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                new_query,
+                parsed.fragment,
+            )
+        )
     except Exception:
         return key
 
@@ -126,7 +130,7 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
     """
     Создаёт список markdown-сообщений.
     В каждом: дисклеймер + до per_chunk ключей в код-блоках + хвост.
-    Каждый ключ в ОТДЕЛЬНОМ код-блоке (не склеенные).
+    Каждый ключ в отдельном код-блоке.
     """
     keys = [clean_key(k) for k in keys[:max_total_keys]]
     chunks = []
@@ -135,7 +139,7 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
     while offset < len(keys):
         added = False
         for current_size in range(per_chunk, 0, -1):
-            part = keys[offset:offset + current_size]
+            part = keys[offset : offset + current_size]
             if not part:
                 break
 
@@ -172,35 +176,32 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
     url = f"https://api.telegram.org/bot{bot_token}"
 
     try:
-        with open(photo_path, 'rb') as photo:
-            files = {'photo': photo}
+        with open(photo_path, "rb") as photo:
+            files = {"photo": photo}
             data = {
-                'chat_id': channel_id,
-                'caption': caption,
-                'parse_mode': 'HTML'
+                "chat_id": channel_id,
+                "caption": caption,
+                "parse_mode": "HTML",
             }
             r = requests.post(
                 f"{url}/sendPhoto",
                 data=data,
                 files=files,
-                timeout=30
+                timeout=30,
             )
             photo_result = r.json()
 
-        if photo_result.get('ok'):
-            message_id = photo_result['result']['message_id']
+        if photo_result.get("ok"):
+            message_id = photo_result["result"]["message_id"]
 
-            with open(file_path, 'rb') as doc:
-                files = {'document': doc}
-                data = {
-                    'chat_id': channel_id,
-                    'reply_to_message_id': message_id
-                }
+            with open(file_path, "rb") as doc:
+                files = {"document": doc}
+                data = {"chat_id": channel_id, "reply_to_message_id": message_id}
                 r = requests.post(
                     f"{url}/sendDocument",
                     data=data,
                     files=files,
-                    timeout=60
+                    timeout=60,
                 )
                 return r.json()
 
@@ -216,13 +217,13 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
 
 def create_public_file(all_keys):
     """Создать файл с первыми 100 ключами для публичного канала."""
-    date_str = datetime.now().strftime('%Y%m%d_%H%M')
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"public_top100_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
     top_keys = all_keys[:100]
 
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write("# Channel: @vlesstrojan\n")
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Dual-check (TCP + XRAY)\n")
@@ -234,14 +235,14 @@ def create_public_file(all_keys):
 
 
 def create_private_file(all_keys):
-    """Создать файл со ВСЕМИ ключами (кроме первых 10) для закрытого канала."""
-    date_str = datetime.now().strftime('%Y%m%d_%H%M')
+    """Создать файл со всеми ключами (кроме первых 10) для закрытого канала."""
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"private_remaining_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
     remaining_keys = all_keys[10:]
 
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Dual-check (TCP + XRAY)\n")
         f.write(f"# Keys in file: {len(remaining_keys)}\n")
@@ -275,40 +276,42 @@ def main():
     print(" " * 20 + "📤 TELEGRAM POSTER")
     print("=" * 70 + "\n")
 
+    if not os.path.exists(RESULTS_FOLDER):
+        print(f"❌ Папка {RESULTS_FOLDER} не существует")
+        return 1
+
     if not os.path.exists(COVER_PUBLIC):
         print(f"⚠️ Файл {COVER_PUBLIC} не найден")
 
     if not os.path.exists(COVER_PRIVATE):
         print(f"⚠️ Файл {COVER_PRIVATE} не найден")
 
-    if not os.path.exists(RESULTS_FOLDER):
-        print(f"❌ Папка {RESULTS_FOLDER} не существует")
-        return 1
-
-    # Загрузка подписок
+    # Загружаем подписки с GitHub (из первого репозитория)
     subscriptions_raw = load_subscriptions()
     subscriptions_formatted = format_subscriptions_for_telegram(subscriptions_raw)
 
     verified_files = [
-        f for f in os.listdir(RESULTS_FOLDER)
+        f
+        for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("verified_") and f.endswith(".txt")
     ]
 
     semi_dead_files = [
-        f for f in os.listdir(RESULTS_FOLDER)
+        f
+        for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("semi_dead_") and f.endswith(".txt")
     ]
 
     if verified_files:
         latest_file = max(
             verified_files,
-            key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
+            key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f)),
         )
         print("📄 Используем verified-файл (идеальные ключи)")
     elif semi_dead_files:
         latest_file = max(
             semi_dead_files,
-            key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f))
+            key=lambda f: os.path.getmtime(os.path.join(RESULTS_FOLDER, f)),
         )
         print("📄 Verified нет, используем semi_dead (частично рабочие)")
     else:
@@ -318,13 +321,13 @@ def main():
     file_path = os.path.join(RESULTS_FOLDER, latest_file)
     print(f"📁 Файл: {latest_file}")
 
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
     all_keys = []
     for line in lines:
         line = line.strip()
-        if line and not line.startswith('#'):
+        if line and not line.startswith("#"):
             key = fix_universal(clean_key(line))
             all_keys.append(key)
 
@@ -357,13 +360,13 @@ def main():
             COVER_PUBLIC,
             public_file,
             caption,
-            bot_token=BOT_TOKEN_PUBLIC
+            bot_token=BOT_TOKEN_PUBLIC,
         )
 
-        if result and result.get('ok'):
+        if result and result.get("ok"):
             print(f"✅ Пост отправлен в {PUBLIC_CHANNEL}")
         else:
-            error_msg = result.get('description', 'Unknown error') if result else 'No response'
+            error_msg = result.get("description", "Unknown error") if result else "No response"
             print(f"❌ Ошибка: {error_msg}")
     else:
         print("⚠️ Нет картинки для публичного канала")
@@ -375,7 +378,7 @@ def main():
         subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
         subs_text += subscriptions_formatted
         subs_text += "\n\n💡 Импортируй любую ссылку в Hiddify, v2rayNG или Clash"
-        
+
         try:
             resp = requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
@@ -387,12 +390,16 @@ def main():
                 },
                 timeout=15,
             )
-            if resp.json().get('ok'):
+            if resp.json().get("ok"):
                 print("✅ Пост с подписками отправлен")
             else:
-                print(f"❌ Ошибка поста с подписками: {resp.json().get('description')}")
+                print(
+                    f"❌ Ошибка поста с подписками: {resp.json().get('description')}"
+                )
         except Exception as e:
             print(f"❌ Ошибка отправки подписок: {e}")
+    else:
+        print("⚠️ Подписки не найдены / не отправлены")
 
     # Донат-пост в публичный канал
     donate_text = (
@@ -412,10 +419,12 @@ def main():
             },
             timeout=15,
         )
-        if resp.json().get('ok'):
+        if resp.json().get("ok"):
             print("✅ Донат-пост отправлен")
         else:
-            print(f"❌ Ошибка донат-поста: {resp.json().get('description')}")
+            print(
+                f"❌ Ошибка донат-поста: {resp.json().get('description')}"
+            )
     except Exception as e:
         print(f"❌ Ошибка отправки донат-поста: {e}")
 
@@ -441,13 +450,19 @@ def main():
                 COVER_PRIVATE,
                 private_file,
                 caption,
-                bot_token=BOT_TOKEN_PRIVATE
+                bot_token=BOT_TOKEN_PRIVATE,
             )
 
-            if result and result.get('ok'):
-                print(f"✅ Пост с файлом отправлен ({private_count} ключей в файле)")
+            if result and result.get("ok"):
+                print(
+                    f"✅ Пост с файлом отправлен ({private_count} ключей в файле)"
+                )
             else:
-                error_msg = result.get('description', 'Unknown error') if result else 'No response'
+                error_msg = (
+                    result.get("description", "Unknown error")
+                    if result
+                    else "No response"
+                )
                 print(f"❌ Ошибка: {error_msg}")
         else:
             print("⚠️ Нет картинки для приватного канала")
@@ -457,7 +472,7 @@ def main():
             subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
             subs_text += subscriptions_formatted
             subs_text += "\n\n🎯 Импортируй в клиент для автообновления"
-            
+
             try:
                 resp = requests.post(
                     f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
@@ -469,14 +484,20 @@ def main():
                     },
                     timeout=15,
                 )
-                if resp.json().get('ok'):
+                if resp.json().get("ok"):
                     print("✅ Пост с подписками (приват) отправлен")
                 else:
-                    print(f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}")
+                    print(
+                        f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}"
+                    )
             except Exception as e:
                 print(f"❌ Ошибка отправки подписок (приват): {e}")
+        else:
+            print("⚠️ Подписки (приват) не найдены / не отправлены")
 
-        chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
+        chunks = build_markdown_chunks(
+            all_keys, per_chunk=5, max_total_keys=10, limit=3900
+        )
         print(f"📝 Отправка {len(chunks)} постов с ключами...")
 
         for idx, text in enumerate(chunks, start=1):
@@ -491,10 +512,12 @@ def main():
                     },
                     timeout=15,
                 )
-                if resp.json().get('ok'):
+                if resp.json().get("ok"):
                     print(f"✅ Пост {idx}/{len(chunks)} отправлен")
                 else:
-                    print(f"❌ Пост {idx} ошибка: {resp.json().get('description')}")
+                    print(
+                        f"❌ Пост {idx} ошибка: {resp.json().get('description')}"
+                    )
             except Exception as e:
                 print(f"❌ Ошибка отправки поста {idx}: {e}")
 
@@ -511,7 +534,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 
 
