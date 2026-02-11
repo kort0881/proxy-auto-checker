@@ -14,6 +14,9 @@ PUBLIC_CHANNEL = "@vlesstrojan"
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 
+# Путь к файлу с подписками (создается скриптом-чекером)
+SUBSCRIPTIONS_FILE = os.path.join(WORK_DIR, "checked", "subscriptions_list.txt")
+
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
@@ -36,6 +39,50 @@ REACTIONS_TEXT = (
     "Протокол топ? ставь 🚀, если фейл — жми 💥\n"
     "Юзаешь? отмечай 😎, если нет — выбирай 🤔"
 )
+
+
+def load_subscriptions():
+    """Загрузить ссылки на подписки из subscriptions_list.txt"""
+    if not os.path.exists(SUBSCRIPTIONS_FILE):
+        print(f"⚠️ Файл подписок не найден: {SUBSCRIPTIONS_FILE}")
+        return None
+    
+    try:
+        with open(SUBSCRIPTIONS_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        if not content.strip():
+            return None
+            
+        return content
+    except Exception as e:
+        print(f"❌ Ошибка чтения подписок: {e}")
+        return None
+
+
+def format_subscriptions_for_telegram(subscriptions_text):
+    """Форматировать подписки для Telegram (HTML)"""
+    if not subscriptions_text:
+        return ""
+    
+    lines = subscriptions_text.strip().split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Заголовки разделов
+        if line.startswith('==='):
+            formatted_lines.append(f"\n<b>{line}</b>")
+        # Ссылки
+        elif line.startswith('http'):
+            # Извлекаем имя файла из URL для отображения
+            filename = line.split('/')[-1]
+            formatted_lines.append(f"📥 <a href='{line}'>{filename}</a>")
+    
+    return "\n".join(formatted_lines)
 
 
 def clean_key(k: str) -> str:
@@ -238,6 +285,10 @@ def main():
         print(f"❌ Папка {RESULTS_FOLDER} не существует")
         return 1
 
+    # Загрузка подписок
+    subscriptions_raw = load_subscriptions()
+    subscriptions_formatted = format_subscriptions_for_telegram(subscriptions_raw)
+
     verified_files = [
         f for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("verified_") and f.endswith(".txt")
@@ -319,6 +370,30 @@ def main():
 
     safe_remove(public_file)
 
+    # Пост с подписками в публичный канал
+    if subscriptions_formatted:
+        subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
+        subs_text += subscriptions_formatted
+        subs_text += "\n\n💡 Импортируй любую ссылку в Hiddify, v2rayNG или Clash"
+        
+        try:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
+                json={
+                    "chat_id": PUBLIC_CHANNEL,
+                    "text": subs_text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                },
+                timeout=15,
+            )
+            if resp.json().get('ok'):
+                print("✅ Пост с подписками отправлен")
+            else:
+                print(f"❌ Ошибка поста с подписками: {resp.json().get('description')}")
+        except Exception as e:
+            print(f"❌ Ошибка отправки подписок: {e}")
+
     # Донат-пост в публичный канал
     donate_text = (
         "Если хочешь поддержать автора — можно перевести:\n"
@@ -376,6 +451,30 @@ def main():
                 print(f"❌ Ошибка: {error_msg}")
         else:
             print("⚠️ Нет картинки для приватного канала")
+
+        # Пост с подписками в приватный канал
+        if subscriptions_formatted:
+            subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
+            subs_text += subscriptions_formatted
+            subs_text += "\n\n🎯 Импортируй в клиент для автообновления"
+            
+            try:
+                resp = requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
+                    json={
+                        "chat_id": PRIVATE_CHANNEL,
+                        "text": subs_text,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                    },
+                    timeout=15,
+                )
+                if resp.json().get('ok'):
+                    print("✅ Пост с подписками (приват) отправлен")
+                else:
+                    print(f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}")
+            except Exception as e:
+                print(f"❌ Ошибка отправки подписок (приват): {e}")
 
         chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
         print(f"📝 Отправка {len(chunks)} постов с ключами...")
