@@ -55,11 +55,13 @@ IP_REPUTATION_TIMEOUT = 5                # Таймаут проверки ре�
 BLACKLIST_CACHE_TIME = 3600             # Время кэша блэклиста (сек)
 
 # Источники ключей
+# Источники ключей
 KEY_SOURCES = {
     "PREMIUM": [
         "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/premium/good.txt",
         "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/premium/elite.txt",
         "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/premium/premium.txt",
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/refs/heads/main/results/premium/mobile_ready.txt",
     ],
 }
 
