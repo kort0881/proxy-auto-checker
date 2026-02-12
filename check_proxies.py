@@ -14,8 +14,10 @@ import threading
 import concurrent.futures
 import atexit
 import signal
+import gc
 from datetime import datetime
 from urllib.parse import quote, unquote
+from collections import defaultdict
 
 # ------------------ Настройки ------------------
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +46,35 @@ MY_CHANNEL = "@vlesstrojan"
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 FINAL_FILE = os.path.join(RESULTS_FOLDER, f"verified_{timestamp}.txt")
 
+# ==================== RELAXED НАСТРОЙКИ ====================
+class Config:
+    # Ступень 1: TCP
+    TCP_WORKERS = 30           # Было 100 → 30
+    TCP_TIMEOUT = 10           # Было 5 → 10
+    TCP_RETRIES = 2            # НОВОЕ: повторные попытки
+    
+    # Ступень 2: XRAY
+    XRAY_WORKERS = 8           # Было 15 → 8
+    XRAY_STARTUP_TIMEOUT = 10  # Было 5 → 10
+    XRAY_REQUEST_TIMEOUT = 20  # Было 12 → 20
+    XRAY_RETRIES = 2           # НОВОЕ
+    
+    # Дополнительные URL для проверки
+    CHECK_URLS = [
+        'https://cp.cloudflare.com/generate_204',
+        'http://www.gstatic.com/generate_204',
+        'http://connectivitycheck.android.com/generate_204',
+    ]
+    
+    # Очистка памяти
+    GC_EVERY = 200
+    
+    # Rate limiting
+    DELAY_BETWEEN_CHECKS = 0.1
+
+CONFIG = Config()
+# ==========================================================
+
 # Потокобезопасные счётчики
 class ThreadSafeCounter:
     def __init__(self):
@@ -66,7 +97,15 @@ stage2_checked = ThreadSafeCounter()
 stage2_live = ThreadSafeCounter()
 total_keys = ThreadSafeCounter()
 
-# Управление процессами xray (для cleanup)
+# Статистика ошибок
+error_stats = defaultdict(int)
+error_lock = threading.Lock()
+
+def record_error(error_type):
+    with error_lock:
+        error_stats[error_type] += 1
+
+# Управление процессами xray
 _active_processes = []
 _processes_lock = threading.Lock()
 
@@ -89,7 +128,6 @@ def cleanup_all_processes():
                 pass
         _active_processes.clear()
 
-# Регистрируем cleanup
 atexit.register(cleanup_all_processes)
 
 def signal_handler(signum, frame):
@@ -102,6 +140,10 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 def log(msg):
     print(msg)
+
+def cleanup_memory():
+    gc.collect()
+    time.sleep(0.5)
 
 # ------------------ Установка XRAY ------------------
 def setup_xray():
@@ -121,10 +163,13 @@ def setup_xray():
             arch = "64" if "64" in machine else "32"
             filename = f"Xray-windows-{arch}.zip"
         elif system == "linux":
-            arch = "64" if "64" in machine or "aarch64" in machine or "x86_64" in machine else "32"
+            if "aarch64" in machine or "arm64" in machine:
+                arch = "arm64-v8a"
+            else:
+                arch = "64"
             filename = f"Xray-linux-{arch}.zip"
         elif system == "darwin":
-            arch = "arm64" if "arm" in machine else "64"
+            arch = "arm64-v8a" if "arm" in machine else "64"
             filename = f"Xray-macos-{arch}.zip"
         else:
             log("❌ Неподдерживаемая ОС")
@@ -162,7 +207,6 @@ def extract_host_port(original_key):
     try:
         key = original_key.strip()
         
-        # VMess — отдельная обработка (base64 JSON)
         if key.lower().startswith("vmess://"):
             try:
                 encoded = key[8:]
@@ -175,13 +219,11 @@ def extract_host_port(original_key):
             except:
                 return None, None
         
-        # Для vless/trojan/ss — парсим URI
         for prefix in ["vless://", "trojan://", "ss://"]:
             if key.lower().startswith(prefix):
                 key = key[len(prefix):]
                 break
         
-        # SS может быть полностью в base64
         if "@" not in key and not key.lower().startswith(("vless", "trojan")):
             try:
                 padding = len(key) % 4
@@ -193,7 +235,6 @@ def extract_host_port(original_key):
             except:
                 pass
         
-        # Формат: uuid@host:port?params#tag или method:pass@host:port
         if "@" in key:
             key = key.split("@", 1)[1]
         
@@ -205,7 +246,6 @@ def extract_host_port(original_key):
         
         if ":" in key:
             host, port = key.rsplit(":", 1)
-            # Убираем возможные скобки IPv6
             host = host.strip("[]")
             return host, int(port)
         
@@ -213,9 +253,9 @@ def extract_host_port(original_key):
     except:
         return None, None
 
-# ------------------ СТУПЕНЬ 1: БЫСТРАЯ ПРОВЕРКА ПОРТА ------------------
+# ------------------ СТУПЕНЬ 1: TCP ПРОВЕРКА (С RETRY) ------------------
 def stage1_port_check(key):
-    """Быстрая проверка что порт открыт — отсеиваем явно мёртвые"""
+    """TCP проверка с повторными попытками"""
     checked = stage1_checked.increment()
     
     if checked % 100 == 0:
@@ -223,14 +263,34 @@ def stage1_port_check(key):
     
     host, port = extract_host_port(key)
     if not host or not port:
+        record_error("parse_error")
         return None
     
-    try:
-        with socket.create_connection((host, port), timeout=5):
-            stage1_live.increment()
-            return key
-    except:
-        return None
+    # Несколько попыток
+    for attempt in range(CONFIG.TCP_RETRIES + 1):
+        try:
+            with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
+                stage1_live.increment()
+                return key
+        except socket.timeout:
+            record_error("tcp_timeout")
+            if attempt < CONFIG.TCP_RETRIES:
+                time.sleep(0.5)
+        except ConnectionRefusedError:
+            record_error("tcp_refused")
+            break  # Retry бесполезен
+        except socket.gaierror:
+            record_error("dns_error")
+            break  # Retry бесполезен
+        except OSError as e:
+            record_error(f"tcp_os_error")
+            if attempt < CONFIG.TCP_RETRIES:
+                time.sleep(0.5)
+        except Exception as e:
+            record_error("tcp_other")
+            break
+    
+    return None
 
 # ------------------ ПАРСЕРЫ ПРОТОКОЛОВ ------------------
 def parse_vless(key):
@@ -291,8 +351,8 @@ def parse_vless(key):
         if params.get("security") == "tls":
             config["streamSettings"]["tlsSettings"] = {
                 "serverName": params.get("sni", host),
-                "allowInsecure": params.get("allowInsecure", "0") == "1",
-                "fingerprint": params.get("fp", "")
+                "allowInsecure": True,  # Более мягко
+                "fingerprint": params.get("fp", "chrome")
             }
         elif params.get("security") == "reality":
             config["streamSettings"]["realitySettings"] = {
@@ -366,7 +426,7 @@ def parse_vmess(key):
         if data.get("tls") == "tls":
             config["streamSettings"]["tlsSettings"] = {
                 "serverName": data.get("sni", host),
-                "allowInsecure": data.get("allowInsecure", False)
+                "allowInsecure": True
             }
         
         if data.get("net") == "ws":
@@ -377,16 +437,6 @@ def parse_vmess(key):
         elif data.get("net") == "grpc":
             config["streamSettings"]["grpcSettings"] = {
                 "serviceName": data.get("path", "")
-            }
-        elif data.get("net") == "tcp" and data.get("type") == "http":
-            config["streamSettings"]["tcpSettings"] = {
-                "header": {
-                    "type": "http",
-                    "request": {
-                        "path": [data.get("path", "/")],
-                        "headers": {"Host": [data.get("host", host)]}
-                    }
-                }
             }
         
         return config
@@ -450,8 +500,8 @@ def parse_trojan(key):
             config["streamSettings"]["security"] = "tls"
             config["streamSettings"]["tlsSettings"] = {
                 "serverName": params.get("sni", host),
-                "allowInsecure": params.get("allowInsecure", "0") == "1",
-                "fingerprint": params.get("fp", "")
+                "allowInsecure": True,
+                "fingerprint": params.get("fp", "chrome")
             }
         
         if params.get("type") == "ws":
@@ -476,11 +526,9 @@ def parse_shadowsocks(key):
         
         key = key[5:]
         
-        # Убираем tag
         if "#" in key:
             key = key.split("#")[0]
         
-        # Формат 1: base64(method:password)@host:port
         if "@" in key:
             encoded, server = key.split("@", 1)
             
@@ -491,7 +539,6 @@ def parse_shadowsocks(key):
             host = host.strip("[]")
             port = int(port)
             
-            # Декодируем credentials
             padding = len(encoded) % 4
             if padding:
                 encoded += '=' * (4 - padding)
@@ -503,13 +550,11 @@ def parse_shadowsocks(key):
                 else:
                     return None
             except:
-                # Может быть уже plain text
                 if ":" in encoded:
                     method, password = encoded.split(":", 1)
                 else:
                     return None
         else:
-            # Формат 2: base64(method:password@host:port)
             padding = len(key) % 4
             if padding:
                 key += '=' * (4 - padding)
@@ -560,44 +605,47 @@ def parse_proxy_key(key):
     return None, None
 
 def create_xray_config(proxy_config, http_port=10808):
-    """Создаёт конфиг xray с HTTP inbound (не SOCKS!)"""
+    """Создаёт конфиг xray"""
     return {
         "log": {"loglevel": "none"},
         "inbounds": [{
             "port": http_port,
             "listen": "127.0.0.1",
-            "protocol": "http",  # HTTP вместо SOCKS — работает с requests без PySocks
+            "protocol": "http",
             "settings": {
-                "timeout": 10
+                "timeout": 30  # Увеличено
             }
         }],
         "outbounds": [proxy_config]
     }
 
-def wait_for_port(port, timeout=5):
+def wait_for_port(port, timeout=10):
     """Ждём пока xray откроет порт"""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 return True
         except:
-            time.sleep(0.1)
+            time.sleep(0.2)
     return False
 
-# ------------------ СТУПЕНЬ 2: XRAY + HTTP ПРОВЕРКА ------------------
+# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА (С RETRY) ------------------
 def stage2_xray_check(key, xray_exe):
-    """Проверка через xray: Cloudflare HTTPS (обязательно) + gstatic (опционально)"""
+    """Проверка через xray с несколькими попытками и URL"""
     checked = stage2_checked.increment()
     
     if checked % 10 == 0:
         log(f"🔥 Ступень 2: {checked}/{stage1_live.value} | Рабочих: {stage2_live.value}")
     
+    # Небольшая задержка для rate limiting
+    time.sleep(CONFIG.DELAY_BETWEEN_CHECKS)
+    
     proxy_config, protocol = parse_proxy_key(key)
     if not proxy_config:
+        record_error("xray_parse_error")
         return None
     
-    # Случайный порт для параллельных проверок
     http_port = random.randint(20000, 50000)
     xray_config = create_xray_config(proxy_config, http_port)
     config_file = os.path.join(XRAY_FOLDER, f"config_{http_port}.json")
@@ -617,12 +665,13 @@ def stage2_xray_check(key, xray_exe):
         )
         register_process(process)
         
-        # Ждём пока порт откроется (вместо sleep)
-        if not wait_for_port(http_port, timeout=5):
+        # Больше времени на старт
+        if not wait_for_port(http_port, timeout=CONFIG.XRAY_STARTUP_TIMEOUT):
+            record_error("xray_startup_timeout")
             return None
         
-        # Проверяем что процесс не упал
         if process.poll() is not None:
+            record_error("xray_crash")
             return None
         
         proxies = {
@@ -630,44 +679,39 @@ def stage2_xray_check(key, xray_exe):
             'https': f'http://127.0.0.1:{http_port}'
         }
         
-        # === ТЕСТ 1: Cloudflare HTTPS (обязательный — проверяет TLS туннель) ===
-        try:
-            t1 = time.time()
-            resp1 = requests.get(
-                'https://cp.cloudflare.com/generate_204',
-                proxies=proxies,
-                timeout=12,
-                allow_redirects=False
-            )
+        # Пробуем несколько URL с retry
+        for attempt in range(CONFIG.XRAY_RETRIES + 1):
+            for url in CONFIG.CHECK_URLS:
+                try:
+                    t1 = time.time()
+                    resp = requests.get(
+                        url,
+                        proxies=proxies,
+                        timeout=CONFIG.XRAY_REQUEST_TIMEOUT,
+                        allow_redirects=False
+                    )
+                    
+                    if resp.status_code in [200, 204]:
+                        latency = int((time.time() - t1) * 1000)
+                        success = True
+                        break
+                        
+                except requests.exceptions.Timeout:
+                    record_error("http_timeout")
+                except requests.exceptions.ConnectionError:
+                    record_error("http_connection_error")
+                except Exception as e:
+                    record_error("http_other")
             
-            if resp1.status_code in [200, 204]:
-                latency = int((time.time() - t1) * 1000)
-                success = True
-            else:
-                return None
-        except:
-            return None
-        
-        # === ТЕСТ 2: gstatic HTTP (опциональный — уточняет latency) ===
-        try:
-            t2 = time.time()
-            resp2 = requests.get(
-                'http://www.gstatic.com/generate_204',
-                proxies=proxies,
-                timeout=8,
-                allow_redirects=False
-            )
+            if success:
+                break
             
-            if resp2.status_code in [200, 204]:
-                gstatic_latency = int((time.time() - t2) * 1000)
-                latency = min(latency, gstatic_latency)  # Берём лучший
-        except:
-            pass  # Не критично, Cloudflare уже прошёл
+            if attempt < CONFIG.XRAY_RETRIES:
+                time.sleep(1)
         
         if success:
             stage2_live.increment()
             
-            # Определяем качество
             if latency < 150:
                 quality = "⚡fast"
             elif latency < 300:
@@ -677,7 +721,6 @@ def stage2_xray_check(key, xray_exe):
             else:
                 quality = "slow"
             
-            # Извлекаем host и port для лога
             if protocol in ["VLESS", "VMess"]:
                 host = proxy_config["settings"]["vnext"][0]["address"]
                 port = proxy_config["settings"]["vnext"][0]["port"]
@@ -690,18 +733,18 @@ def stage2_xray_check(key, xray_exe):
         return None
         
     except Exception as e:
+        record_error(f"xray_exception")
         return None
     finally:
-        # Cleanup
         if process:
             unregister_process(process)
             try:
                 process.terminate()
-                process.wait(timeout=2)
+                process.wait(timeout=3)
             except:
                 try:
                     process.kill()
-                    process.wait(timeout=1)
+                    process.wait(timeout=2)
                 except:
                     pass
         
@@ -735,11 +778,9 @@ def download_keys():
             except Exception as e:
                 log(f"  ❌ {url.split('/')[-1]}: {e}")
     
-    # Удаляем дубли, сохраняя порядок
     seen = set()
     unique_keys = []
     for key in all_keys:
-        # Нормализуем для дедупликации (убираем tag)
         key_normalized = key.split("#")[0] if "#" in key else key
         if key_normalized not in seen:
             seen.add(key_normalized)
@@ -750,7 +791,6 @@ def download_keys():
     return unique_keys
 
 def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> str:
-    """Добавляет информативный тег к URI"""
     if "#" in uri:
         base = uri.split("#")[0]
     else:
@@ -759,19 +799,36 @@ def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> s
     new_tag = f"{quality} {latency}ms {protocol} {MY_CHANNEL}"
     return f"{base}#{quote(new_tag, safe='')}"
 
+def print_error_stats():
+    """Выводим статистику ошибок"""
+    if not error_stats:
+        return
+    
+    print("\n📊 СТАТИСТИКА ОШИБОК:")
+    sorted_errors = sorted(error_stats.items(), key=lambda x: -x[1])
+    total_errors = sum(error_stats.values())
+    
+    for error_type, count in sorted_errors[:10]:
+        pct = count * 100 // total_errors if total_errors > 0 else 0
+        print(f"   {error_type}: {count} ({pct}%)")
+
 def main():
     print("\n" + "="*70)
-    print(" " * 10 + "🔥 TRIPLE-STAGE XRAY PROXY CHECKER v3 🔥")
+    print(" " * 10 + "🔥 XRAY PROXY CHECKER v4 (RELAXED) 🔥")
     print(" " * 15 + f"Канал: {MY_CHANNEL}")
-    print("="*70 + "\n")
+    print("="*70)
     
-    # Устанавливаем xray
+    print(f"\n⚙️  НАСТРОЙКИ (RELAXED):")
+    print(f"   TCP: {CONFIG.TCP_WORKERS} workers, timeout={CONFIG.TCP_TIMEOUT}s, retries={CONFIG.TCP_RETRIES}")
+    print(f"   XRAY: {CONFIG.XRAY_WORKERS} workers, startup={CONFIG.XRAY_STARTUP_TIMEOUT}s, request={CONFIG.XRAY_REQUEST_TIMEOUT}s")
+    print(f"   Retries: {CONFIG.XRAY_RETRIES}")
+    print()
+    
     xray_exe = setup_xray()
     if not xray_exe:
         log("❌ Не удалось установить xray")
         return 1
     
-    # Загружаем ключи
     all_keys = download_keys()
     if not all_keys:
         log("❌ Нет ключей для проверки")
@@ -782,18 +839,24 @@ def main():
     
     # ========== СТУПЕНЬ 1 ==========
     print("\n" + "="*70)
-    log("⚡ СТУПЕНЬ 1: Быстрая проверка портов (отсев мёртвых серверов)")
+    log(f"⚡ СТУПЕНЬ 1: TCP проверка ({CONFIG.TCP_WORKERS} workers, timeout={CONFIG.TCP_TIMEOUT}s)")
     print("="*70 + "\n")
     
     start_time = time.time()
     stage1_results = []
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as executor:
         futures = {executor.submit(stage1_port_check, key): key for key in all_keys}
         
+        done = 0
         for future in concurrent.futures.as_completed(futures):
+            done += 1
+            
+            if done % CONFIG.GC_EVERY == 0:
+                cleanup_memory()
+            
             try:
-                result = future.result(timeout=10)
+                result = future.result(timeout=30)
                 if result:
                     stage1_results.append(result)
             except:
@@ -801,8 +864,11 @@ def main():
     
     stage1_time = time.time() - start_time
     
-    log(f"\n✅ Ступень 1 завершена: {stage1_live.value}/{total_keys.value} ({stage1_live.value/total_keys.value*100:.1f}%)")
+    log(f"\n✅ Ступень 1 завершена: {stage1_live.value}/{total_keys.value} ({stage1_live.value*100//total_keys.value}%)")
     log(f"   Время: {stage1_time:.1f}с")
+    
+    print_error_stats()
+    error_stats.clear()
     
     if not stage1_results:
         log("\n❌ Все серверы недоступны на этапе TCP")
@@ -810,19 +876,24 @@ def main():
     
     # ========== СТУПЕНЬ 2 ==========
     print("\n" + "="*70)
-    log("⚡ СТУПЕНЬ 2: Проверка через XRAY (Cloudflare HTTPS + gstatic)")
+    log(f"⚡ СТУПЕНЬ 2: XRAY проверка ({CONFIG.XRAY_WORKERS} workers)")
     print("="*70 + "\n")
     
     stage2_start = time.time()
     results = []
     
-    # Меньше воркеров — меньше нагрузка на систему
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.XRAY_WORKERS) as executor:
         futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
         
+        done = 0
         for future in concurrent.futures.as_completed(futures):
+            done += 1
+            
+            if done % 50 == 0:
+                cleanup_memory()
+            
             try:
-                result = future.result(timeout=30)
+                result = future.result(timeout=60)
                 if result:
                     results.append(result)
             except:
@@ -831,16 +902,17 @@ def main():
     stage2_time = time.time() - stage2_start
     total_time = time.time() - start_time
     
+    print_error_stats()
+    
     # ========== РЕЗУЛЬТАТЫ ==========
     if results:
-        # Сортируем по latency (лучшие сверху)
         results.sort(key=lambda x: x[0])
         
         with open(FINAL_FILE, 'w', encoding='utf-8') as f:
             f.write(f"# Канал: {MY_CHANNEL}\n")
             f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"# Проверено: {len(results)} рабочих из {total_keys.value}\n")
-            f.write(f"# Метод: TCP + XRAY (Cloudflare HTTPS + gstatic)\n")
+            f.write(f"# Метод: TCP + XRAY (multi-URL, retry)\n")
             f.write(f"#\n")
             f.write(f"# Качество: ⚡fast (<150ms), ✓good (<300ms), ~normal (<500ms), slow (>500ms)\n")
             f.write(f"#\n\n")
@@ -856,14 +928,13 @@ def main():
         print(f"  📊 Ступень 1 (TCP):     {stage1_live.value:>4}/{total_keys.value} за {stage1_time:.1f}с")
         print(f"  📊 Ступень 2 (XRAY):    {len(results):>4}/{stage1_live.value} за {stage2_time:.1f}с")
         print(f"")
-        print(f"  ✅ ИТОГО РАБОЧИХ:       {len(results)}/{total_keys.value} ({len(results)/total_keys.value*100:.1f}%)")
+        print(f"  ✅ ИТОГО РАБОЧИХ:       {len(results)}/{total_keys.value} ({len(results)*100//total_keys.value}%)")
         print(f"  ⏱️  Общее время:         {total_time:.1f}с ({total_time/60:.1f} мин)")
         print(f"")
         print(f"  📁 Результат сохранён:")
         print(f"     {FINAL_FILE}")
         print("")
         
-        # Статистика по качеству
         fast = sum(1 for r in results if r[0] < 150)
         good = sum(1 for r in results if 150 <= r[0] < 300)
         normal = sum(1 for r in results if 300 <= r[0] < 500)
@@ -895,6 +966,8 @@ if __name__ == "__main__":
         exit_code = 1
     except Exception as e:
         print(f"\n\n❌ Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
         cleanup_all_processes()
         exit_code = 1
     
