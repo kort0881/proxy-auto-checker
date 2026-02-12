@@ -1,32 +1,40 @@
-# VPN Validator v5.2 - Statistics
-# 2026-02-12 06:57:55
+# VPN Validator v5.3 - Statistics
+# 2026-02-12 16:00:57
 ==================================================
 
 ⏱️  ВРЕМЯ
-   Общее: 5.1 мин
-   Этап 1 (фильтр): 0.1 мин
-   Этап 2 (полный): 5.0 мин
+   Общее: 5.9 мин
+   Этап 1 (фильтр): 0.2 мин
+   Этап 2 (полный): 5.7 мин
 
 📦 СТАТИСТИКА КЛЮЧЕЙ
-   Всего проверено: 56
-   После Quick Filter: 56 (100%)
-   Отсеяно Quick Filter: 0
-   Прошло Full Test: 56
-   Отсеяно Full Test: 0
+   Всего: 54
+   Отсеяно SNI: 5
+   Quick Filter живых: 49 (90%)
+   Quick Filter мёртвых: 0
+   Full Test прошло: 47
+   Full Test отсеяно: 2
 
 🏆 ПО ПРОФИЛЯМ
    ELITE: 0
-   PREM: 0
-   GOOD: 56
+   PREM: 2
+   GOOD: 45
 
 📊 СРЕДНИЕ ПОКАЗАТЕЛИ
-   Latency: 231.9 ms
-   Stability: 100.0%
-   С Telegram: 56
-   С IP-check: 0
+   Latency: 257.9 ms
+   Stability: 99.4%
+   Categories: 9.0/9
+   С Telegram: 47
+   С IP-check: 9
 
 ⚙️  КОНФИГУРАЦИЯ
    Quick Parallel: 50
    Full Parallel: 20
-   Timeout Slow: (5.0, 20.0)
+   Timeout Fast: (2.0, 5.0)
+   Timeout Normal: (3.0, 8.0)
+   Timeout Slow: (4.0, 15.0)
+   Min Stability: 80.0%
+   Latency Samples: 8
+   Stability Checks: 10
    Categories: 9
+   SNI Blacklist: 13 entries
