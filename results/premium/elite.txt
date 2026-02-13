@@ -1,9 +1,6 @@
 # ELITE
 # @vlesstrojan
-# 2026-02-11 06:59
-# Ключей: 4
+# 2026-02-13 09:18
+# Ключей: 1
 
-vless://8dc7722c-2767-4eea-a28b-2f8daacc07e3@45.82.251.116:8880?encryption=none&security=none&type=grpc#%5B27ms%7CELITE%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
-vless://8dc7722c-2767-4eea-a28b-2f8daacc07e3@45.82.251.116:8880?encryption=none&security=none&type=grpc#%5B29ms%7CELITE%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
-vless://8dc7722c-2767-4eea-a28b-2f8daacc07e3@45.82.251.116:8880?encryption=none&security=none&type=grpc#%5B26ms%7CELITE%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
-vless://8dc7722c-2767-4eea-a28b-2f8daacc07e3@45.82.251.116:8880?encryption=none&security=none&type=grpc#%5B26ms%7CELITE%7Cstab100%25%7C9cat%7CTG%2B%40vlesstrojan%5D
+ss://YWVzLTI1Ni1nY206d2xKU0YwZkM4dXFCNUdtNQ@94.72.127.55:80#%5B112ms%7CELITE%7Cstab100%25%7C4cat%7CTG%2B%40vlesstrojan%5D
