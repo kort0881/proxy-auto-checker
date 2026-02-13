@@ -1,6 +1,8 @@
 """
-📱 REAL MOBILE VPN VALIDATOR v5.4 (RELAXED)
-Мягкие настройки для максимального сохранения ключей
+📱 VPN VALIDATOR v6.0 LITE
+- Дедупликация ключей
+- Один запуск Xray на ключ
+- Минимальные проверки
 """
 
 import os
@@ -43,96 +45,33 @@ logger = logging.getLogger(__name__)
 
 Timeout = Union[float, Tuple[float, float]]
 
-CRITICAL_BAD_SNI: Set[str] = {
-    "localhost", "127.0.0.1", "0.0.0.0", "::1", "",
-    "example.com", "example.org", "test.com", "test.org",
-    "fuck.rkn", "invalid.invalid", "none", "null",
-}
 
-
-def is_critical_bad_sni(sni: Optional[str]) -> bool:
-    if sni is None:
-        return False
-    sni = sni.lower().strip()
-    if not sni:
-        return True
-    if sni in CRITICAL_BAD_SNI:
-        return True
-    if sni.startswith("127.") or sni.startswith("0."):
-        return True
-    for bad in CRITICAL_BAD_SNI:
-        if bad and sni.endswith("." + bad):
-            return True
-    return False
-
-
-# ==================== МЯГКИЕ НАСТРОЙКИ ====================
+# ==================== КОНФИГУРАЦИЯ ====================
 @dataclass
 class Config:
-    # --- ЭТАП 1: Quick Filter (СМЯГЧЕНО) ---
-    QUICK_PARALLEL: int = 20          # Было 50 → 20
-    QUICK_TIMEOUT: Timeout = (5.0, 15.0)  # Было (2, 4) → (5, 15)
-    QUICK_RETRIES: int = 2            # Было 1 → 2
+    # Параллельность
+    PARALLEL_WORKERS: int = 15
     
-    # --- ЭТАП 2: Full Test (СМЯГЧЕНО) ---
-    FULL_PARALLEL: int = 10           # Было 20 → 10
-    LATENCY_SAMPLES: int = 5          # Было 8 → 5
-    STABILITY_CHECKS: int = 5         # Было 10 → 5
-    CATEGORY_SAMPLES: int = 1         # Было 2 → 1
+    # Таймауты
+    TIMEOUT: Timeout = (5.0, 15.0)
+    XRAY_STARTUP: float = 1.5
     
-    # --- Таймауты (УВЕЛИЧЕНЫ) ---
-    TIMEOUT_FAST: Timeout = (5.0, 15.0)     # Было (2, 5)
-    TIMEOUT_NORMAL: Timeout = (8.0, 25.0)   # Было (3, 8)
-    TIMEOUT_SLOW: Timeout = (10.0, 45.0)    # Было (4, 15)
+    # Проверки
+    LATENCY_SAMPLES: int = 3       # Сколько замеров latency
+    QUICK_CATEGORIES: int = 2      # Сколько категорий проверить
     
-    # --- Rate Limiting ---
-    RATE_LIMIT_MIN: float = 0.1       # Было 0.05
-    RATE_LIMIT_MAX: float = 0.3       # Было 0.15
+    # Retry
+    RETRIES: int = 2
+    RETRY_DELAY: float = 0.5
     
-    # --- Xray (УВЕЛИЧЕНО) ---
-    XRAY_STARTUP: float = 2.0         # Было 0.6 → 2.0
-    XRAY_STARTUP_STABILITY: float = 1.5  # Было 0.4 → 1.5
-    XRAY_CONN_IDLE: int = 300
-    
-    # --- Пороги (СМЯГЧЕНЫ) ---
-    MIN_LATENCY_SAMPLES: int = 2      # Было 4 → 2
-    MIN_STABILITY_PERCENT: float = 50.0  # Было 80 → 50
-    
-    # --- Категории (СМЯГЧЕНЫ) ---
-    MIN_CATEGORIES_GOOD: int = 2      # Было 4 → 2
-    
-    # --- ELITE ---
-    ELITE_LATENCY_THRESHOLD: float = 150.0  # Было 100
-    ELITE_STABILITY_THRESHOLD: float = 85.0  # Было 95
-    
-    # --- Retry ---
-    MAX_RETRIES: int = 2              # Было 1 → 2
-    RETRY_DELAY: float = 1.0          # Было 0.3 → 1.0
-    
-    # --- GC ---
-    GC_EVERY_N_KEYS: int = 100        # Было 500 → 100 (чаще чистим)
-    GC_SLEEP: float = 0.5
-    
-    TELEGRAM_BONUS: int = 5
+    # GC
+    GC_EVERY_N_KEYS: int = 50
 
 
 CONFIG = Config()
-# ==========================================================
 
 
-FAST_SITES: Set[str] = {
-    "www.google.com", "google.com",
-    "yandex.ru", "www.yandex.ru",
-    "vk.com", "www.vk.com",
-    "www.gstatic.com",
-    "cp.cloudflare.com",
-}
-
-SLOW_SITES: Set[str] = {
-    "www.sberbank.ru", "sberbank.ru",
-    "www.gosuslugi.ru", "gosuslugi.ru",
-}
-
+# Директории
 WORK_DIR = Path(__file__).parent.absolute()
 RESULTS_FOLDER = WORK_DIR / "results"
 XRAY_FOLDER = WORK_DIR / "xray"
@@ -142,28 +81,19 @@ for d in [RESULTS_FOLDER, XRAY_FOLDER, OUTPUT_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
-# Упрощённый список проверок
-QUICK_CHECK_URLS: List[str] = [
+# URL для проверки
+CHECK_URLS: List[str] = [
     "http://www.gstatic.com/generate_204",
     "http://cp.cloudflare.com/generate_204",
-    "http://connectivitycheck.android.com/generate_204",
 ]
 
-# УПРОЩЁННЫЕ КАТЕГОРИИ (меньше сайтов)
-CHECK_SITES: Dict[str, List[Tuple[str, str]]] = {
-    "telegram": [
-        ("https://web.telegram.org", "Telegram Web"),
-    ],
-    "social": [
-        ("https://vk.com", "VK"),
-    ],
-    "video": [
-        ("https://www.youtube.com", "YouTube"),
-    ],
-    "services": [
-        ("https://www.google.com", "Google"),
-    ],
-}
+# Категории (минимум)
+CATEGORY_URLS: List[Tuple[str, str]] = [
+    ("https://www.google.com", "Google"),
+    ("https://web.telegram.org", "Telegram"),
+    ("https://www.youtube.com", "YouTube"),
+    ("https://vk.com", "VK"),
+]
 
 USER_AGENTS: List[str] = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15",
@@ -171,36 +101,17 @@ USER_AGENTS: List[str] = [
 ]
 
 
-class QualityProfile(Enum):
+# Качество
+class Quality(Enum):
     ELITE = "elite"
     PREMIUM = "premium"
     GOOD = "good"
 
 
-@dataclass(frozen=True)
-class ProfileThresholds:
-    label: str
-    latency_max: float
-    jitter_max: float
-    stability_min: float
-    categories_min: int
-    priority: int
-
-
-# СМЯГЧЁННЫЕ ПОРОГИ КАЧЕСТВА
-QUALITY_PROFILES: Dict[QualityProfile, ProfileThresholds] = {
-    QualityProfile.ELITE: ProfileThresholds(
-        label="ELITE", latency_max=150, jitter_max=50,
-        stability_min=80, categories_min=4, priority=1
-    ),
-    QualityProfile.PREMIUM: ProfileThresholds(
-        label="PREM", latency_max=300, jitter_max=100,
-        stability_min=65, categories_min=3, priority=2
-    ),
-    QualityProfile.GOOD: ProfileThresholds(
-        label="GOOD", latency_max=1000, jitter_max=300,
-        stability_min=50, categories_min=2, priority=3
-    )
+QUALITY_THRESHOLDS = {
+    Quality.ELITE: {"latency": 100, "categories": 4},
+    Quality.PREMIUM: {"latency": 200, "categories": 3},
+    Quality.GOOD: {"latency": 500, "categories": 2},
 }
 
 
@@ -224,44 +135,26 @@ class ServerInfo:
 
 
 @dataclass
-class QuickResult:
+class CheckResult:
     key: str
     alive: bool
-    latency: Optional[float] = None
-    error: Optional[str] = None  # ДОБАВЛЕНО для диагностики
-
-
-@dataclass
-class FullResult:
-    key: str
-    latency_avg: float
-    latency_jitter: float
-    stability_rate: float
-    categories_passed: int
-    category_details: Dict[str, int]
-    profile: QualityProfile
-    score: int
-    proxy_ip: Optional[str] = None
-    telegram_works: bool = False
+    latency: float = 0
+    categories: int = 0
+    telegram: bool = False
+    quality: Optional[Quality] = None
+    error: Optional[str] = None
 
 
 @dataclass
 class Stats:
     total: int = 0
-    quick_alive: int = 0
-    quick_dead: int = 0
-    quick_bad_sni: int = 0
-    quick_parse_error: int = 0
-    quick_xray_fail: int = 0
-    quick_timeout: int = 0
-    quick_connect_fail: int = 0
-    full_passed: int = 0
-    full_failed: int = 0
-    elite_with_ip: int = 0
-    by_profile: Dict[QualityProfile, int] = field(default_factory=lambda: defaultdict(int))
+    duplicates: int = 0
+    checked: int = 0
+    passed: int = 0
+    failed: int = 0
+    by_quality: Dict[Quality, int] = field(default_factory=lambda: defaultdict(int))
+    errors: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
     start_time: float = field(default_factory=time.time)
-    quick_time: float = 0
-    full_time: float = 0
 
 
 def get_free_port() -> int:
@@ -277,29 +170,12 @@ def safe_remove(path: Path):
         path.unlink()
 
 
-def get_timeout_for_url(url: str) -> Timeout:
-    try:
-        host = urlparse(url).netloc.lower()
-    except Exception:
-        return CONFIG.TIMEOUT_NORMAL
-    
-    if host in FAST_SITES or "generate_204" in url:
-        return CONFIG.TIMEOUT_FAST
-    elif host in SLOW_SITES:
-        return CONFIG.TIMEOUT_SLOW
-    else:
-        return CONFIG.TIMEOUT_NORMAL
-
-
-def rate_limit_delay():
-    time.sleep(random.uniform(CONFIG.RATE_LIMIT_MIN, CONFIG.RATE_LIMIT_MAX))
-
-
 def cleanup_memory():
     gc.collect()
-    time.sleep(CONFIG.GC_SLEEP)
+    time.sleep(0.3)
 
 
+# ==================== HTTP ====================
 def create_session(proxies: Dict[str, str]) -> requests.Session:
     session = requests.Session()
     adapter = HTTPAdapter(max_retries=0, pool_connections=5, pool_maxsize=5)
@@ -309,15 +185,13 @@ def create_session(proxies: Dict[str, str]) -> requests.Session:
     return session
 
 
-def smart_request(
+def do_request(
     session: requests.Session,
     url: str,
-    timeout: Optional[Timeout] = None,
-    retries: int = 2
-) -> Tuple[Optional[requests.Response], float, Optional[str]]:
-    """Возвращает (response, latency_ms, error_type)"""
-    if timeout is None:
-        timeout = get_timeout_for_url(url)
+    timeout: Timeout = CONFIG.TIMEOUT,
+    retries: int = CONFIG.RETRIES
+) -> Tuple[bool, float]:
+    """Возвращает (success, latency_ms)"""
     
     for attempt in range(retries + 1):
         try:
@@ -329,35 +203,29 @@ def smart_request(
                 allow_redirects=True
             )
             latency = (time.time() - start) * 1000
-            return response, latency, None
             
-        except requests.exceptions.ConnectTimeout:
-            return None, 0, "connect_timeout"
-            
-        except requests.exceptions.ReadTimeout:
-            if attempt < retries:
-                time.sleep(CONFIG.RETRY_DELAY)
-            else:
-                return None, 0, "read_timeout"
+            if response.status_code < 500:
+                return True, latency
                 
-        except requests.exceptions.ConnectionError as e:
-            return None, 0, f"connection_error"
-            
-        except Exception as e:
-            if attempt < retries:
-                time.sleep(CONFIG.RETRY_DELAY)
-            else:
-                return None, 0, f"other: {type(e).__name__}"
+        except requests.exceptions.Timeout:
+            pass
+        except requests.exceptions.ConnectionError:
+            break  # Retry бесполезен
+        except Exception:
+            pass
+        
+        if attempt < retries:
+            time.sleep(CONFIG.RETRY_DELAY)
     
-    return None, 0, "max_retries"
+    return False, 0
 
 
+# ==================== XRAY ====================
 @contextlib.contextmanager
 def xray_session(
     xray_exe: Path,
-    config: Dict[str, Any],
-    startup_delay: float = CONFIG.XRAY_STARTUP
-) -> Generator[Optional[Tuple[subprocess.Popen, int, Path]], None, None]:
+    config: Dict[str, Any]
+) -> Generator[Optional[Tuple[subprocess.Popen, int]], None, None]:
     
     process = None
     config_file = None
@@ -375,26 +243,23 @@ def xray_session(
             stderr=subprocess.DEVNULL
         )
         
-        time.sleep(startup_delay)
+        time.sleep(CONFIG.XRAY_STARTUP)
         
         if process.poll() is not None:
             yield None
             return
         
         port = config["inbounds"][0]["port"]
-        yield (process, port, config_file)
+        yield (process, port)
         
     finally:
         if process and process.poll() is None:
             process.terminate()
             try:
-                process.wait(timeout=3)
+                process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 process.kill()
-                try:
-                    process.wait(timeout=2)
-                except:
-                    pass
+                process.wait(timeout=1)
         
         if config_file:
             safe_remove(config_file)
@@ -432,7 +297,6 @@ class XrayInstaller:
                 arch = "arm64-v8a" if "arm" in machine else "64"
                 filename = f"Xray-macos-{arch}.zip"
             else:
-                logger.error(f"❌ Неподдерживаемая ОС: {system}")
                 return None
             
             url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
@@ -458,14 +322,17 @@ class XrayInstaller:
             return exe_path
             
         except Exception as e:
-            logger.error(f"❌ Ошибка установки Xray: {e}")
+            logger.error(f"❌ Ошибка: {e}")
             return None
 
 
+# ==================== ПАРСЕРЫ ====================
 class KeyParser:
     @classmethod
     def parse(cls, key: str) -> Optional[ServerInfo]:
-        key = key.strip().split('#')[0].strip()
+        key = key.strip()
+        if '#' in key:
+            key = key.split('#')[0].strip()
         if not key:
             return None
         
@@ -595,6 +462,7 @@ class KeyParser:
         )
 
 
+# ==================== XRAY CONFIG ====================
 class XrayConfigBuilder:
     @classmethod
     def build(cls, server: ServerInfo, port: int) -> Optional[Dict]:
@@ -604,11 +472,6 @@ class XrayConfigBuilder:
         
         return {
             "log": {"loglevel": "none"},
-            "policy": {
-                "levels": {
-                    "0": {"connIdle": CONFIG.XRAY_CONN_IDLE}
-                }
-            },
             "inbounds": [{
                 "port": port,
                 "listen": "127.0.0.1",
@@ -626,57 +489,28 @@ class XrayConfigBuilder:
                 user["flow"] = s.flow
             return {
                 "protocol": "vless",
-                "settings": {
-                    "vnext": [{
-                        "address": s.host,
-                        "port": s.port,
-                        "users": [user]
-                    }]
-                },
+                "settings": {"vnext": [{"address": s.host, "port": s.port, "users": [user]}]},
                 "streamSettings": cls._stream(s)
             }
         
         elif s.protocol == "shadowsocks":
             return {
                 "protocol": "shadowsocks",
-                "settings": {
-                    "servers": [{
-                        "address": s.host,
-                        "port": s.port,
-                        "method": s.method,
-                        "password": s.password
-                    }]
-                },
+                "settings": {"servers": [{"address": s.host, "port": s.port, "method": s.method, "password": s.password}]},
                 "streamSettings": {"network": "tcp"}
             }
         
         elif s.protocol == "vmess":
             return {
                 "protocol": "vmess",
-                "settings": {
-                    "vnext": [{
-                        "address": s.host,
-                        "port": s.port,
-                        "users": [{
-                            "id": s.uuid,
-                            "alterId": 0,
-                            "security": "auto"
-                        }]
-                    }]
-                },
+                "settings": {"vnext": [{"address": s.host, "port": s.port, "users": [{"id": s.uuid, "alterId": 0, "security": "auto"}]}]},
                 "streamSettings": cls._stream(s)
             }
         
         elif s.protocol == "trojan":
             return {
                 "protocol": "trojan",
-                "settings": {
-                    "servers": [{
-                        "address": s.host,
-                        "port": s.port,
-                        "password": s.password
-                    }]
-                },
+                "settings": {"servers": [{"address": s.host, "port": s.port, "password": s.password}]},
                 "streamSettings": cls._stream(s)
             }
         
@@ -684,10 +518,7 @@ class XrayConfigBuilder:
     
     @classmethod
     def _stream(cls, s: ServerInfo) -> Dict:
-        ss: Dict[str, Any] = {
-            "network": s.network_type,
-            "security": s.security
-        }
+        ss: Dict[str, Any] = {"network": s.network_type, "security": s.security}
         
         if s.security == "reality":
             ss["realitySettings"] = {
@@ -713,391 +544,131 @@ class XrayConfigBuilder:
         return ss
 
 
-def quick_check_one(key: str, xray_exe: Path) -> QuickResult:
-    """Быстрая проверка с диагностикой"""
+# ==================== ПРОВЕРКА (ОДИН ЗАПУСК XRAY!) ====================
+def check_key(key: str, xray_exe: Path) -> CheckResult:
+    """
+    ОДИН запуск Xray на ключ:
+    1. Проверка connectivity (несколько замеров latency)
+    2. Проверка категорий
+    """
     
     server = KeyParser.parse(key)
     if not server:
-        return QuickResult(key=key, alive=False, error="parse_error")
-    
-    if is_critical_bad_sni(server.sni):
-        return QuickResult(key=key, alive=False, error="bad_sni")
+        return CheckResult(key=key, alive=False, error="parse_error")
     
     port = get_free_port()
     config = XrayConfigBuilder.build(server, port)
     if not config:
-        return QuickResult(key=key, alive=False, error="config_error")
+        return CheckResult(key=key, alive=False, error="config_error")
     
     with xray_session(xray_exe, config) as session:
         if not session:
-            return QuickResult(key=key, alive=False, error="xray_fail")
+            return CheckResult(key=key, alive=False, error="xray_fail")
         
-        _, socks_port, _ = session
+        _, socks_port = session
         proxies = {
             "http": f"socks5://127.0.0.1:{socks_port}",
             "https": f"socks5://127.0.0.1:{socks_port}"
         }
         
         http = create_session(proxies)
+        
         try:
-            # Пробуем несколько URL
-            for url in QUICK_CHECK_URLS:
-                response, latency, error = smart_request(
-                    http, url,
-                    timeout=CONFIG.QUICK_TIMEOUT,
-                    retries=CONFIG.QUICK_RETRIES
-                )
-                
-                if response and response.status_code in [200, 204]:
-                    return QuickResult(key=key, alive=True, latency=latency)
+            # === 1. LATENCY TEST ===
+            latencies: List[float] = []
             
-            # Все URL провалились
-            return QuickResult(key=key, alive=False, error=error or "all_urls_failed")
-        finally:
-            http.close()
-    
-    return QuickResult(key=key, alive=False, error="unknown")
-
-
-def run_quick_filter(keys: List[str], xray_exe: Path, stats: Stats) -> List[str]:
-    """ЭТАП 1: Быстрая фильтрация с детальной статистикой ошибок"""
-    
-    error_counts: Dict[str, int] = defaultdict(int)
-    
-    logger.info(f"\n{'='*60}")
-    logger.info(f"⚡ ЭТАП 1: БЫСТРЫЙ ФИЛЬТР (RELAXED)")
-    logger.info(f"{'='*60}")
-    logger.info(f"📦 Ключей: {len(keys)} | Параллельно: {CONFIG.QUICK_PARALLEL}")
-    logger.info(f"⏱️  Таймаут: connect={CONFIG.QUICK_TIMEOUT[0]}s, read={CONFIG.QUICK_TIMEOUT[1]}s")
-    logger.info(f"🔄 Retries: {CONFIG.QUICK_RETRIES} | Xray startup: {CONFIG.XRAY_STARTUP}s")
-    
-    start_time = time.time()
-    alive_keys: List[str] = []
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.QUICK_PARALLEL) as executor:
-        futures = {
-            executor.submit(quick_check_one, key, xray_exe): key 
-            for key in keys
-        }
-        
-        done = 0
-        total = len(keys)
-        
-        for future in concurrent.futures.as_completed(futures):
-            done += 1
-            
-            try:
-                result = future.result(timeout=60)
-                
-                if result.alive:
-                    alive_keys.append(result.key)
-                    stats.quick_alive += 1
-                else:
-                    stats.quick_dead += 1
-                    if result.error:
-                        error_counts[result.error] += 1
-                    
-            except Exception as e:
-                stats.quick_dead += 1
-                error_counts["future_exception"] += 1
-            
-            if done % CONFIG.GC_EVERY_N_KEYS == 0:
-                cleanup_memory()
-                elapsed = time.time() - start_time
-                speed = done / elapsed if elapsed > 0 else 1
-                eta = (total - done) / speed / 60 if speed > 0 else 0
-                pct = stats.quick_alive * 100 // done if done > 0 else 0
-                
-                # Показываем статистику ошибок
-                top_errors = sorted(error_counts.items(), key=lambda x: -x[1])[:3]
-                errors_str = " | ".join([f"{k}:{v}" for k, v in top_errors])
-                
-                logger.info(
-                    f"[{done}/{total}] ✅ {stats.quick_alive} ({pct}%) | "
-                    f"⏱️ {elapsed/60:.1f}м | ETA: {eta:.1f}м"
-                )
-                if errors_str:
-                    logger.info(f"   ❌ Top errors: {errors_str}")
-    
-    cleanup_memory()
-    stats.quick_time = time.time() - start_time
-    
-    # Итоговая статистика ошибок
-    logger.info(f"\n{'='*60}")
-    logger.info(f"📊 СТАТИСТИКА ОШИБОК:")
-    for error, count in sorted(error_counts.items(), key=lambda x: -x[1]):
-        pct = count * 100 // max(stats.quick_dead, 1)
-        logger.info(f"   {error}: {count} ({pct}%)")
-    
-    pct = stats.quick_alive * 100 // max(len(keys), 1)
-    logger.info(f"\n✅ ЭТАП 1 ЗАВЕРШЁН за {stats.quick_time/60:.1f} мин")
-    logger.info(f"📊 Живых: {stats.quick_alive} ({pct}%) | Мёртвых: {stats.quick_dead}")
-    logger.info(f"{'='*60}\n")
-    
-    return alive_keys
-
-
-def full_test_one(key: str, xray_exe: Path) -> Optional[FullResult]:
-    """Упрощённая полная проверка"""
-    
-    server = KeyParser.parse(key)
-    if not server:
-        return None
-    
-    if is_critical_bad_sni(server.sni):
-        return None
-    
-    # === LATENCY TEST ===
-    latencies: List[float] = []
-    port = get_free_port()
-    config = XrayConfigBuilder.build(server, port)
-    if not config:
-        return None
-    
-    with xray_session(xray_exe, config) as session:
-        if not session:
-            return None
-        
-        _, socks_port, _ = session
-        proxies = {
-            "http": f"socks5://127.0.0.1:{socks_port}",
-            "https": f"socks5://127.0.0.1:{socks_port}"
-        }
-        
-        http = create_session(proxies)
-        try:
             for _ in range(CONFIG.LATENCY_SAMPLES):
-                url = random.choice(QUICK_CHECK_URLS)
-                response, latency, _ = smart_request(
-                    http, url,
-                    timeout=CONFIG.TIMEOUT_FAST,
-                    retries=1
-                )
-                if response and response.status_code in [200, 204]:
+                url = random.choice(CHECK_URLS)
+                success, latency = do_request(http, url, retries=1)
+                if success:
                     latencies.append(latency)
+            
+            if not latencies:
+                return CheckResult(key=key, alive=False, error="connectivity_fail")
+            
+            avg_latency = mean(latencies)
+            
+            # === 2. CATEGORY TEST ===
+            categories_passed = 0
+            telegram_works = False
+            
+            for url, name in CATEGORY_URLS[:CONFIG.QUICK_CATEGORIES + 2]:
+                success, _ = do_request(http, url, timeout=(5, 20), retries=1)
+                if success:
+                    categories_passed += 1
+                    if "telegram" in name.lower():
+                        telegram_works = True
+            
+            # === 3. ОПРЕДЕЛЕНИЕ КАЧЕСТВА ===
+            quality = Quality.GOOD
+            
+            for q in [Quality.ELITE, Quality.PREMIUM, Quality.GOOD]:
+                thresh = QUALITY_THRESHOLDS[q]
+                if avg_latency <= thresh["latency"] and categories_passed >= thresh["categories"]:
+                    quality = q
+                    break
+            
+            return CheckResult(
+                key=key,
+                alive=True,
+                latency=round(avg_latency, 1),
+                categories=categories_passed,
+                telegram=telegram_works,
+                quality=quality
+            )
+            
+        except Exception as e:
+            return CheckResult(key=key, alive=False, error=f"exception: {type(e).__name__}")
         finally:
             http.close()
+
+
+# ==================== ЗАГРУЗКА И ДЕДУПЛИКАЦИЯ ====================
+def load_and_deduplicate(filepath: Path) -> Tuple[List[str], int]:
+    """
+    Загрузка ключей С ДЕДУПЛИКАЦИЕЙ
+    Возвращает: (уникальные ключи, количество дублей)
+    """
+    seen: Set[str] = set()
+    unique_keys: List[str] = []
+    duplicates = 0
     
-    if len(latencies) < CONFIG.MIN_LATENCY_SAMPLES:
-        return None
-    
-    latency_avg = round(mean(latencies), 1)
-    latency_jitter = round(stdev(latencies), 1) if len(latencies) > 1 else 0
-    
-    # === CATEGORY TEST (УПРОЩЁННЫЙ) ===
-    categories: Dict[str, int] = {}
-    telegram_works = False
-    
-    port = get_free_port()
-    config = XrayConfigBuilder.build(server, port)
-    
-    with xray_session(xray_exe, config) as session:
-        if not session:
-            return None
-        
-        _, socks_port, _ = session
-        proxies = {
-            "http": f"socks5://127.0.0.1:{socks_port}",
-            "https": f"socks5://127.0.0.1:{socks_port}"
-        }
-        
-        http = create_session(proxies)
-        try:
-            for category, sites in CHECK_SITES.items():
-                passed = 0
-                
-                for url, name in sites[:CONFIG.CATEGORY_SAMPLES]:
-                    rate_limit_delay()
-                    
-                    response, _, _ = smart_request(
-                        http, url,
-                        timeout=CONFIG.TIMEOUT_NORMAL,
-                        retries=CONFIG.MAX_RETRIES
-                    )
-                    
-                    if response and response.status_code < 500:
-                        passed += 1
-                        if category == "telegram":
-                            telegram_works = True
-                
-                categories[category] = passed
-        finally:
-            http.close()
-    
-    categories_passed = sum(1 for v in categories.values() if v > 0)
-    
-    # === STABILITY TEST (УПРОЩЁННЫЙ) ===
-    successes = 0
-    
-    for _ in range(CONFIG.STABILITY_CHECKS):
-        port = get_free_port()
-        config = XrayConfigBuilder.build(server, port)
-        
-        with xray_session(
-            xray_exe, config, 
-            startup_delay=CONFIG.XRAY_STARTUP_STABILITY
-        ) as session:
-            if not session:
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
                 continue
             
-            _, socks_port, _ = session
-            proxies = {"http": f"socks5://127.0.0.1:{socks_port}"}
+            # Убираем тег для нормализации
+            if '#' in line:
+                key_normalized = line.split('#')[0].strip()
+            else:
+                key_normalized = line.strip()
             
-            http = create_session(proxies)
-            try:
-                response, _, _ = smart_request(
-                    http,
-                    QUICK_CHECK_URLS[0],
-                    timeout=(5, 10),
-                    retries=1
-                )
-                if response and response.status_code in [200, 204]:
-                    successes += 1
-            finally:
-                http.close()
-    
-    stability = round(successes / CONFIG.STABILITY_CHECKS * 100, 1)
-    
-    # МЯГКИЙ ПОРОГ
-    if stability < CONFIG.MIN_STABILITY_PERCENT:
-        return None
-    
-    # === ОПРЕДЕЛЕНИЕ ПРОФИЛЯ ===
-    profile = QualityProfile.GOOD
-    score = 50
-    
-    for p, t in sorted(QUALITY_PROFILES.items(), key=lambda x: x[1].priority):
-        if (latency_avg <= t.latency_max and
-            latency_jitter <= t.jitter_max and
-            stability >= t.stability_min and
-            categories_passed >= t.categories_min):
+            if not key_normalized:
+                continue
             
-            profile = p
-            score = 100 - int(latency_avg / 10) + int(stability) + categories_passed * 5
-            break
-    
-    if telegram_works:
-        score += CONFIG.TELEGRAM_BONUS
-    
-    return FullResult(
-        key=key,
-        latency_avg=latency_avg,
-        latency_jitter=latency_jitter,
-        stability_rate=stability,
-        categories_passed=categories_passed,
-        category_details=categories,
-        profile=profile,
-        score=max(0, min(score, 200)),
-        proxy_ip=None,
-        telegram_works=telegram_works
-    )
-
-
-def run_full_test(keys: List[str], xray_exe: Path, stats: Stats) -> List[FullResult]:
-    """ЭТАП 2: Полная проверка"""
-    
-    logger.info(f"\n{'='*60}")
-    logger.info(f"🔬 ЭТАП 2: ПОЛНАЯ ПРОВЕРКА (RELAXED)")
-    logger.info(f"{'='*60}")
-    logger.info(f"📦 Ключей: {len(keys)} | Параллельно: {CONFIG.FULL_PARALLEL}")
-    logger.info(f"📊 Мин. стабильность: {CONFIG.MIN_STABILITY_PERCENT}%")
-    logger.info(f"📊 Мин. категорий: {CONFIG.MIN_CATEGORIES_GOOD}")
-    
-    start_time = time.time()
-    results: List[FullResult] = []
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.FULL_PARALLEL) as executor:
-        futures = {
-            executor.submit(full_test_one, key, xray_exe): key 
-            for key in keys
-        }
-        
-        done = 0
-        total = len(keys)
-        
-        for future in concurrent.futures.as_completed(futures):
-            done += 1
+            # Проверка на дубль
+            if key_normalized in seen:
+                duplicates += 1
+                continue
             
-            try:
-                result = future.result(timeout=300)
-                
-                if result:
-                    results.append(result)
-                    stats.full_passed += 1
-                    stats.by_profile[result.profile] += 1
-                    
-                    label = QUALITY_PROFILES[result.profile].label
-                    tg = " 📱" if result.telegram_works else ""
-                    
-                    logger.info(
-                        f"[{done}/{total}] ✓ {label} | "
-                        f"{result.latency_avg:.0f}ms j:{result.latency_jitter:.0f} | "
-                        f"stab:{result.stability_rate:.0f}% | "
-                        f"cat:{result.categories_passed}/{len(CHECK_SITES)}{tg}"
-                    )
-                else:
-                    stats.full_failed += 1
-                    
-            except Exception as e:
-                stats.full_failed += 1
-            
-            if done % 20 == 0:
-                elapsed = time.time() - start_time
-                logger.info(f"[{done}/{total}] ⏱️ {elapsed/60:.1f}м | ✓ {stats.full_passed}")
+            seen.add(key_normalized)
+            unique_keys.append(line)  # Сохраняем оригинальный ключ (с тегом)
     
-    cleanup_memory()
-    stats.full_time = time.time() - start_time
-    
-    logger.info(f"\n✅ ЭТАП 2 ЗАВЕРШЁН за {stats.full_time/60:.1f} мин")
-    logger.info(f"📊 Прошло: {stats.full_passed} | Отсеяно: {stats.full_failed}")
-    
-    return results
-
-
-def save_results(results: List[FullResult], output_dir: Path, stats: Stats):
-    """Сохранение результатов"""
-    
-    by_profile: Dict[QualityProfile, List[FullResult]] = defaultdict(list)
-    for r in results:
-        by_profile[r.profile].append(r)
-    
-    for profile in QualityProfile:
-        items = by_profile.get(profile, [])
-        if not items:
-            continue
-        
-        items.sort(key=lambda x: x.score, reverse=True)
-        
-        filename = output_dir / f"{profile.value}.txt"
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(f"# {QUALITY_PROFILES[profile].label}\n")
-            f.write(f"# @vlesstrojan\n")
-            f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"# Ключей: {len(items)}\n\n")
-            
-            for r in items:
-                label = QUALITY_PROFILES[r.profile].label
-                tg = "TG+" if r.telegram_works else ""
-                comment = (
-                    f"[{r.latency_avg:.0f}ms|{label}|"
-                    f"stab{r.stability_rate:.0f}%|"
-                    f"{r.categories_passed}cat|{tg}@vlesstrojan]"
-                )
-                base_key = r.key.split('#')[0]
-                f.write(f"{base_key}#{quote(comment)}\n")
-        
-        logger.info(f"💾 {QUALITY_PROFILES[profile].label}: {len(items)} → {filename.name}")
+    return unique_keys, duplicates
 
 
 def find_source_file() -> Optional[Path]:
     if not RESULTS_FOLDER.exists():
         return None
     
+    # Приоритет: verified_*.txt
     files = list(RESULTS_FOLDER.glob("verified_*.txt"))
     if files:
         return max(files, key=lambda f: f.stat().st_mtime)
     
+    # Fallback: любой .txt
     files = list(RESULTS_FOLDER.glob("*.txt"))
     if files:
         return max(files, key=lambda f: f.stat().st_mtime)
@@ -1105,36 +676,60 @@ def find_source_file() -> Optional[Path]:
     return None
 
 
-def load_keys(filepath: Path) -> List[str]:
-    keys: List[str] = []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                key = line.split('#')[0].strip()
-                if key:
-                    keys.append(key)
-    return keys
+# ==================== СОХРАНЕНИЕ ====================
+def save_results(results: List[CheckResult], output_dir: Path):
+    """Сохранение по категориям качества"""
+    
+    by_quality: Dict[Quality, List[CheckResult]] = defaultdict(list)
+    for r in results:
+        if r.alive and r.quality:
+            by_quality[r.quality].append(r)
+    
+    for quality in Quality:
+        items = by_quality.get(quality, [])
+        if not items:
+            continue
+        
+        # Сортируем по latency (лучшие первые)
+        items.sort(key=lambda x: x.latency)
+        
+        filename = output_dir / f"{quality.value}.txt"
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"# {quality.value.upper()}\n")
+            f.write(f"# @vlesstrojan\n")
+            f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"# Ключей: {len(items)}\n\n")
+            
+            for r in items:
+                tg = "TG+" if r.telegram else ""
+                comment = f"[{r.latency:.0f}ms|{r.quality.value}|{r.categories}cat|{tg}@vlesstrojan]"
+                base_key = r.key.split('#')[0]
+                f.write(f"{base_key}#{quote(comment)}\n")
+        
+        logger.info(f"💾 {quality.value.upper()}: {len(items)} → {filename.name}")
 
 
+# ==================== MAIN ====================
 def main() -> int:
     print("\n" + "=" * 60)
-    print(" " * 10 + "📱 VPN VALIDATOR v5.4 RELAXED")
-    print(" " * 5 + "Мягкие настройки для максимума ключей")
+    print(" " * 10 + "📱 VPN VALIDATOR v6.0 LITE")
+    print(" " * 5 + "Дедупликация + Один запуск Xray на ключ")
     print("=" * 60)
     
-    print(f"\n⚙️  НАСТРОЙКИ (RELAXED):")
-    print(f"   Quick: {CONFIG.QUICK_PARALLEL} parallel, timeout={CONFIG.QUICK_TIMEOUT}")
-    print(f"   Full: {CONFIG.FULL_PARALLEL} parallel")
+    print(f"\n⚙️  Настройки:")
+    print(f"   Workers: {CONFIG.PARALLEL_WORKERS}")
+    print(f"   Timeout: {CONFIG.TIMEOUT}")
     print(f"   Xray startup: {CONFIG.XRAY_STARTUP}s")
-    print(f"   Min stability: {CONFIG.MIN_STABILITY_PERCENT}%")
-    print(f"   Retries: {CONFIG.QUICK_RETRIES} / {CONFIG.MAX_RETRIES}")
+    print(f"   Latency samples: {CONFIG.LATENCY_SAMPLES}")
     
+    # Xray
     xray_exe = XrayInstaller.setup()
     if not xray_exe:
         logger.error("❌ Не удалось установить Xray")
         return 1
     
+    # Файл
     source = find_source_file()
     if not source:
         logger.error("❌ Не найден файл с ключами")
@@ -1142,35 +737,102 @@ def main() -> int:
     
     logger.info(f"\n📁 Источник: {source.name}")
     
-    keys = load_keys(source)
+    # Загрузка С ДЕДУПЛИКАЦИЕЙ
+    keys, duplicates = load_and_deduplicate(source)
+    
     if not keys:
         logger.error("❌ Нет ключей")
         return 1
     
-    stats = Stats(total=len(keys))
-    logger.info(f"📦 Ключей: {len(keys)}")
+    stats = Stats(total=len(keys) + duplicates, duplicates=duplicates)
     
-    # ЭТАП 1
-    alive_keys = run_quick_filter(keys, xray_exe, stats)
+    logger.info(f"📦 Всего строк: {stats.total}")
+    if duplicates > 0:
+        logger.info(f"🔄 Дубликатов удалено: {duplicates}")
+    logger.info(f"✅ Уникальных ключей: {len(keys)}")
     
-    if not alive_keys:
-        logger.warning("⚠️ Не найдено живых ключей!")
-        return 0
+    # Проверка
+    logger.info(f"\n{'='*60}")
+    logger.info(f"🔬 ПРОВЕРКА ({CONFIG.PARALLEL_WORKERS} workers)")
+    logger.info(f"{'='*60}\n")
     
-    # ЭТАП 2
-    results = run_full_test(alive_keys, xray_exe, stats)
+    start_time = time.time()
+    results: List[CheckResult] = []
     
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.PARALLEL_WORKERS) as executor:
+        futures = {executor.submit(check_key, key, xray_exe): key for key in keys}
+        
+        done = 0
+        total = len(keys)
+        
+        for future in concurrent.futures.as_completed(futures):
+            done += 1
+            stats.checked += 1
+            
+            try:
+                result = future.result(timeout=120)
+                
+                if result.alive:
+                    results.append(result)
+                    stats.passed += 1
+                    stats.by_quality[result.quality] += 1
+                    
+                    tg = " 📱" if result.telegram else ""
+                    logger.info(
+                        f"[{done}/{total}] ✓ {result.quality.value.upper()} | "
+                        f"{result.latency:.0f}ms | {result.categories}cat{tg}"
+                    )
+                else:
+                    stats.failed += 1
+                    if result.error:
+                        stats.errors[result.error] += 1
+                    
+            except Exception as e:
+                stats.failed += 1
+                stats.errors["future_exception"] += 1
+            
+            # Прогресс и GC
+            if done % CONFIG.GC_EVERY_N_KEYS == 0:
+                cleanup_memory()
+                elapsed = time.time() - start_time
+                speed = done / elapsed if elapsed > 0 else 1
+                eta = (total - done) / speed / 60 if speed > 0 else 0
+                pct = stats.passed * 100 // done if done > 0 else 0
+                
+                logger.info(
+                    f"[{done}/{total}] ✅ {stats.passed} ({pct}%) | "
+                    f"⏱️ {elapsed/60:.1f}м | ETA: {eta:.1f}м"
+                )
+    
+    total_time = time.time() - start_time
+    
+    # Сохранение
     if results:
-        save_results(results, OUTPUT_DIR, stats)
+        logger.info(f"\n💾 Сохранение результатов...")
+        save_results(results, OUTPUT_DIR)
+    
+    # Статистика ошибок
+    if stats.errors:
+        logger.info(f"\n📊 Ошибки:")
+        for error, count in sorted(stats.errors.items(), key=lambda x: -x[1])[:5]:
+            pct = count * 100 // max(stats.failed, 1)
+            logger.info(f"   {error}: {count} ({pct}%)")
     
     # Итоги
-    total_time = time.time() - stats.start_time
     print("\n" + "=" * 60)
     print("📊 ИТОГИ")
-    print(f"   Всего: {stats.total}")
-    print(f"   Quick alive: {stats.quick_alive} ({stats.quick_alive*100//max(stats.total,1)}%)")
-    print(f"   Full passed: {stats.full_passed}")
+    print("=" * 60)
+    print(f"   Всего строк: {stats.total}")
+    print(f"   Дубликатов: {stats.duplicates}")
+    print(f"   Уникальных: {len(keys)}")
+    print(f"   Прошло: {stats.passed} ({stats.passed*100//max(len(keys),1)}%)")
     print(f"   Время: {total_time/60:.1f} мин")
+    print()
+    print("🏆 По качеству:")
+    for q in Quality:
+        count = stats.by_quality.get(q, 0)
+        if count > 0:
+            print(f"   {q.value.upper()}: {count}")
     print("=" * 60)
     
     return 0
