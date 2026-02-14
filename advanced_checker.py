@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker Pro v3.1
-Advanced proxy validation with AI predictions and mutation strategies
+AI Proxy Checker v4.0 BALANCED
+Soft thresholds + fast checks + AI history + no README generation
 """
 
 import os
@@ -26,43 +26,23 @@ from datetime import datetime
 from urllib.parse import quote, unquote
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Set, Any
+from typing import List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from statistics import mean, stdev
 from logging.handlers import RotatingFileHandler
 
-# ==================== EXTERNAL LIBRARIES ====================
-try:
-    from tqdm import tqdm
-    TQDM_AVAILABLE = True
-except ImportError:
-    TQDM_AVAILABLE = False
-    print("⚠️ tqdm not found. Install: pip install tqdm")
-
-try:
-    import colorama
-    from colorama import Fore, Style
-    colorama.init(autoreset=True)
-    COLOR_AVAILABLE = True
-except ImportError:
-    COLOR_AVAILABLE = False
-    print("⚠️ colorama not found. Install: pip install colorama")
-    class Fore:
-        RED = GREEN = YELLOW = CYAN = MAGENTA = RESET = ''
-    class Style:
-        RESET_ALL = BRIGHT = ''
-
+# ==================== AI (optional) ====================
 AI_AVAILABLE = False
 try:
-    from sklearn.ensemble import RandomForestClassifier, IsolationForest
+    from sklearn.ensemble import IsolationForest
     from sklearn.preprocessing import StandardScaler
     import numpy as np
     AI_AVAILABLE = True
 except ImportError:
-    print("⚠️ AI libraries not found. Install: pip install scikit-learn")
+    print("[INFO] scikit-learn not found, AI disabled")
 
-# ==================== CONFIGURATION ====================
+# ==================== PATHS ====================
 WORK_DIR = Path(__file__).parent.absolute()
 XRAY_FOLDER = WORK_DIR / "xray"
 RESULTS_FOLDER = WORK_DIR / "results"
@@ -71,11 +51,10 @@ HISTORY_FILE = RESULTS_FOLDER / "history.jsonl"
 STATS_FILE = RESULTS_FOLDER / "stats_latest.json"
 LOG_FILE = RESULTS_FOLDER / "checker.log"
 
-# Create directories
 for d in [XRAY_FOLDER, RESULTS_FOLDER, PREMIUM_FOLDER]:
     d.mkdir(parents=True, exist_ok=True)
 
-# ==================== KEY SOURCES ====================
+# ==================== SOURCES ====================
 KEY_SOURCES = {
     "RU": [
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part1.txt",
@@ -87,81 +66,80 @@ KEY_SOURCES = {
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part1.txt",
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part2.txt",
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
-    ],
-    "US": [
-        "https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/base64/vmess",
-        "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
     ]
 }
 
 MY_CHANNEL = "@vlesstrojan"
-SAFE_SNI_LIST = [
-    "www.google.com", "www.microsoft.com", "www.amazon.com", 
-    "dl.google.com", "www.samsung.com", "www.cloudflare.com",
-    "www.apple.com", "www.netflix.com", "www.spotify.com"
-]
 
-# ==================== DATACLASSES ====================
+
+# ==================== SOFT CONFIG ====================
 @dataclass
 class Config:
-    # TCP Settings
-    TCP_WORKERS: int = 50
-    TCP_TIMEOUT: int = 5
+    # TCP - generous
+    TCP_WORKERS: int = 40
+    TCP_TIMEOUT: int = 8
     TCP_RETRIES: int = 1
-    
-    # Xray Settings
-    XRAY_WORKERS: int = 16
-    XRAY_STARTUP: float = 1.5
-    XRAY_STARTUP_QUICK: float = 0.8
-    XRAY_TIMEOUT: int = 10
-    
-    # Test Settings
-    LATENCY_SAMPLES: int = 5
-    MIN_LATENCY_SUCCESS: int = 3
-    RECONNECT_TESTS: int = 3
-    MIN_RECONNECT_SUCCESS: int = 2
-    
-    # URLs for testing
-    CHECK_URLS: List[str] = field(default_factory=lambda: [
-        'https://cp.cloudflare.com/generate_204',
-        'http://www.gstatic.com/generate_204',
-        'http://connectivitycheck.gstatic.com/generate_204',
-    ])
-    
+
+    # XRAY - conservative workers, proper wait
+    XRAY_WORKERS: int = 12
+    XRAY_STARTUP: float = 5.0
+    XRAY_STARTUP_QUICK: float = 4.0
+    XRAY_TIMEOUT: int = 12
+
+    # Latency - reduced from 5 to 3
+    LATENCY_SAMPLES: int = 3
+    MIN_LATENCY_SUCCESS: int = 2
+
+    # Categories - 7 sites, soft threshold
     CATEGORY_URLS: List[Tuple[str, str]] = field(default_factory=lambda: [
         ("https://www.google.com", "google"),
         ("https://web.telegram.org", "telegram"),
         ("https://www.youtube.com", "youtube"),
-        ("https://www.netflix.com", "netflix"),
+        ("https://vk.com", "vk"),
         ("https://www.instagram.com", "instagram"),
+        ("https://twitter.com", "twitter"),
+        ("https://www.tiktok.com", "tiktok"),
     ])
-    
-    # Memory
-    GC_EVERY: int = 100
-    MAX_BATCH_SIZE: int = 500
+
+    # Reconnect - reduced from 2 to 1
+    RECONNECT_TESTS: int = 1
+    MIN_RECONNECT_SUCCESS: int = 1
+
+    CHECK_URLS: List[str] = field(default_factory=lambda: [
+        'https://cp.cloudflare.com/generate_204',
+        'http://www.gstatic.com/generate_204',
+    ])
+
+    # Mutations - only 1 safe attempt
+    MAX_SAFE_MUTATIONS: int = 1
+
+    GC_EVERY: int = 60
+
 
 CONFIG = Config()
 
-# ==================== QUALITY LEVELS ====================
+
+# ==================== SOFT QUALITY THRESHOLDS ====================
 class Quality(Enum):
     ELITE = "elite"
     PREMIUM = "premium"
     GOOD = "good"
-    STANDARD = "standard"
+
 
 @dataclass
 class QualityThreshold:
     latency_max: float
     jitter_max: float
     categories_min: int
-    reconnect_min: int
 
+
+# SOFT thresholds: much more permissive than v3.x
 QUALITY_THRESHOLDS = {
-    Quality.ELITE: QualityThreshold(80, 20, 5, 3),
-    Quality.PREMIUM: QualityThreshold(150, 40, 4, 2),
-    Quality.GOOD: QualityThreshold(250, 60, 3, 2),
-    Quality.STANDARD: QualityThreshold(500, 100, 2, 1),
+    Quality.ELITE:   QualityThreshold(latency_max=200,  jitter_max=80,  categories_min=4),
+    Quality.PREMIUM: QualityThreshold(latency_max=500,  jitter_max=150, categories_min=3),
+    Quality.GOOD:    QualityThreshold(latency_max=2000, jitter_max=500, categories_min=2),
 }
+
 
 @dataclass
 class CheckResult:
@@ -172,20 +150,16 @@ class CheckResult:
     reconnect_success: int = 0
     categories: int = 0
     telegram: bool = False
-    netflix: bool = False
     quality: Optional[Quality] = None
     protocol: str = ""
     host: str = ""
     port: int = 0
     security: str = ""
     error: Optional[str] = None
-    
-    # AI fields
-    failure_risk: float = 0.0
+    mutation_used: str = ""
     is_anomaly: bool = False
     ai_verdict: str = ""
-    mutation_used: str = ""
-    confidence_score: float = 0.0
+
 
 @dataclass
 class Stats:
@@ -201,63 +175,54 @@ class Stats:
     errors: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
     ai_anomalies: int = 0
     mutations_success: int = 0
-    total_mutations_tried: int = 0
+    mutations_tried: int = 0
     start_time: float = field(default_factory=time.time)
+
 
 stats = Stats()
 stats_lock = threading.Lock()
 
+
+def record_error(error: str):
+    with stats_lock:
+        stats.errors[error] += 1
+
+
 # ==================== LOGGING ====================
 def setup_logging():
-    """Setup dual logging: file + console"""
-    handler = RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=3)
-    handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s'))
-    
+    handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=2)
+    handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
     logger = logging.getLogger('ProxyChecker')
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
-    
-    console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter('%(message)s'))
-    logger.addHandler(console)
-    
     return logger
 
-logger = setup_logging()
 
-def log(msg: str, level: str = "info"):
-    """Enhanced logging with colors"""
-    if COLOR_AVAILABLE:
-        colors = {
-            "info": Fore.CYAN,
-            "success": Fore.GREEN,
-            "warning": Fore.YELLOW,
-            "error": Fore.RED,
-            "debug": Fore.MAGENTA
-        }
-        colored_msg = f"{colors.get(level, '')}{msg}{Style.RESET_ALL}"
-        print(colored_msg)
-    else:
-        print(f"[{level.upper()}] {msg}")
-    
-    log_method = getattr(logger, level if level != "success" else "info")
-    log_method(msg)
+file_logger = setup_logging()
+
+
+def log(msg: str):
+    print(msg)
+    file_logger.info(msg)
+
 
 # ==================== PROCESS MANAGEMENT ====================
 _active_processes: List[subprocess.Popen] = []
 _processes_lock = threading.Lock()
 
+
 def register_process(proc):
     with _processes_lock:
         _active_processes.append(proc)
+
 
 def unregister_process(proc):
     with _processes_lock:
         if proc in _active_processes:
             _active_processes.remove(proc)
 
+
 def cleanup_all_processes():
-    """Kill all active xray processes"""
     with _processes_lock:
         for p in list(_active_processes):
             try:
@@ -267,220 +232,129 @@ def cleanup_all_processes():
                 pass
         _active_processes.clear()
 
+
 atexit.register(cleanup_all_processes)
 
-def signal_handler(sig, frame):
-    log("🛑 Interrupted! Cleaning up...", "warning")
+
+def signal_handler(signum, frame):
+    print("\n[STOP] Interrupted")
     cleanup_all_processes()
-    sys.exit(0)
+    sys.exit(1)
+
 
 signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
-# ==================== AI ENGINE ====================
+
+def cleanup_memory():
+    gc.collect()
+    time.sleep(0.2)
+
+
+# ==================== AI ENGINE (lightweight) ====================
 class AIEngine:
-    """Advanced AI for proxy analysis and optimization"""
-    
+    """Lightweight AI: only anomaly detection + history logging"""
+
     def __init__(self):
         self.enabled = AI_AVAILABLE
         self.history: List[Dict] = []
-        self.model_risk = None
         self.model_anomaly = None
-        self.model_quality = None
         self.scaler = StandardScaler() if AI_AVAILABLE else None
-        self.protocol_stats = defaultdict(lambda: {'success': 0, 'total': 0, 'avg_latency': []})
-        self.mutation_effectiveness = defaultdict(lambda: {'success': 0, 'total': 0})
+        self.protocol_stats = defaultdict(lambda: {'success': 0, 'total': 0})
         self._load_history()
         if self.enabled:
-            self._train_models()
-    
+            self._train()
+
     def _load_history(self):
-        """Load historical data for training"""
         if not HISTORY_FILE.exists():
             return
-        
         try:
             with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                lines = f.readlines()[-10000:]  # Last 10k records
-                for line in lines:
+                for line in f.readlines()[-10000:]:
                     try:
                         rec = json.loads(line)
                         self.history.append(rec)
-                        
-                        # Update protocol statistics
-                        proto = rec.get('protocol', 'unknown')
+                        proto = rec.get('protocol', '')
                         self.protocol_stats[proto]['total'] += 1
                         if rec.get('alive'):
                             self.protocol_stats[proto]['success'] += 1
-                            if rec.get('latency'):
-                                self.protocol_stats[proto]['avg_latency'].append(rec['latency'])
-                        
-                        # Track mutation effectiveness
-                        if mut := rec.get('mutation'):
-                            self.mutation_effectiveness[mut]['total'] += 1
-                            if rec.get('alive'):
-                                self.mutation_effectiveness[mut]['success'] += 1
                     except:
                         continue
-        except Exception as e:
-            log(f"Failed to load history: {e}", "warning")
-    
-    def _train_models(self):
-        """Train AI models on historical data"""
-        if len(self.history) < 100:
-            log("Not enough data for AI training (need 100+ records)", "warning")
+        except:
+            pass
+
+    def _train(self):
+        if len(self.history) < 50:
             return
-        
         try:
-            # Prepare features
             X = []
-            y_alive = []
-            y_quality = []
-            
             for rec in self.history:
-                features = [
+                X.append([
                     rec.get('latency', 999),
                     rec.get('jitter', 100),
                     rec.get('reconnect', 0),
                     rec.get('categories', 0),
-                    1 if rec.get('protocol') == 'vless' else 0,
-                    1 if rec.get('protocol') == 'vmess' else 0,
-                    1 if rec.get('protocol') == 'trojan' else 0,
+                    1 if rec.get('protocol') == 'VLESS' else 0,
                     1 if rec.get('security') == 'reality' else 0,
-                    1 if rec.get('security') == 'tls' else 0,
-                    len(rec.get('mutation', '')),
-                ]
-                
-                X.append(features)
-                y_alive.append(1 if rec.get('alive') else 0)
-                
-                # Map quality to numeric
-                quality_map = {'elite': 3, 'premium': 2, 'good': 1, 'standard': 0}
-                y_quality.append(quality_map.get(rec.get('quality', 'standard'), 0))
-            
+                ])
             X = np.array(X)
             X_scaled = self.scaler.fit_transform(X)
-            
-            # Train models
-            self.model_risk = RandomForestClassifier(
-                n_estimators=100, 
-                max_depth=10,
-                random_state=42
-            ).fit(X_scaled, y_alive)
-            
             self.model_anomaly = IsolationForest(
-                contamination=0.1,
-                random_state=42
+                contamination=0.1, random_state=42
             ).fit(X_scaled)
-            
-            if sum(y_quality) > 0:  # Only if we have quality data
-                self.model_quality = RandomForestClassifier(
-                    n_estimators=50,
-                    random_state=42
-                ).fit(X_scaled, y_quality)
-            
-            log(f"🧠 AI models trained on {len(X)} samples", "success")
-            
+            log(f"[AI] Anomaly model trained on {len(X)} records")
         except Exception as e:
-            log(f"AI training failed: {e}", "error")
-            self.enabled = False
-    
+            log(f"[AI] Training failed: {e}")
+
     def prioritize_keys(self, keys: List[str]) -> List[str]:
-        """Smart key prioritization based on success rates"""
         if not self.enabled:
             return keys
-        
-        def calculate_priority(key: str) -> float:
-            key_lower = key.lower()
-            score = 0.5
-            
-            # Protocol scoring
-            if 'vless://' in key_lower:
-                proto = 'vless'
-                score = 0.7
-            elif 'trojan://' in key_lower:
-                proto = 'trojan'
-                score = 0.6
-            elif 'vmess://' in key_lower:
-                proto = 'vmess'
-                score = 0.5
+
+        def score(key):
+            kl = key.lower()
+            if 'vless://' in kl:
+                proto = 'VLESS'
+                s = 0.7
+            elif 'trojan://' in kl:
+                proto = 'Trojan'
+                s = 0.6
+            elif 'vmess://' in kl:
+                proto = 'VMess'
+                s = 0.5
             else:
-                proto = 'ss'
-                score = 0.4
-            
-            # Adjust based on historical success
-            if proto in self.protocol_stats:
-                stats = self.protocol_stats[proto]
-                if stats['total'] > 10:
-                    success_rate = stats['success'] / stats['total']
-                    score = score * 0.3 + success_rate * 0.7
-            
-            # Bonus for certain features
-            if 'security=reality' in key_lower:
-                score += 0.15
-            if 'security=tls' in key_lower:
-                score += 0.05
-            if any(sni in key_lower for sni in ['cloudflare', 'amazon', 'microsoft']):
-                score += 0.05
-            
-            return score
-        
-        return sorted(keys, key=calculate_priority, reverse=True)
-    
+                proto = 'SS'
+                s = 0.4
+            ps = self.protocol_stats.get(proto)
+            if ps and ps['total'] > 10:
+                s = s * 0.3 + (ps['success'] / ps['total']) * 0.7
+            if 'security=reality' in kl:
+                s += 0.15
+            return s
+
+        return sorted(keys, key=score, reverse=True)
+
     def analyze_result(self, result: CheckResult):
-        """Analyze check result with AI"""
-        if not self.enabled or not self.model_risk:
+        if not self.enabled or not self.model_anomaly or not result.alive:
             return
-        
         try:
             features = [[
-                result.latency if result.latency else 999,
-                result.jitter if result.jitter else 100,
-                result.reconnect_success,
+                result.latency, result.jitter, result.reconnect_success,
                 result.categories,
-                1 if result.protocol == 'vless' else 0,
-                1 if result.protocol == 'vmess' else 0,
-                1 if result.protocol == 'trojan' else 0,
+                1 if result.protocol == 'VLESS' else 0,
                 1 if result.security == 'reality' else 0,
-                1 if result.security == 'tls' else 0,
-                len(result.mutation_used),
             ]]
-            
-            features_scaled = self.scaler.transform(features)
-            
-            # Risk prediction
-            if self.model_risk:
-                prob = self.model_risk.predict_proba(features_scaled)[0]
-                result.failure_risk = prob[0]  # Probability of failure
-                result.confidence_score = max(prob)
-                
-                if result.failure_risk > 0.7:
-                    result.ai_verdict += f"[HIGH_RISK:{int(result.failure_risk*100)}%]"
-            
-            # Anomaly detection
-            if self.model_anomaly:
-                is_anomaly = self.model_anomaly.predict(features_scaled)[0] == -1
-                if is_anomaly:
-                    result.is_anomaly = True
-                    result.ai_verdict += "[ANOMALY]"
-                    with stats_lock:
-                        stats.ai_anomalies += 1
-            
-            # Quality prediction
-            if self.model_quality and result.alive:
-                quality_pred = self.model_quality.predict(features_scaled)[0]
-                quality_map = {3: 'elite', 2: 'premium', 1: 'good', 0: 'standard'}
-                predicted_quality = quality_map.get(quality_pred, 'standard')
-                if predicted_quality != result.quality:
-                    result.ai_verdict += f"[AI_QUALITY:{predicted_quality}]"
-                    
-        except Exception as e:
-            log(f"AI analysis error: {e}", "debug")
-    
+            fs = self.scaler.transform(features)
+            if self.model_anomaly.predict(fs)[0] == -1:
+                result.is_anomaly = True
+                result.ai_verdict = "[ANOMALY]"
+                with stats_lock:
+                    stats.ai_anomalies += 1
+        except:
+            pass
+
     def save_result(self, result: CheckResult):
-        """Save result to history"""
         record = {
             'timestamp': time.time(),
-            'key_hash': hash(result.key) % 1000000,  # Privacy: store hash instead of key
             'alive': result.alive,
             'protocol': result.protocol,
             'latency': result.latency,
@@ -491,312 +365,245 @@ class AIEngine:
             'security': result.security,
             'error': result.error,
             'mutation': result.mutation_used,
-            'ai_risk': result.failure_risk,
-            'ai_anomaly': result.is_anomaly
         }
-        
         try:
             with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(record) + '\n')
-            
             self.history.append(record)
-            
-            # Update statistics
             self.protocol_stats[result.protocol]['total'] += 1
             if result.alive:
                 self.protocol_stats[result.protocol]['success'] += 1
-                self.protocol_stats[result.protocol]['avg_latency'].append(result.latency)
-            
-            if result.mutation_used:
-                self.mutation_effectiveness[result.mutation_used]['total'] += 1
-                if result.alive:
-                    self.mutation_effectiveness[result.mutation_used]['success'] += 1
-                    
-        except Exception as e:
-            log(f"Failed to save history: {e}", "debug")
-    
-    def get_best_mutation_strategy(self) -> List[str]:
-        """Get mutation strategies sorted by effectiveness"""
-        strategies = []
-        for mutation, stats in self.mutation_effectiveness.items():
-            if stats['total'] >= 5:  # Need at least 5 attempts
-                success_rate = stats['success'] / stats['total']
-                strategies.append((mutation, success_rate))
-        
-        return [s[0] for s in sorted(strategies, key=lambda x: x[1], reverse=True)]
-    
-    def mutate_config(self, proxy_config: Dict, attempt: int) -> Tuple[Dict, str]:
-        """Advanced config mutation with 10 strategies"""
-        mutated = json.loads(json.dumps(proxy_config))  # Deep copy
-        mutation_name = ""
-        
-        stream = mutated.get('streamSettings', {})
-        
-        # Get best strategies from history
-        best_strategies = self.get_best_mutation_strategy()
-        
-        mutations = {
-            1: lambda: self._rotate_fingerprint(stream),
-            2: lambda: self._spoof_sni(stream),
-            3: lambda: self._change_alpn(stream),
-            4: lambda: self._enable_mux(mutated),
-            5: lambda: self._randomize_headers(stream),
-            6: lambda: self._change_cipher(mutated),
-            7: lambda: self._fragment_packets(stream),
-            8: lambda: self._add_path_confusion(stream),
-            9: lambda: self._enable_xtls(mutated),
-            10: lambda: self._randomize_port(mutated)
-        }
-        
-        # Try best strategy first if available
-        if best_strategies and attempt == 1:
-            for strategy in best_strategies:
-                if 'FP_' in strategy:
-                    mutation_name = self._rotate_fingerprint(stream)
-                    break
-                elif 'SNI_' in strategy:
-                    mutation_name = self._spoof_sni(stream)
-                    break
-                elif 'MUX_' in strategy:
-                    mutation_name = self._enable_mux(mutated)
-                    break
-        
-        if not mutation_name and attempt in mutations:
-            mutation_name = mutations[attempt]()
-        
-        with stats_lock:
-            stats.total_mutations_tried += 1
-        
-        return mutated, mutation_name
-    
-    def _rotate_fingerprint(self, stream):
-        """Rotate TLS fingerprint"""
-        fingerprints = ['chrome', 'firefox', 'safari', 'edge', 'ios', 'android', 'random', 'randomized']
-        
-        if 'tlsSettings' in stream:
-            old_fp = stream['tlsSettings'].get('fingerprint', 'chrome')
-            new_fp = random.choice([f for f in fingerprints if f != old_fp])
-            stream['tlsSettings']['fingerprint'] = new_fp
-            return f"FP_{new_fp}"
-        elif 'realitySettings' in stream:
-            old_fp = stream['realitySettings'].get('fingerprint', 'chrome')
-            new_fp = random.choice([f for f in fingerprints if f != old_fp])
-            stream['realitySettings']['fingerprint'] = new_fp
-            return f"FP_{new_fp}"
-        return ""
-    
-    def _spoof_sni(self, stream):
-        """Change SNI to bypass blocks"""
-        if 'tlsSettings' in stream and 'realitySettings' not in stream:
-            sni = random.choice(SAFE_SNI_LIST)
-            stream['tlsSettings']['serverName'] = sni
-            return f"SNI_{sni.split('.')[1]}"
-        return ""
-    
-    def _change_alpn(self, stream):
-        """Modify ALPN negotiation"""
-        alpn_options = [
-            ['h2', 'http/1.1'],
-            ['h3', 'h2'],
-            ['http/1.1'],
-            ['h2'],
-            ['h3']
-        ]
-        
-        if 'tlsSettings' in stream:
-            stream['tlsSettings']['alpn'] = random.choice(alpn_options)
-            return "ALPN_modified"
-        return ""
-    
-    def _enable_mux(self, config):
-        """Enable multiplexing"""
-        if 'mux' not in config or not config.get('mux', {}).get('enabled'):
-            config['mux'] = {
-                "enabled": True,
-                "concurrency": random.choice([8, 16, 32, 64]),
-                "xudpConcurrency": 16
-            }
-            return f"MUX_{config['mux']['concurrency']}"
-        return ""
-    
-    def _randomize_headers(self, stream):
-        """Randomize HTTP headers"""
-        user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15',
-            'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0',
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1'
-        ]
-        
-        if 'wsSettings' in stream:
-            if 'headers' not in stream['wsSettings']:
-                stream['wsSettings']['headers'] = {}
-            stream['wsSettings']['headers']['User-Agent'] = random.choice(user_agents)
-            return "UA_randomized"
-        elif 'httpSettings' in stream:
-            if 'headers' not in stream['httpSettings']:
-                stream['httpSettings']['headers'] = {}
-            stream['httpSettings']['headers']['User-Agent'] = random.choice(user_agents)
-            return "UA_randomized"
-        return ""
-    
-    def _change_cipher(self, config):
-        """Change encryption cipher"""
-        if config.get('protocol') == 'vmess':
-            settings = config.get('settings', {})
-            if 'vnext' in settings:
-                for vnext in settings['vnext']:
-                    for user in vnext.get('users', []):
-                        user['security'] = random.choice(['auto', 'aes-128-gcm', 'chacha20-poly1305'])
-                return "CIPHER_rotated"
-        return ""
-    
-    def _fragment_packets(self, stream):
-        """Enable packet fragmentation"""
-        if 'sockopt' not in stream:
-            stream['sockopt'] = {}
-        
-        stream['sockopt']['tcpFastOpen'] = True
-        stream['sockopt']['tcpNoDelay'] = True
-        stream['sockopt']['tcpKeepAliveInterval'] = 30
-        
-        if random.random() > 0.5:
-            stream['sockopt']['dialerProxy'] = "fragment"
-        
-        return "FRAGMENT_enabled"
-    
-    def _add_path_confusion(self, stream):
-        """Add path confusion for WebSocket/gRPC"""
-        if 'wsSettings' in stream:
-            paths = ['/ws', '/socket', '/api/v1/ws', '/graphql', '/chat', f'/{"".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=8))}']
-            stream['wsSettings']['path'] = random.choice(paths)
-            return "PATH_confused"
-        elif 'grpcSettings' in stream:
-            stream['grpcSettings']['serviceName'] = f'service_{random.randint(1000, 9999)}'
-            return "GRPC_confused"
-        return ""
-    
-    def _enable_xtls(self, config):
-        """Try to enable XTLS flow"""
-        if config.get('protocol') == 'vless':
-            settings = config.get('settings', {})
-            if 'vnext' in settings:
-                for vnext in settings['vnext']:
-                    for user in vnext.get('users', []):
-                        if not user.get('flow'):
-                            user['flow'] = random.choice(['xtls-rprx-vision', 'xtls-rprx-vision-udp443'])
-                            return "XTLS_enabled"
-        return ""
-    
-    def _randomize_port(self, config):
-        """Change port slightly (same range)"""
-        if 'settings' in config:
-            if 'vnext' in config['settings']:
-                for vnext in config['settings']['vnext']:
-                    old_port = vnext.get('port', 443)
-                    if old_port == 443:
-                        vnext['port'] = random.choice([443, 8443, 2053, 2083, 2087, 2096])
-                    elif old_port == 80:
-                        vnext['port'] = random.choice([80, 8080, 8880, 2052, 2082, 2086, 2095])
-                    return f"PORT_{vnext['port']}"
-            elif 'servers' in config['settings']:
-                for server in config['settings']['servers']:
-                    old_port = server.get('port', 443)
-                    if old_port == 443:
-                        server['port'] = random.choice([443, 8443, 2053, 2083, 2087, 2096])
-                    return f"PORT_{server['port']}"
-        return ""
+        except:
+            pass
 
-# Initialize AI Engine
+    def safe_mutate(self, proxy_config: Dict, attempt: int) -> Tuple[Dict, str]:
+        """Single safe mutation: rotate fingerprint only"""
+        mutated = json.loads(json.dumps(proxy_config))
+        stream = mutated.get('streamSettings', {})
+        name = ""
+
+        if attempt == 1:
+            fps = ['chrome', 'firefox', 'safari', 'edge', 'ios', 'android', 'random']
+            if 'tlsSettings' in stream:
+                old = stream['tlsSettings'].get('fingerprint', 'chrome')
+                new = random.choice([f for f in fps if f != old])
+                stream['tlsSettings']['fingerprint'] = new
+                name = f"FP_{new}"
+            elif 'realitySettings' in stream:
+                old = stream['realitySettings'].get('fingerprint', 'chrome')
+                new = random.choice([f for f in fps if f != old])
+                stream['realitySettings']['fingerprint'] = new
+                name = f"FP_{new}"
+
+        return mutated, name
+
+
 ai_engine = AIEngine()
+
+
+# ==================== XRAY SETUP ====================
+def setup_xray() -> Optional[Path]:
+    exe_name = "xray.exe" if os.name == 'nt' else "xray"
+    exe_path = XRAY_FOLDER / exe_name
+
+    if exe_path.exists():
+        log("[OK] Xray found")
+        return exe_path
+
+    log("[DL] Downloading xray-core...")
+    try:
+        import platform
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        if system == "windows":
+            arch = "64" if "64" in machine else "32"
+            filename = f"Xray-windows-{arch}.zip"
+        elif system == "linux":
+            if "aarch64" in machine or "arm64" in machine:
+                arch = "arm64-v8a"
+            else:
+                arch = "64"
+            filename = f"Xray-linux-{arch}.zip"
+        elif system == "darwin":
+            arch = "arm64-v8a" if "arm" in machine else "64"
+            filename = f"Xray-macos-{arch}.zip"
+        else:
+            return None
+
+        url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
+        r = requests.get(url, stream=True, timeout=120)
+        zip_path = XRAY_FOLDER / "xray.zip"
+        with open(zip_path, 'wb') as f:
+            for chunk in r.iter_content(8192):
+                if chunk:
+                    f.write(chunk)
+
+        import zipfile
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(XRAY_FOLDER)
+        zip_path.unlink()
+
+        if system != "windows":
+            exe_path.chmod(0o755)
+
+        log("[OK] Xray installed")
+        return exe_path
+    except Exception as e:
+        log(f"[ERR] Xray setup: {e}")
+        return None
+
+
+# ==================== XRAY SESSION (with wait_for_port) ====================
+def wait_for_port(port: int, timeout: float = 5.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                return True
+        except:
+            time.sleep(0.1)
+    return False
+
+
+def create_xray_config(proxy_config: Dict, http_port: int) -> Dict:
+    return {
+        "log": {"loglevel": "none"},
+        "inbounds": [{
+            "port": http_port,
+            "listen": "127.0.0.1",
+            "protocol": "http",
+            "settings": {"timeout": 30}
+        }],
+        "outbounds": [proxy_config]
+    }
+
+
+class XraySession:
+    def __init__(self, xray_exe: Path, proxy_config: Dict, startup: float = 5.0):
+        self.xray_exe = xray_exe
+        self.proxy_config = proxy_config
+        self.startup = startup
+        self.process = None
+        self.port = random.randint(20000, 50000)
+        self.config_file = XRAY_FOLDER / f"config_{self.port}.json"
+        self.proxies = None
+        self.ok = False
+
+    def __enter__(self):
+        try:
+            config = create_xray_config(self.proxy_config, self.port)
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f)
+
+            self.process = subprocess.Popen(
+                [str(self.xray_exe), "run", "-c", str(self.config_file)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            register_process(self.process)
+
+            if wait_for_port(self.port, timeout=self.startup) and self.process.poll() is None:
+                self.proxies = {
+                    'http': f'http://127.0.0.1:{self.port}',
+                    'https': f'http://127.0.0.1:{self.port}'
+                }
+                self.ok = True
+        except:
+            pass
+        return self
+
+    def __exit__(self, *args):
+        if self.process:
+            unregister_process(self.process)
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=2)
+            except:
+                try:
+                    self.process.kill()
+                    self.process.wait(timeout=1)
+                except:
+                    pass
+        try:
+            self.config_file.unlink()
+        except:
+            pass
+
 
 # ==================== PARSERS ====================
 def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
-    """Extract host and port from proxy key"""
     try:
         key = key.strip()
-        
-        # Handle VMess separately (base64 encoded)
         if key.lower().startswith("vmess://"):
             encoded = key[8:]
             padding = len(encoded) % 4
             if padding:
                 encoded += '=' * (4 - padding)
-            try:
-                data = json.loads(base64.b64decode(encoded).decode('utf-8'))
-                return data.get("add"), int(data.get("port", 443))
-            except:
-                return None, None
-        
-        # Remove protocol prefix
-        for prefix in ["vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "tuic://"]:
+            data = json.loads(base64.b64decode(encoded).decode('utf-8'))
+            return data.get("add"), int(data.get("port", 443))
+
+        for prefix in ["vless://", "trojan://", "ss://"]:
             if key.lower().startswith(prefix):
                 key = key[len(prefix):]
                 break
-        
-        # Parse user@host:port format
+
         if "@" in key:
             key = key.split("@", 1)[1]
-        
-        # Remove query and fragment
         if "?" in key:
             key = key.split("?")[0]
         if "#" in key:
             key = key.split("#")[0]
-        
-        # Handle IPv6
-        if key.startswith("["):
-            # IPv6 format: [::1]:8080
-            if "]:" in key:
-                host = key[1:key.index("]")]
-                port = key[key.index("]:")+2:]
-                return host, int(port)
-        
-        # Standard host:port
+
         if ":" in key:
-            parts = key.rsplit(":", 1)
-            if len(parts) == 2:
-                host, port = parts
-                return host.strip("[]"), int(port)
-        
+            host, port = key.rsplit(":", 1)
+            return host.strip("[]"), int(port)
         return None, None
-        
-    except Exception as e:
-        log(f"Failed to extract host/port: {e}", "debug")
+    except:
         return None, None
 
-def parse_vless(key: str) -> Optional[Dict]:
-    """Parse VLESS proxy key"""
+
+def parse_key_to_config(key: str) -> Tuple[Optional[Dict], str, str]:
+    key_lower = key.lower()
+    security = "none"
+    if "security=reality" in key_lower:
+        security = "reality"
+    elif "security=tls" in key_lower:
+        security = "tls"
+
     try:
-        if not key.lower().startswith("vless://"):
-            return None
-        
-        key = key[8:]  # Remove vless://
-        
+        if key_lower.startswith("vless://"):
+            return parse_vless(key), "VLESS", security
+        elif key_lower.startswith("vmess://"):
+            return parse_vmess(key), "VMess", security
+        elif key_lower.startswith("trojan://"):
+            return parse_trojan(key), "Trojan", security
+        elif key_lower.startswith("ss://"):
+            return parse_shadowsocks(key), "SS", security
+    except:
+        pass
+    return None, "", security
+
+
+def parse_vless(key: str) -> Optional[Dict]:
+    try:
+        key = key[8:]
         if "@" not in key:
             return None
-        
-        # Split UUID and server parts
         uuid_part, rest = key.split("@", 1)
-        
-        # Extract server and port
         server_part = rest.split("?")[0].split("#")[0]
         if ":" not in server_part:
             return None
-        
         host, port = server_part.rsplit(":", 1)
-        host = host.strip("[]")  # Remove IPv6 brackets if present
-        
-        # Parse parameters
+        host = host.strip("[]")
+
         params = {}
         if "?" in rest:
-            param_string = rest.split("?")[1].split("#")[0]
-            for param in param_string.split("&"):
+            for param in rest.split("?")[1].split("#")[0].split("&"):
                 if "=" in param:
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
-        
-        # Build config
+
         config = {
             "protocol": "vless",
             "settings": {
@@ -815,42 +622,29 @@ def parse_vless(key: str) -> Optional[Dict]:
                 "security": params.get("security", "none")
             }
         }
-        
-        # TLS settings
+
         if params.get("security") == "tls":
             config["streamSettings"]["tlsSettings"] = {
-                "serverName": params.get("sni", params.get("host", host)),
-                "allowInsecure": params.get("allowInsecure", "true").lower() == "true",
-                "fingerprint": params.get("fp", "chrome"),
-                "alpn": params.get("alpn", "").split(",") if params.get("alpn") else []
-            }
-        elif params.get("security") == "reality":
-            config["streamSettings"]["realitySettings"] = {
-                "serverName": params.get("sni", params.get("host", host)),
-                "publicKey": params.get("pbk", ""),
-                "shortId": params.get("sid", ""),
-                "fingerprint": params.get("fp", "chrome"),
-                "spiderX": params.get("spx", "")
-            }
-        elif params.get("security") == "xtls":
-            config["streamSettings"]["xtlsSettings"] = {
-                "serverName": params.get("sni", params.get("host", host)),
+                "serverName": params.get("sni", host),
                 "allowInsecure": True,
                 "fingerprint": params.get("fp", "chrome")
             }
-        
-        # Transport settings
+        elif params.get("security") == "reality":
+            config["streamSettings"]["realitySettings"] = {
+                "serverName": params.get("sni", host),
+                "publicKey": params.get("pbk", ""),
+                "shortId": params.get("sid", ""),
+                "fingerprint": params.get("fp", "chrome")
+            }
+
         if params.get("type") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
-                "headers": {
-                    "Host": params.get("host", host)
-                }
+                "headers": {"Host": params.get("host", host)}
             }
         elif params.get("type") == "grpc":
             config["streamSettings"]["grpcSettings"] = {
-                "serviceName": params.get("serviceName", ""),
-                "multiMode": params.get("mode", "") == "multi"
+                "serviceName": params.get("serviceName", "")
             }
         elif params.get("type") == "tcp" and params.get("headerType") == "http":
             config["streamSettings"]["tcpSettings"] = {
@@ -860,71 +654,36 @@ def parse_vless(key: str) -> Optional[Dict]:
                         "version": "1.1",
                         "method": "GET",
                         "path": [params.get("path", "/")],
-                        "headers": {
-                            "Host": [params.get("host", host)],
-                            "User-Agent": ["Mozilla/5.0"],
-                            "Accept-Encoding": ["gzip, deflate"],
-                            "Connection": ["keep-alive"],
-                            "Pragma": "no-cache"
-                        }
+                        "headers": {"Host": [params.get("host", host)]}
                     }
                 }
             }
         elif params.get("type") == "kcp":
             config["streamSettings"]["kcpSettings"] = {
-                "mtu": 1350,
-                "tti": 50,
-                "uplinkCapacity": 12,
-                "downlinkCapacity": 100,
-                "congestion": False,
-                "readBufferSize": 2,
-                "writeBufferSize": 2,
-                "header": {
-                    "type": params.get("headerType", "none")
-                },
+                "header": {"type": params.get("headerType", "none")},
                 "seed": params.get("seed")
-            }
-        elif params.get("type") == "quic":
-            config["streamSettings"]["quicSettings"] = {
-                "security": params.get("quicSecurity", "none"),
-                "key": params.get("key", ""),
-                "header": {
-                    "type": params.get("headerType", "none")
-                }
             }
         elif params.get("type") == "h2":
             config["streamSettings"]["httpSettings"] = {
                 "host": [params.get("host", host)],
                 "path": params.get("path", "/")
             }
-        
+
         return config
-        
-    except Exception as e:
-        log(f"VLESS parse error: {e}", "debug")
+    except:
         return None
 
+
 def parse_vmess(key: str) -> Optional[Dict]:
-    """Parse VMess proxy key"""
     try:
-        if not key.lower().startswith("vmess://"):
-            return None
-        
-        # Decode base64
         encoded = key[8:]
         padding = len(encoded) % 4
         if padding:
             encoded += '=' * (4 - padding)
-        
-        try:
-            decoded = base64.b64decode(encoded).decode('utf-8')
-            data = json.loads(decoded)
-        except:
-            return None
-        
+        data = json.loads(base64.b64decode(encoded).decode('utf-8'))
         host = data.get("add", "")
         port = int(data.get("port", 443))
-        
+
         config = {
             "protocol": "vmess",
             "settings": {
@@ -934,76 +693,39 @@ def parse_vmess(key: str) -> Optional[Dict]:
                     "users": [{
                         "id": data.get("id"),
                         "alterId": int(data.get("aid", 0)),
-                        "security": data.get("scy", "auto")
+                        "security": "auto"
                     }]
                 }]
             },
             "streamSettings": {
                 "network": data.get("net", "tcp"),
-                "security": "tls" if data.get("tls") == "tls" else "none"
+                "security": data.get("tls", "none") if data.get("tls") else "none"
             }
         }
-        
-        # TLS settings
+
         if data.get("tls") == "tls":
             config["streamSettings"]["tlsSettings"] = {
-                "serverName": data.get("sni", data.get("host", host)),
-                "allowInsecure": True,
-                "fingerprint": data.get("fp", "chrome"),
-                "alpn": data.get("alpn", "").split(",") if data.get("alpn") else []
+                "serverName": data.get("sni", host),
+                "allowInsecure": True
             }
-        
-        # Transport settings
+
         if data.get("net") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": data.get("path", "/"),
-                "headers": {
-                    "Host": data.get("host", host)
-                }
+                "headers": {"Host": data.get("host", host)}
             }
         elif data.get("net") == "grpc":
             config["streamSettings"]["grpcSettings"] = {
-                "serviceName": data.get("path", ""),
-                "multiMode": data.get("type") == "multi"
+                "serviceName": data.get("path", "")
             }
         elif data.get("net") == "tcp" and data.get("type") == "http":
             config["streamSettings"]["tcpSettings"] = {
                 "header": {
                     "type": "http",
                     "request": {
-                        "version": "1.1",
-                        "method": "GET",
                         "path": [data.get("path", "/")],
-                        "headers": {
-                            "Host": [data.get("host", host)],
-                            "User-Agent": ["Mozilla/5.0"],
-                            "Accept-Encoding": ["gzip, deflate"],
-                            "Connection": ["keep-alive"],
-                            "Pragma": "no-cache"
-                        }
+                        "headers": {"Host": [data.get("host", host)]}
                     }
-                }
-            }
-        elif data.get("net") == "kcp":
-            config["streamSettings"]["kcpSettings"] = {
-                "mtu": 1350,
-                "tti": 50,
-                "uplinkCapacity": 12,
-                "downlinkCapacity": 100,
-                "congestion": False,
-                "readBufferSize": 2,
-                "writeBufferSize": 2,
-                "header": {
-                    "type": data.get("type", "none")
-                },
-                "seed": data.get("path")
-            }
-        elif data.get("net") == "quic":
-            config["streamSettings"]["quicSettings"] = {
-                "security": data.get("host", "none"),
-                "key": data.get("path", ""),
-                "header": {
-                    "type": data.get("type", "none")
                 }
             }
         elif data.get("net") == "h2":
@@ -1011,45 +733,32 @@ def parse_vmess(key: str) -> Optional[Dict]:
                 "host": [data.get("host", host)],
                 "path": data.get("path", "/")
             }
-        
+
         return config
-        
-    except Exception as e:
-        log(f"VMess parse error: {e}", "debug")
+    except:
         return None
 
+
 def parse_trojan(key: str) -> Optional[Dict]:
-    """Parse Trojan proxy key"""
     try:
-        if not key.lower().startswith("trojan://"):
-            return None
-        
-        key = key[9:]  # Remove trojan://
-        
+        key = key[9:]
         if "@" not in key:
             return None
-        
-        # Split password and server
         password, rest = key.split("@", 1)
         password = unquote(password)
-        
-        # Extract server and port
         server_part = rest.split("?")[0].split("#")[0]
         if ":" not in server_part:
             return None
-        
         host, port = server_part.rsplit(":", 1)
         host = host.strip("[]")
-        
-        # Parse parameters
+
         params = {}
         if "?" in rest:
-            param_string = rest.split("?")[1].split("#")[0]
-            for param in param_string.split("&"):
+            for param in rest.split("?")[1].split("#")[0].split("&"):
                 if "=" in param:
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
-        
+
         config = {
             "protocol": "trojan",
             "settings": {
@@ -1061,742 +770,592 @@ def parse_trojan(key: str) -> Optional[Dict]:
             },
             "streamSettings": {
                 "network": params.get("type", "tcp"),
-                "security": params.get("security", "tls")
+                "security": "tls"
             }
         }
-        
-        # TLS settings (Trojan always uses TLS)
         config["streamSettings"]["tlsSettings"] = {
-            "serverName": params.get("sni", params.get("host", host)),
-            "allowInsecure": params.get("allowInsecure", "true").lower() == "true",
-            "fingerprint": params.get("fp", "chrome"),
-            "alpn": params.get("alpn", "").split(",") if params.get("alpn") else []
+            "serverName": params.get("sni", host),
+            "allowInsecure": True,
+            "fingerprint": params.get("fp", "chrome")
         }
-        
-        # Transport settings
         if params.get("type") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
-                "headers": {
-                    "Host": params.get("host", host)
-                }
+                "headers": {"Host": params.get("host", host)}
             }
-        elif params.get("type") == "grpc":
-            config["streamSettings"]["grpcSettings"] = {
-                "serviceName": params.get("serviceName", ""),
-                "multiMode": params.get("mode") == "multi"
-            }
-        elif params.get("type") == "tcp" and params.get("headerType") == "http":
-            config["streamSettings"]["tcpSettings"] = {
-                "header": {
-                    "type": "http",
-                    "request": {
-                        "version": "1.1",
-                        "method": "GET",
-                        "path": [params.get("path", "/")],
-                        "headers": {
-                            "Host": [params.get("host", host)]
-                        }
-                    }
-                }
-            }
-        
         return config
-        
-    except Exception as e:
-        log(f"Trojan parse error: {e}", "debug")
+    except:
         return None
 
+
 def parse_shadowsocks(key: str) -> Optional[Dict]:
-    """Parse Shadowsocks proxy key"""
     try:
-        if not key.lower().startswith("ss://"):
-            return None
-        
-        key = key[5:]  # Remove ss://
-        key = key.split("#")[0]  # Remove remark
-        
+        key = key[5:].split("#")[0]
         if "@" in key:
-            # Format: ss://base64(method:password)@host:port
             encoded, server = key.split("@", 1)
             host, port = server.rsplit(":", 1)
             host = host.strip("[]")
-            
-            # Decode method and password
             padding = len(encoded) % 4
             if padding:
                 encoded += '=' * (4 - padding)
-            
             try:
                 decoded = base64.b64decode(encoded).decode('utf-8')
                 method, password = decoded.split(":", 1)
             except:
-                # Sometimes it's not encoded
                 method, password = encoded.split(":", 1)
         else:
-            # Format: ss://base64(method:password@host:port)
             padding = len(key) % 4
             if padding:
                 key += '=' * (4 - padding)
-            
             decoded = base64.b64decode(key).decode('utf-8')
-            
-            # Split credentials and server
-            if "@" in decoded:
-                creds, server = decoded.rsplit("@", 1)
-                method, password = creds.split(":", 1)
-                host, port = server.rsplit(":", 1)
-                host = host.strip("[]")
-            else:
-                return None
-        
-        config = {
+            creds, server = decoded.rsplit("@", 1)
+            method, password = creds.split(":", 1)
+            host, port = server.rsplit(":", 1)
+            host = host.strip("[]")
+        return {
             "protocol": "shadowsocks",
             "settings": {
                 "servers": [{
                     "address": host,
                     "port": int(port),
                     "method": method,
-                    "password": password,
-                    "level": 0
+                    "password": password
                 }]
             },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "none"
-            }
+            "streamSettings": {"network": "tcp"}
         }
-        
-        return config
-        
-    except Exception as e:
-        log(f"Shadowsocks parse error: {e}", "debug")
+    except:
         return None
 
-def parse_key_to_config(key: str) -> Tuple[Optional[Dict], str, str]:
-    """Main parser dispatcher"""
-    key = key.strip()
-    key_lower = key.lower()
-    
-    # Extract security type for stats
-    security = "none"
-    if "security=reality" in key_lower:
-        security = "reality"
-    elif "security=tls" in key_lower or "tls=tls" in key_lower:
-        security = "tls"
-    elif "security=xtls" in key_lower:
-        security = "xtls"
-    
-    try:
-        if key_lower.startswith("vless://"):
-            config = parse_vless(key)
-            return config, "VLESS", security
-        elif key_lower.startswith("vmess://"):
-            config = parse_vmess(key)
-            return config, "VMESS", security
-        elif key_lower.startswith("trojan://"):
-            config = parse_trojan(key)
-            return config, "TROJAN", security
-        elif key_lower.startswith("ss://"):
-            config = parse_shadowsocks(key)
-            return config, "SS", security
-        else:
-            return None, "UNKNOWN", security
-    except Exception as e:
-        log(f"Parse error: {e}", "debug")
-        return None, "UNKNOWN", security
 
-# ==================== XRAY CORE ====================
-def setup_xray() -> Optional[Path]:
-    """Download and setup xray-core"""
-    exe_name = "xray.exe" if os.name == 'nt' else "xray"
-    exe_path = XRAY_FOLDER / exe_name
-    
-    if exe_path.exists():
-        log("✅ Xray-core already installed", "success")
-        return exe_path
-    
-    log("📥 Downloading xray-core...", "info")
-    
-    try:
-        import platform
-        system = platform.system().lower()
-        machine = platform.machine().lower()
-        
-        # Determine the right binary
-        if system == "windows":
-            if "64" in machine or "amd64" in machine:
-                filename = "Xray-windows-64.zip"
-            else:
-                filename = "Xray-windows-32.zip"
-        elif system == "linux":
-            if "aarch64" in machine or "arm64" in machine:
-                filename = "Xray-linux-arm64-v8a.zip"
-            elif "arm" in machine:
-                filename = "Xray-linux-arm32-v7a.zip"
-            elif "64" in machine:
-                filename = "Xray-linux-64.zip"
-            else:
-                filename = "Xray-linux-32.zip"
-        elif system == "darwin":  # macOS
-            if "arm" in machine:
-                filename = "Xray-macos-arm64-v8a.zip"
-            else:
-                filename = "Xray-macos-64.zip"
-        else:
-            log(f"Unsupported system: {system}", "error")
-            return None
-        
-        # Download from GitHub
-        url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
-        log(f"Downloading from: {url}", "debug")
-        
-        response = requests.get(url, stream=True, timeout=60)
-        response.raise_for_status()
-        
-        zip_path = XRAY_FOLDER / "xray.zip"
-        total_size = int(response.headers.get('content-length', 0))
-        
-        # Download with progress
-        with open(zip_path, 'wb') as f:
-            downloaded = 0
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0:
-                        percent = (downloaded / total_size) * 100
-                        print(f"\rDownloading: {percent:.1f}%", end='')
-        print()
-        
-        # Extract
-        log("📦 Extracting xray-core...", "info")
-        import zipfile
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            zf.extractall(XRAY_FOLDER)
-        
-        # Clean up
-        zip_path.unlink()
-        
-        # Make executable on Unix systems
-        if system != "windows":
-            exe_path.chmod(0o755)
-        
-        log("✅ Xray-core installed successfully", "success")
-        return exe_path
-        
-    except Exception as e:
-        log(f"❌ Failed to setup xray-core: {e}", "error")
-        return None
-
-def create_xray_config(proxy_config: Dict, http_port: int) -> Dict:
-    """Create xray client configuration"""
-    return {
-        "log": {
-            "loglevel": "none"
-        },
-        "inbounds": [{
-            "port": http_port,
-            "listen": "127.0.0.1",
-            "protocol": "http",
-            "settings": {
-                "timeout": 30,
-                "allowTransparent": False,
-                "userLevel": 0
-            }
-        }],
-        "outbounds": [proxy_config],
-        "routing": {
-            "domainStrategy": "AsIs"
-        },
-        "policy": {
-            "levels": {
-                "0": {
-                    "handshake": 4,
-                    "connIdle": 300,
-                    "uplinkOnly": 2,
-                    "downlinkOnly": 5,
-                    "bufferSize": 10240
-                }
-            }
-        }
-    }
-
-class XraySession:
-    """Context manager for xray process"""
-    
-    def __init__(self, xray_exe: Path, proxy_config: Dict, startup_delay: float = 1.5):
-        self.xray_exe = xray_exe
-        self.proxy_config = proxy_config
-        self.startup_delay = startup_delay
-        self.process = None
-        self.port = random.randint(20000, 50000)
-        self.config_file = XRAY_FOLDER / f"config_{self.port}.json"
-        self.proxies = None
-        self.ok = False
-    
-    def __enter__(self):
-        try:
-            # Write config
-            config = create_xray_config(self.proxy_config, self.port)
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2)
-            
-            # Start xray
-            self.process = subprocess.Popen(
-                [str(self.xray_exe), "run", "-c", str(self.config_file)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-            
-            register_process(self.process)
-            
-            # Wait for startup
-            time.sleep(self.startup_delay)
-            
-            # Check if process is still alive
-            if self.process.poll() is None:
-                self.proxies = {
-                    'http': f'http://127.0.0.1:{self.port}',
-                    'https': f'http://127.0.0.1:{self.port}'
-                }
-                self.ok = True
-            else:
-                log(f"Xray process died immediately (exit code: {self.process.poll()})", "debug")
-                
-        except Exception as e:
-            log(f"Failed to start xray session: {e}", "debug")
-            self.ok = False
-        
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # Kill process
-        if self.process:
-            try:
-                self.process.kill()
-                self.process.wait(timeout=1)
-            except:
-                pass
-            unregister_process(self.process)
-        
-        # Clean up config file
-        try:
-            if self.config_file.exists():
-                self.config_file.unlink()
-        except:
-            pass
-
-# ==================== DOWNLOAD & DEDUPLICATE ====================
+# ==================== DOWNLOAD ====================
 def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
-    """Download proxy keys from sources and deduplicate"""
     if sources is None:
         sources = KEY_SOURCES
-    
+
     all_keys = []
-    seen_normalized = set()
-    
-    total_sources = sum(len(urls) for urls in sources.values())
-    current_source = 0
-    
-    log(f"📥 Downloading from {total_sources} sources...", "info")
-    
+    seen = set()
+    duplicates = 0
+
+    log("[DL] Downloading keys...")
+
     for region, urls in sources.items():
+        log(f"  Region: {region}")
         for url in urls:
-            current_source += 1
             try:
-                log(f"  [{current_source}/{total_sources}] {region}: {url.split('/')[-1][:30]}...", "debug")
-                
-                # Download with timeout and retry
                 for attempt in range(3):
                     try:
-                        response = requests.get(url, timeout=30, headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'
-                        })
-                        response.raise_for_status()
+                        r = requests.get(url, timeout=30)
+                        r.raise_for_status()
                         break
-                    except requests.exceptions.RequestException as e:
+                    except:
                         if attempt == 2:
-                            raise e
+                            raise
                         time.sleep(2)
-                
-                content = response.text.strip()
-                
-                # Handle base64 encoded lists
-                if url.endswith('/base64/vmess') or 'base64' in url:
+
+                content = r.text.strip()
+                if 'base64' in url:
                     try:
-                        decoded = base64.b64decode(content).decode('utf-8')
-                        content = decoded
+                        content = base64.b64decode(content).decode('utf-8')
                     except:
                         pass
-                
-                lines = content.split('\n')
-                
-                for line in lines:
+
+                count = 0
+                for line in content.split('\n'):
                     line = html.unescape(line.strip())
-                    
-                    # Skip empty lines and comments
-                    if not line or line.startswith('#') or line.startswith('//'):
+                    if not line or not line.lower().startswith(
+                        ("vless://", "vmess://", "trojan://", "ss://")
+                    ):
                         continue
-                    
-                    # Check if it's a valid proxy protocol
-                    if not any(line.lower().startswith(p) for p in [
-                        "vless://", "vmess://", "trojan://", "ss://", 
-                        "ssr://", "hysteria://", "hysteria2://", "tuic://"
-                    ]):
-                        continue
-                    
-                    # Normalize for deduplication (remove remarks)
                     normalized = line.split("#")[0].strip()
-                    
-                    if normalized in seen_normalized:
-                        with stats_lock:
-                            stats.duplicates += 1
+                    if normalized in seen:
+                        duplicates += 1
                         continue
-                    
-                    seen_normalized.add(normalized)
+                    seen.add(normalized)
                     all_keys.append(line)
-                    
-                    with stats_lock:
-                        stats.total_downloaded += 1
-                
+                    count += 1
+                stats.total_downloaded += count
+                log(f"    {url.split('/')[-1]}: {count}")
             except Exception as e:
-                log(f"  Failed to download from {url}: {e}", "warning")
-                continue
-    
-    with stats_lock:
-        stats.unique = len(all_keys)
-    
-    log(f"📊 Downloaded: {stats.total_downloaded} | Unique: {len(all_keys)} | Duplicates: {stats.duplicates}", "info")
-    
+                log(f"    FAIL {url.split('/')[-1]}: {e}")
+
+    stats.duplicates = duplicates
+    stats.unique = len(all_keys)
+    log(f"  Total: {stats.total_downloaded + duplicates} | "
+        f"Dupes: {duplicates} | Unique: {len(all_keys)}")
     return all_keys
 
-# ==================== CHECKERS ====================
+
+# ==================== TCP CHECK ====================
 def tcp_check(key: str) -> Optional[str]:
-    """Quick TCP connectivity check"""
     host, port = extract_host_port(key)
-    
     if not host or not port:
+        record_error("parse_error")
         return None
-    
-    # Try multiple times with different timeouts
+
     for attempt in range(CONFIG.TCP_RETRIES + 1):
         try:
-            # Create socket with timeout
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(CONFIG.TCP_TIMEOUT)
-            
-            # Try to connect
-            result = sock.connect_ex((host, port))
-            sock.close()
-            
-            if result == 0:
-                with stats_lock:
-                    stats.tcp_passed += 1
+            with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
                 return key
-            
+        except socket.timeout:
+            record_error("tcp_timeout")
+        except ConnectionRefusedError:
+            record_error("tcp_refused")
+            break
         except socket.gaierror:
-            # DNS resolution failed
+            record_error("dns_error")
             break
         except:
-            pass
-        
-        # Wait before retry
+            record_error("tcp_other")
+            break
         if attempt < CONFIG.TCP_RETRIES:
-            time.sleep(0.5)
-    
-    with stats_lock:
-        stats.tcp_failed += 1
-    
+            time.sleep(0.3)
     return None
 
-def xray_check_with_mutations(key: str, xray_exe: Path) -> CheckResult:
-    """Full xray check with mutation attempts if needed"""
-    # Parse the key
-    base_config, protocol, security = parse_key_to_config(key)
-    
-    if not base_config:
-        return CheckResult(
-            key=key,
-            alive=False,
-            error="parse_failed",
-            protocol=protocol
-        )
-    
-    # Extract host and port for result
+
+# ==================== XRAY FULL CHECK ====================
+def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
+    """
+    2 xray sessions (reduced from 3):
+      1. Main: Latency(3) + Categories(7)
+      2. Reconnect x1
+    + Optional 1 safe mutation if failed
+    """
+    proxy_config, protocol, security = parse_key_to_config(key)
+    if not proxy_config:
+        return CheckResult(key=key, alive=False, error="parse_error")
+
     host, port = extract_host_port(key)
-    
-    # First attempt with original config
-    result = run_full_test(key, base_config, protocol, xray_exe, host, port, security)
-    
-    # If successful and high quality, return immediately
-    if result.alive and result.quality in [Quality.ELITE, Quality.PREMIUM]:
+
+    # Try original config
+    result = _run_test(key, proxy_config, protocol, security, xray_exe, host, port)
+
+    if result.alive:
         return result
-    
-    # Try mutations if first attempt failed or low quality
-    if not result.alive or result.quality in [Quality.GOOD, Quality.STANDARD, None]:
-        best_result = result
-        
-        for attempt in range(1, 11):  # Try up to 10 mutations
-            mutated_config, mutation_name = ai_engine.mutate_config(base_config, attempt)
-            
-            if not mutation_name:
-                continue
-            
-            log(f"  Trying mutation {attempt}: {mutation_name}", "debug")
-            
-            mut_result = run_full_test(
-                key, mutated_config, protocol, xray_exe, host, port, security
+
+    # One safe mutation attempt
+    if CONFIG.MAX_SAFE_MUTATIONS >= 1:
+        mutated_config, mutation_name = ai_engine.safe_mutate(proxy_config, 1)
+        if mutation_name:
+            with stats_lock:
+                stats.mutations_tried += 1
+            mut_result = _run_test(
+                key, mutated_config, protocol, security, xray_exe, host, port
             )
-            
-            # Check if this mutation is better
             if mut_result.alive:
-                if not best_result.alive or (
-                    mut_result.quality and best_result.quality and
-                    list(Quality).index(mut_result.quality) < list(Quality).index(best_result.quality)
-                ):
-                    mut_result.mutation_used = mutation_name
-                    mut_result.ai_verdict += f" [MUTATION:{mutation_name}]"
-                    best_result = mut_result
-                    
-                    with stats_lock:
-                        stats.mutations_success += 1
-                    
-                    # If we got elite quality, stop trying
-                    if mut_result.quality == Quality.ELITE:
-                        break
-        
-        return best_result
-    
+                mut_result.mutation_used = mutation_name
+                with stats_lock:
+                    stats.mutations_success += 1
+                return mut_result
+
     return result
 
-def run_full_test(
+
+def _run_test(
     key: str,
-    config: Dict,
+    proxy_config: Dict,
     protocol: str,
+    security: str,
     xray_exe: Path,
     host: str,
-    port: int,
-    security: str
+    port: int
 ) -> CheckResult:
-    """Run complete test suite on a proxy"""
-    
+    """Core test: 1 main session + 1 reconnect"""
+
     latencies = []
     categories_passed = 0
     telegram_works = False
-    netflix_works = False
-    
-    # Phase 1: Latency test
-    with XraySession(xray_exe, config, CONFIG.XRAY_STARTUP) as session:
+
+    # === SESSION 1: Latency + Categories ===
+    with XraySession(xray_exe, proxy_config, CONFIG.XRAY_STARTUP) as session:
         if not session.ok:
             return CheckResult(
-                key=key,
-                alive=False,
-                error="xray_startup",
-                protocol=protocol,
-                host=host,
-                port=port,
-                security=security
+                key=key, alive=False, error="xray_startup",
+                protocol=protocol, host=host, port=port, security=security
             )
-        
-        # Test latency with multiple samples
+
+        # Latency (3 samples)
         for i in range(CONFIG.LATENCY_SAMPLES):
+            url = CONFIG.CHECK_URLS[i % len(CONFIG.CHECK_URLS)]
             try:
-                start_time = time.time()
-                response = requests.get(
-                    CONFIG.CHECK_URLS[i % len(CONFIG.CHECK_URLS)],
-                    proxies=session.proxies,
-                    timeout=CONFIG.XRAY_TIMEOUT,
-                    allow_redirects=False
+                t1 = time.time()
+                resp = requests.get(
+                    url, proxies=session.proxies,
+                    timeout=CONFIG.XRAY_TIMEOUT, allow_redirects=False
                 )
-                
-                if response.status_code in [204, 200]:
-                    latency = (time.time() - start_time) * 1000
-                    latencies.append(latency)
-                
+                if resp.status_code in [200, 204]:
+                    latencies.append((time.time() - t1) * 1000)
             except:
                 pass
-            
-            # Small delay between tests
-            if i < CONFIG.LATENCY_SAMPLES - 1:
-                time.sleep(0.2)
-        
-        # Check if we have enough successful latency tests
+            time.sleep(0.1)
+
         if len(latencies) < CONFIG.MIN_LATENCY_SUCCESS:
             return CheckResult(
-                key=key,
-                alive=False,
-                error="latency_test_failed",
-                protocol=protocol,
-                host=host,
-                port=port,
-                security=security
+                key=key, alive=False, error="latency_fail",
+                protocol=protocol, host=host, port=port, security=security
             )
-        
-        # Phase 2: Category tests
-        for url, category in CONFIG.CATEGORY_URLS:
+
+        # Categories (7 sites)
+        for url, name in CONFIG.CATEGORY_URLS:
             try:
-                response = requests.get(
-                    url,
-                    proxies=session.proxies,
-                    timeout=8,
-                    allow_redirects=True,
-                    headers={'User-Agent': 'Mozilla/5.0'}
+                resp = requests.get(
+                    url, proxies=session.proxies,
+                    timeout=10, allow_redirects=True
                 )
-                
-                if response.status_code < 500:
+                if resp.status_code < 500:
                     categories_passed += 1
-                    if category == "telegram":
+                    if name == "telegram":
                         telegram_works = True
-                    elif category == "netflix":
-                        netflix_works = True
-                        
             except:
                 pass
-    
-    # Phase 3: Reconnection test
-    reconnect_success = 0
-    
-    for i in range(CONFIG.RECONNECT_TESTS):
-        time.sleep(0.5)  # Brief pause between reconnects
-        
-        with XraySession(xray_exe, config, CONFIG.XRAY_STARTUP_QUICK) as session:
-            if session.ok:
-                try:
-                    response = requests.get(
-                        CONFIG.CHECK_URLS[0],
-                        proxies=session.proxies,
-                        timeout=5,
-                        allow_redirects=False
-                    )
-                    
-                    if response.status_code in [204, 200]:
-                        reconnect_success += 1
-                        
-                except:
-                    pass
-    
-    # Calculate metrics
-    avg_latency = mean(latencies) if latencies else 999
+
+    avg_latency = mean(latencies)
     jitter = stdev(latencies) if len(latencies) > 1 else 0
-    
-    # Determine if proxy is alive
-    alive = reconnect_success >= CONFIG.MIN_RECONNECT_SUCCESS
-    
-    # Determine quality level
+
+    # === SESSION 2: Reconnect x1 ===
+    reconnect_success = 0
+    for _ in range(CONFIG.RECONNECT_TESTS):
+        time.sleep(0.5)
+        with XraySession(xray_exe, proxy_config, CONFIG.XRAY_STARTUP_QUICK) as session:
+            if not session.ok:
+                continue
+            try:
+                url = random.choice(CONFIG.CHECK_URLS)
+                resp = requests.get(
+                    url, proxies=session.proxies,
+                    timeout=8, allow_redirects=False
+                )
+                if resp.status_code in [200, 204]:
+                    reconnect_success += 1
+            except:
+                pass
+
+    if reconnect_success < CONFIG.MIN_RECONNECT_SUCCESS:
+        return CheckResult(
+            key=key, alive=False, error="reconnect_fail",
+            protocol=protocol, host=host, port=port, security=security,
+            latency=round(avg_latency, 1), jitter=round(jitter, 1),
+            reconnect_success=reconnect_success, categories=categories_passed
+        )
+
+    # === QUALITY (soft thresholds) ===
     quality = None
-    if alive:
-        for q in Quality:
-            threshold = QUALITY_THRESHOLDS[q]
-            if (avg_latency <= threshold.latency_max and
-                jitter <= threshold.jitter_max and
-                categories_passed >= threshold.categories_min and
-                reconnect_success >= threshold.reconnect_min):
-                quality = q
-                break
-    
-    # Update statistics
+    for q in [Quality.ELITE, Quality.PREMIUM, Quality.GOOD]:
+        thresh = QUALITY_THRESHOLDS[q]
+        if (avg_latency <= thresh.latency_max and
+            jitter <= thresh.jitter_max and
+            categories_passed >= thresh.categories_min):
+            quality = q
+            break
+
+    # If passed reconnect but below even GOOD threshold - still save as GOOD
+    if quality is None and reconnect_success >= CONFIG.MIN_RECONNECT_SUCCESS:
+        quality = Quality.GOOD
+
+    if quality is None:
+        return CheckResult(
+            key=key, alive=False, error="below_threshold",
+            protocol=protocol, host=host, port=port, security=security,
+            latency=round(avg_latency, 1), jitter=round(jitter, 1),
+            reconnect_success=reconnect_success, categories=categories_passed
+        )
+
     with stats_lock:
-        if alive:
-            stats.xray_passed += 1
-            if quality:
-                stats.by_quality[quality] += 1
-            stats.by_protocol[protocol] += 1
-        else:
-            stats.xray_failed += 1
-    
+        stats.xray_passed += 1
+        stats.by_quality[quality] += 1
+        stats.by_protocol[protocol] += 1
+
     return CheckResult(
-        key=key,
-        alive=alive,
-        latency=avg_latency,
-        jitter=jitter,
-        reconnect_success=reconnect_success,
-        categories=categories_passed,
-        telegram=telegram_works,
-        netflix=netflix_works,
-        quality=quality,
-        protocol=protocol,
-        host=host,
-        port=port,
-        security=security
+        key=key, alive=True,
+        latency=round(avg_latency, 1), jitter=round(jitter, 1),
+        reconnect_success=reconnect_success, categories=categories_passed,
+        telegram=telegram_works, quality=quality,
+        protocol=protocol, host=host, port=port, security=security
     )
 
-# ==================== RESULT HANDLING ====================
+
+# ==================== SAVE RESULTS ====================
 def save_results(results: List[CheckResult], region: str = "ALL"):
-    """Save results to files with detailed statistics"""
-    
-    # Group by quality
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
     by_quality = defaultdict(list)
-    for result in results:
-        if result.quality:
-            by_quality[result.quality].append(result)
-    
-    # Save each quality level
+    for r in results:
+        if r.alive and r.quality:
+            by_quality[r.quality].append(r)
+
+    # Save per quality
     for quality in Quality:
-        if quality not in by_quality:
+        items = by_quality.get(quality, [])
+        if not items:
             continue
-        
-        quality_results = by_quality[quality]
-        
-        # Sort by latency
-        quality_results.sort(key=lambda x: x.latency)
-        
-        # Create filename
+        items.sort(key=lambda x: x.latency)
         filename = PREMIUM_FOLDER / f"{quality.value}.txt"
-        
-        # Write to file
+
         with open(filename, 'w', encoding='utf-8') as f:
-            # Header
-            f.write(f"# {quality.name} Proxies\n")
-            f.write(f"# Region: {region}\n")
-            f.write(f"# Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
-            f.write(f"# Total: {len(quality_results)} proxies\n")
-            f.write(f"# Channel: {MY_CHANNEL}\n")
-            f.write("#" + "="*50 + "\n\n")
-            
-            # Write proxies
-            for result in quality_results:
-                # Add metadata as comment
-                metadata = f"# Latency: {result.latency:.1f}ms | "
-                metadata += f"Jitter: {result.jitter:.1f}ms | "
-                metadata += f"Categories: {result.categories}/5"
-                
-                if result.telegram:
-                    metadata += " | Telegram: ✓"
-                if result.netflix:
-                    metadata += " | Netflix: ✓"
-                if result.mutation_used:
-                    metadata += f" | Mutation: {result.mutation_used}"
-                
-                f.write(f"{metadata}\n")
-                f.write(f"{result.key}\n\n")
-        
-        log(f"💾 Saved {len(quality_results)} {quality.name} proxies to {filename.name}", "success")
-    
-        # Generate statistics JSON
+            f.write(f"# {quality.value.upper()}\n")
+            f.write(f"# {MY_CHANNEL}\n")
+            f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"# Keys: {len(items)}\n\n")
+
+            for r in items:
+                tg = "TG+" if r.telegram else ""
+                mut = f"|{r.mutation_used}" if r.mutation_used else ""
+                ai = f"|{r.ai_verdict}" if r.ai_verdict else ""
+                comment = (
+                    f"[{r.latency:.0f}ms|j{r.jitter:.0f}|"
+                    f"rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|"
+                    f"{r.categories}cat|{tg}{r.protocol}{mut}{ai}|{MY_CHANNEL}]"
+                )
+                base_key = r.key.split('#')[0]
+                f.write(f"{base_key}#{quote(comment)}\n")
+
+        log(f"[SAVE] {quality.value.upper()}: {len(items)} -> {filename.name}")
+
+    # All working
+    all_results = [r for r in results if r.alive]
+    all_results.sort(key=lambda x: x.latency)
+
+    verified_file = RESULTS_FOLDER / f"verified_{timestamp}.txt"
+    with open(verified_file, 'w', encoding='utf-8') as f:
+        f.write(f"# {MY_CHANNEL}\n")
+        f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"# Working: {len(all_results)}\n\n")
+        for r in all_results:
+            comment = (
+                f"{r.quality.value.upper()} {r.latency:.0f}ms "
+                f"{r.protocol} {MY_CHANNEL}"
+            )
+            f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
+
+    log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
+
+    # Stats JSON (no README generation)
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
         "total_checked": stats.tcp_passed,
-        "total_working": len(results),
-        "by_quality": {q.value: len(by_quality[q]) for q in Quality},
+        "total_working": len(all_results),
+        "by_quality": {q.value: len(by_quality.get(q, [])) for q in Quality},
         "by_protocol": dict(stats.by_protocol),
         "mutations": {
-            "tried": stats.total_mutations_tried,
+            "tried": stats.mutations_tried,
             "successful": stats.mutations_success
         },
         "ai": {
             "enabled": ai_engine.enabled,
-            "anomalies_detected": stats.ai_anomalies,
-            "model_trained": ai_engine.model_risk is not None
+            "anomalies": stats.ai_anomalies
         },
         "processing_time": time.time() - stats.start_time
     }
-
     with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats_data, f, indent=2)
 
-    log(f"📊 Statistics saved to {STATS_FILE.name}", "info")
+    log(f"[SAVE] Stats -> {STATS_FILE.name}")
 
     return stats_data
+
+
+# ==================== MAIN ====================
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="AI Proxy Checker v4.0 Balanced")
+    parser.add_argument('--region', choices=['ALL', 'RU', 'EU'], default='ALL')
+    parser.add_argument('--workers', type=int, default=CONFIG.XRAY_WORKERS)
+    parser.add_argument('--tcp-workers', type=int, default=CONFIG.TCP_WORKERS)
+    parser.add_argument('--no-ai', action='store_true')
+    parser.add_argument('--no-mutations', action='store_true')
+    return parser.parse_args()
+
+
+def main():
+    args = parse_arguments()
+    CONFIG.XRAY_WORKERS = args.workers
+    CONFIG.TCP_WORKERS = args.tcp_workers
+    if args.no_ai:
+        ai_engine.enabled = False
+    if args.no_mutations:
+        CONFIG.MAX_SAFE_MUTATIONS = 0
+
+    print("\n" + "=" * 60)
+    print("  AI Proxy Checker v4.0 BALANCED")
+    print("  Soft thresholds + fast checks + AI history")
+    print(f"  Channel: {MY_CHANNEL}")
+    print("=" * 60)
+
+    print(f"\n  Settings:")
+    print(f"    Region: {args.region}")
+    print(f"    TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
+    print(f"    XRAY: {CONFIG.XRAY_WORKERS} workers, {CONFIG.XRAY_TIMEOUT}s timeout")
+    print(f"    Latency: {CONFIG.LATENCY_SAMPLES} samples (min {CONFIG.MIN_LATENCY_SUCCESS})")
+    print(f"    Categories: {len(CONFIG.CATEGORY_URLS)} sites")
+    print(f"    Reconnect: {CONFIG.RECONNECT_TESTS} test(s)")
+    print(f"    Mutations: {CONFIG.MAX_SAFE_MUTATIONS} (safe FP only)")
+    print(f"    AI: {'ON' if ai_engine.enabled else 'OFF'}")
+    print()
+
+    for q in Quality:
+        t = QUALITY_THRESHOLDS[q]
+        print(f"    {q.value.upper():>7}: "
+              f"lat<={t.latency_max}ms  jit<={t.jitter_max}ms  cat>={t.categories_min}")
+    print()
+
+    xray_exe = setup_xray()
+    if not xray_exe:
+        return 1
+
+    if args.region != 'ALL':
+        sources = {args.region: KEY_SOURCES.get(args.region, [])}
+    else:
+        sources = KEY_SOURCES
+
+    all_keys = download_and_deduplicate(sources)
+    if not all_keys:
+        log("[ERR] No keys found")
+        return 1
+
+    if ai_engine.enabled:
+        log("[AI] Prioritizing keys...")
+        all_keys = ai_engine.prioritize_keys(all_keys)
+
+    # === TCP ===
+    print("\n" + "=" * 60)
+    log(f"[TCP] Phase 1: {CONFIG.TCP_WORKERS} workers")
+    print("=" * 60 + "\n")
+
+    tcp_start = time.time()
+    tcp_passed = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as executor:
+        futures = {executor.submit(tcp_check, key): key for key in all_keys}
+        done = 0
+        for future in concurrent.futures.as_completed(futures):
+            done += 1
+            if done % CONFIG.GC_EVERY == 0:
+                cleanup_memory()
+                log(f"  [{done}/{len(all_keys)}] TCP alive: {len(tcp_passed)}")
+            try:
+                result = future.result(timeout=30)
+                if result:
+                    tcp_passed.append(result)
+                    stats.tcp_passed += 1
+                else:
+                    stats.tcp_failed += 1
+            except:
+                stats.tcp_failed += 1
+
+    tcp_time = time.time() - tcp_start
+    log(f"\n  TCP: {len(tcp_passed)}/{len(all_keys)} in {tcp_time:.1f}s")
+
+    if not tcp_passed:
+        log("[ERR] No TCP connections")
+        return 1
+
+    # === XRAY ===
+    print("\n" + "=" * 60)
+    log(f"[XRAY] Phase 2: {CONFIG.XRAY_WORKERS} workers")
+    log(f"  Session 1: Latency({CONFIG.LATENCY_SAMPLES}) + "
+        f"Categories({len(CONFIG.CATEGORY_URLS)})")
+    log(f"  Session 2: Reconnect x{CONFIG.RECONNECT_TESTS}")
+    if CONFIG.MAX_SAFE_MUTATIONS > 0:
+        log(f"  + {CONFIG.MAX_SAFE_MUTATIONS} safe mutation attempt(s) on fail")
+    print("=" * 60 + "\n")
+
+    xray_start = time.time()
+    results = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.XRAY_WORKERS) as executor:
+        futures = {
+            executor.submit(xray_full_check, key, xray_exe): key
+            for key in tcp_passed
+        }
+        done = 0
+        for future in concurrent.futures.as_completed(futures):
+            done += 1
+            if done % 10 == 0:
+                cleanup_memory()
+            try:
+                result = future.result(timeout=120)
+
+                if ai_engine.enabled:
+                    ai_engine.analyze_result(result)
+                ai_engine.save_result(result)
+
+                if result.alive:
+                    results.append(result)
+                    tg = " TG" if result.telegram else ""
+                    mut = f" [{result.mutation_used}]" if result.mutation_used else ""
+                    ai = f" {result.ai_verdict}" if result.ai_verdict else ""
+                    log(f"  [{done}/{len(tcp_passed)}] OK "
+                        f"{result.quality.value.upper():>7} | "
+                        f"{result.latency:>6.0f}ms j{result.jitter:>4.0f} | "
+                        f"rc:{result.reconnect_success}/{CONFIG.RECONNECT_TESTS} | "
+                        f"{result.categories}cat{tg} | "
+                        f"{result.protocol}{mut}{ai}")
+                else:
+                    stats.xray_failed += 1
+                    if result.error:
+                        record_error(result.error)
+            except:
+                stats.xray_failed += 1
+                record_error("future_exception")
+
+    xray_time = time.time() - xray_start
+    total_time = time.time() - stats.start_time
+
+    # Save
+    if results:
+        save_results(results, args.region)
+
+    # === SUMMARY ===
+    print("\n" + "=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
+    print(f"  Unique: {stats.unique} (dupes: {stats.duplicates})")
+    print(f"  TCP: {stats.tcp_passed} "
+          f"({stats.tcp_passed * 100 // max(stats.unique, 1)}%)")
+    print(f"  XRAY: {stats.xray_passed} "
+          f"({stats.xray_passed * 100 // max(stats.tcp_passed, 1)}%)")
+    print()
+
+    for q in Quality:
+        count = stats.by_quality.get(q, 0)
+        if count > 0:
+            print(f"    {q.value.upper()}: {count}")
+    print()
+
+    if stats.mutations_tried > 0:
+        print(f"  Mutations: {stats.mutations_success}/{stats.mutations_tried}")
+    if stats.ai_anomalies > 0:
+        print(f"  AI anomalies: {stats.ai_anomalies}")
+    print()
+
+    for proto, count in sorted(stats.by_protocol.items(), key=lambda x: -x[1]):
+        print(f"    {proto}: {count}")
+    print()
+    print(f"  TCP={tcp_time:.1f}s  XRAY={xray_time:.1f}s  "
+          f"TOTAL={total_time / 60:.1f}min")
+
+    if stats.errors:
+        print("\n  Error breakdown:")
+        for error, count in sorted(stats.errors.items(), key=lambda x: -x[1])[:5]:
+            print(f"    {error}: {count}")
+
+    print("=" * 60)
+
+    return 0 if stats.xray_passed > 0 else 1
+
+
+if __name__ == "__main__":
+    try:
+        exit_code = main()
+    except KeyboardInterrupt:
+        print("\n[STOP] Interrupted")
+        cleanup_all_processes()
+        exit_code = 1
+    except Exception as e:
+        print(f"\n[ERR] {e}")
+        import traceback
+        traceback.print_exc()
+        cleanup_all_processes()
+        exit_code = 1
+
+    sys.exit(exit_code)
