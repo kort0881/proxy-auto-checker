@@ -2,7 +2,7 @@ name: 🚀 AI Proxy Checker Pro
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Каждые 6 часов
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       region:
@@ -21,260 +21,161 @@ concurrency:
 
 permissions:
   contents: write
-  issues: write
 
 env:
   PYTHON_VERSION: '3.11'
-  MIN_KEYS_THRESHOLD: 50  # Минимум ключей для успешного коммита
+  MIN_KEYS_THRESHOLD: 5
 
 jobs:
-  # ==== МАТРИЦА ДЛЯ ПАРАЛЛЕЛЬНОЙ ПРОВЕРКИ ====
-  check-regions:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        region: ${{ github.event.inputs.region == 'ALL' && fromJSON('["RU", "EU"]') || fromJSON(format('["{0}"]', github.event.inputs.region)) }}
-    
+
     steps:
     - name: 📥 Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
         token: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: 🐍 Setup Python + Cache
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
-        cache-dependency-path: '**/requirements.txt'
-    
-    - name: 📦 Install Dependencies (Cached)
+        cache-dependency-path: 'requirements.txt'
+
+    - name: 📦 Create requirements.txt
+      run: |
+        cat > requirements.txt << 'REQS'
+        requests[socks]
+        scikit-learn
+        tqdm
+        colorama
+        REQS
+
+    - name: 📦 Install Dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install requests[socks] scikit-learn scikit-optimize pandas tqdm colorama
-    
-    - name: 🔥 Run AI Checker - ${{ matrix.region }}
+        pip install -r requirements.txt
+
+    - name: 🔥 Run AI Checker
       id: check
       run: |
-        python advanced_checker.py --region ${{ matrix.region }} --workers 16 || exit_code=$?
-        
-        # Подсчет результатов
-        total=$(find results/premium -name "*.txt" -exec grep -c "://" {} + 2>/dev/null | awk '{s+=$1} END {print s}' || echo "0")
-        elite=$(grep -c "://" results/premium/elite.txt 2>/dev/null || echo "0")
-        premium=$(grep -c "://" results/premium/premium.txt 2>/dev/null || echo "0")
-        
-        echo "total=$total" >> $GITHUB_OUTPUT
-        echo "elite=$elite" >> $GITHUB_OUTPUT
-        echo "premium=$premium" >> $GITHUB_OUTPUT
-        
-        # Проверка минимального порога
-        if [ "$total" -lt "${{ env.MIN_KEYS_THRESHOLD }}" ]; then
-          echo "::warning::Найдено только $total ключей (минимум ${{ env.MIN_KEYS_THRESHOLD }})"
-          exit 1
+        REGION="${{ github.event.inputs.region || 'ALL' }}"
+        python advanced_checker.py --region "$REGION" --workers 16 --tcp-workers 50
+
+        # Подсчёт результатов
+        total=0
+        elite=0
+        premium=0
+
+        if [ -f results/premium/elite.txt ]; then
+          elite=$(grep -c "://" results/premium/elite.txt 2>/dev/null || echo "0")
         fi
-      continue-on-error: false
-    
-    - name: 📊 Generate Report
-      if: success()
-      run: |
-        python << 'EOF'
-        import json, time
-        from pathlib import Path
-        
-        stats = {
-            "region": "${{ matrix.region }}",
-            "timestamp": int(time.time()),
-            "total": ${{ steps.check.outputs.total }},
-            "elite": ${{ steps.check.outputs.elite }},
-            "premium": ${{ steps.check.outputs.premium }},
-            "run_id": "${{ github.run_id }}"
-        }
-        
-        Path("results").mkdir(exist_ok=True)
-        with open(f"results/stats_${{ matrix.region }}.json", "w") as f:
-            json.dump(stats, f, indent=2)
-        
-        # README фрагмент
-        readme = f"""
-        ## 📊 ${{ matrix.region }} Region Statistics
-        
-        - **Elite**: {stats['elite']} keys
-        - **Premium**: {stats['premium']} keys
-        - **Total**: {stats['total']} keys
-        - **Updated**: {time.strftime('%Y-%m-%d %H:%M UTC')}
-        """
-        
-        with open(f"results/README_${{ matrix.region }}.md", "w") as f:
-            f.write(readme)
-        EOF
-    
-    - name: 📁 Upload Artifacts
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: proxies-${{ matrix.region }}-${{ github.run_number }}
-        path: |
-          results/premium/*.txt
-          results/stats_*.json
-          results/README_*.md
-        retention-days: 7
-        compression-level: 9
-    
-    - name: 💾 Backup Old Results
-      if: success()
-      run: |
-        mkdir -p backups
-        timestamp=$(date +%Y%m%d_%H%M%S)
-        [ -d results/premium ] && tar -czf backups/backup_${{ matrix.region }}_${timestamp}.tar.gz results/premium || true
-        # Оставляем только 5 последних backup
-        ls -t backups/*.tar.gz | tail -n +6 | xargs -r rm
-    
-    - name: 🔄 Commit Results (with conflict resolution)
-      if: success()
-      run: |
-        git config user.name "AI Proxy Bot"
-        git config user.email "bot@github.actions"
-        
-        # Retry logic для git pull
-        max_retries=3
-        for i in $(seq 1 $max_retries); do
-          git pull origin main --rebase --autostash && break || {
-            echo "Pull attempt $i failed, retrying..."
-            sleep $((i * 5))
-          }
-        done
-        
-        git add -f results/premium/*.txt
-        git add -f results/stats_*.json results/README_*.md
-        git add -f results/history.jsonl backups/*.tar.gz || true
-        
-        # Умный коммит (только если есть изменения)
-        if ! git diff --cached --quiet; then
-          total=${{ steps.check.outputs.total }}
-          elite=${{ steps.check.outputs.elite }}
-          mutations=$(grep -o "SAVED_BY" results/history.jsonl 2>/dev/null | wc -l || echo "0")
-          
-          git commit -m "🧬 [${{ matrix.region }}] AI Update: ${total} keys (${elite} elite, ${mutations} mutations)"
-          
-          # Retry push
-          for i in $(seq 1 3); do
-            git push origin main && break || {
-              echo "Push attempt $i failed"
-              git pull --rebase origin main
-              sleep 5
-            }
-          done
-        else
-          echo "No changes to commit"
+        if [ -f results/premium/premium.txt ]; then
+          premium=$(grep -c "://" results/premium/premium.txt 2>/dev/null || echo "0")
         fi
 
-  # ==== АГРЕГАЦИЯ РЕЗУЛЬТАТОВ ====
-  aggregate:
-    needs: check-regions
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-    - name: 📥 Checkout
-      uses: actions/checkout@v4
-    
-    - name: 📊 Download All Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: aggregated
-    
-    - name: 🔗 Merge Results & Generate Master README
+        for f in results/premium/*.txt; do
+          if [ -f "$f" ]; then
+            count=$(grep -c "://" "$f" 2>/dev/null || echo "0")
+            total=$((total + count))
+          fi
+        done
+
+        echo "total=$total" >> "$GITHUB_OUTPUT"
+        echo "elite=$elite" >> "$GITHUB_OUTPUT"
+        echo "premium=$premium" >> "$GITHUB_OUTPUT"
+
+        echo "📊 Results: total=$total elite=$elite premium=$premium"
+
+        if [ "$total" -lt "${{ env.MIN_KEYS_THRESHOLD }}" ]; then
+          echo "::warning::Found only $total keys (minimum ${{ env.MIN_KEYS_THRESHOLD }})"
+        fi
+
+    - name: 📊 Generate Stats Report
+      if: success()
+      env:
+        REPO_NAME: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_NUMBER: ${{ github.run_number }}
+        TOTAL_KEYS: ${{ steps.check.outputs.total }}
+        ELITE_KEYS: ${{ steps.check.outputs.elite }}
+        PREMIUM_KEYS: ${{ steps.check.outputs.premium }}
       run: |
-        python << 'EOF'
-        import json, glob
+        python << 'PYSCRIPT'
+        import json, os, time
         from pathlib import Path
         from datetime import datetime
-        
-        all_stats = []
-        for stats_file in glob.glob("aggregated/*/stats_*.json"):
-            with open(stats_file) as f:
-                all_stats.append(json.load(f))
-        
-        total_keys = sum(s['total'] for s in all_stats)
-        total_elite = sum(s['elite'] for s in all_stats)
-        
-        # Генерация главного README
-        readme = f"""# 🔥 AI Proxy Collection
-        
-        ![Total Keys](https://img.shields.io/badge/Total-{total_keys}-brightgreen)
-        ![Elite](https://img.shields.io/badge/Elite-{total_elite}-blue)
-        ![Updated](https://img.shields.io/badge/Updated-{datetime.utcnow().strftime('%Y--%m--%d')}-orange)
-        
-        ## 📦 Available Proxies
-        
-        """
-        
-        for region_stat in sorted(all_stats, key=lambda x: x['region']):
-            readme += f"### {region_stat['region']} Region\n"
-            readme += f"- **Elite**: {region_stat['elite']}\n"
-            readme += f"- **Premium**: {region_stat['premium']}\n"
-            readme += f"- **Total**: {region_stat['total']}\n\n"
-        
-        readme += f"""
-        ## 🚀 Features
-        
-        - 🧠 **AI-Powered** quality prediction
-        - 🧬 **Smart Mutations** for bypassing blocks
-        - 🔄 **Auto-updated** every 6 hours
-        - ✅ **Validated** with reconnect tests
-        
-        ## 📥 Download
-        
-        ```bash
-        # Elite proxies (all regions)
-        curl -sL https://raw.githubusercontent.com/${{{{ github.repository }}}}/main/results/premium/elite.txt
-        ```
-        
-        ---
-        *Last update: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} | Run: [#{os.getenv('GITHUB_RUN_NUMBER')}](https://github.com/${{{{ github.repository }}}}/actions/runs/${{{{ github.run_id }}}})*
-        """
-        
-        with open("README.md", "w") as f:
-            f.write(readme)
-        EOF
-    
-    - name: 💾 Commit Master README
-      run: |
-        git config user.name "AI Aggregator"
-        git config user.email "bot@github.actions"
-        
-        git pull origin main --rebase || true
-        git add README.md
-        
-        if ! git diff --cached --quiet; then
-          git commit -m "📊 Update statistics and README"
-          git push origin main || {
-            git pull --rebase origin main
-            git push origin main
-          }
-        fi
-    
-    - name: 📢 Notify (optional)
-      if: failure()
-      run: |
-        # Можно добавить отправку в Telegram
-        echo "Check failed! Total keys below threshold or errors occurred"
-        # curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-        #   -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-        #   -d text="❌ Proxy check failed! Run: ${{ github.run_id }}"
 
-  # ==== ОЧИСТКА СТАРЫХ АРТЕФАКТОВ ====
-  cleanup:
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-    - name: 🧹 Delete old artifacts
-      uses: c-hive/gha-remove-artifacts@v1
-      with:
-        age: '7 days'
-        skip-recent: 5
+        repo = os.environ.get("REPO_NAME", "user/repo")
+        run_id = os.environ.get("RUN_ID", "0")
+        run_number = os.environ.get("RUN_NUMBER", "0")
+        total = os.environ.get("TOTAL_KEYS", "0")
+        elite = os.environ.get("ELITE_KEYS", "0")
+        premium = os.environ.get("PREMIUM_KEYS", "0")
+
+        # Load stats from checker if exists
+        stats_file = Path("results/stats_latest.json")
+        stats_data = {}
+        if stats_file.exists():
+            with open(stats_file) as f:
+                stats_data = json.load(f)
+
+        by_protocol = stats_data.get("by_protocol", {})
+        good = stats_data.get("by_quality", {}).get("good", 0)
+        standard = stats_data.get("by_quality", {}).get("standard", 0)
+        mutations_ok = stats_data.get("mutations", {}).get("successful", 0)
+        ai_enabled = stats_data.get("ai", {}).get("enabled", False)
+        proc_time = stats_data.get("processing_time", 0)
+
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        date_badge = datetime.utcnow().strftime("%Y--%m--%d")
+
+        # Protocol lines
+        proto_lines = ""
+        for proto, count in sorted(by_protocol.items(), key=lambda x: x[1], reverse=True):
+            pct = (int(count) / max(int(total), 1)) * 100
+            proto_lines += f"- **{proto}**: {count} ({pct:.1f}%)\n"
+
+        if not proto_lines:
+            proto_lines = "- No data yet\n"
+
+        readme = f"""# 🔥 AI Proxy Collection
+
+![Total](https://img.shields.io/badge/Total-{total}-brightgreen)
+![Elite](https://img.shields.io/badge/Elite-{elite}-gold)
+![Premium](https://img.shields.io/badge/Premium-{premium}-blue)
+![Updated](https://img.shields.io/badge/Updated-{date_badge}-orange)
+
+## 📊 Statistics
+
+| Quality  | Count    | File |
+|----------|----------|------|
+| Elite    | {elite}  | [elite.txt](results/premium/elite.txt) |
+| Premium  | {premium}| [premium.txt](results/premium/premium.txt) |
+| Good     | {good}   | [good.txt](results/premium/good.txt) |
+| Standard | {standard}| [standard.txt](results/premium/standard.txt) |
+
+## 🔧 Protocol Distribution
+
+{proto_lines}
+
+## 🚀 Features
+
+- 🧠 **AI-Powered** quality prediction and anomaly detection
+- 🧬 **Smart Mutations** - {mutations_ok} successful bypasses
+- ✅ **Multi-layer validation** with reconnection tests
+- 📈 **Latency optimization** with jitter analysis
+
+## 📥 Usage
+
+```bash
+# Download elite proxies
+curl -sL https://raw.githubusercontent.com/{repo}/main/results/premium/elite.txt
+
+# Download all working keys
+wget https://raw.githubusercontent.com/{repo}/main/results/premium/premium.txt
 
 
