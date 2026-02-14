@@ -1797,63 +1797,11 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
     with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats_data, f, indent=2)
     
-    log(f"📊 Statistics saved to {STATS_FILE.name}", "info")
+      log(f"📊 Statistics saved to {STATS_FILE.name}", "info")
     
-    # Generate README
-    generate_readme(stats_data)
+    # Generate README removed (handled by GitHub Actions)
     
     return stats_data
 
-def generate_readme(stats_data):
-    """Generate README.md with statistics and badges"""
 
-    total = stats_data.get('total_working', 0)
-    elite = stats_data.get('by_quality', {}).get('elite', 0)
-    premium = stats_data.get('by_quality', {}).get('premium', 0)
-    good = stats_data.get('by_quality', {}).get('good', 0)
-    standard = stats_data.get('by_quality', {}).get('standard', 0)
 
-    by_protocol = stats_data.get('by_protocol', {})
-    mutations_ok = stats_data.get('mutations', {}).get('successful', 0)
-    ai_enabled = stats_data.get('ai', {}).get('enabled', False)
-    proc_time = stats_data.get('processing_time', 0)
-    total_checked = stats_data.get('total_checked', 0)
-
-    now = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
-    date_badge = datetime.now().strftime('%Y--%m--%d')
-
-    # Protocol lines
-    proto_lines = ""
-    for proto, count in sorted(by_protocol.items(), key=lambda x: x[1], reverse=True):
-        pct = (int(count) / max(int(total), 1)) * 100
-        proto_lines += f"- **{proto}**: {count} ({pct:.1f}%)\n"
-
-    if not proto_lines:
-        proto_lines = "- No data yet\n"
-
-    readme_content = f"""# AI Proxy Collection
-
-![Total](https://img.shields.io/badge/Total-{total}-brightgreen)
-![Elite](https://img.shields.io/badge/Elite-{elite}-gold)
-![Premium](https://img.shields.io/badge/Premium-{premium}-blue)
-![Updated](https://img.shields.io/badge/Updated-{date_badge}-orange)
-
-## Statistics
-
-| Quality  | Count    | File |
-|----------|----------|------|
-| Elite    | {elite}  | [elite.txt](results/premium/elite.txt) |
-| Premium  | {premium}| [premium.txt](results/premium/premium.txt) |
-| Good     | {good}   | [good.txt](results/premium/good.txt) |
-| Standard | {standard}| [standard.txt](results/premium/standard.txt) |
-
-## Protocol Distribution
-
-{proto_lines}
-
-## Features
-
-- AI-Powered quality prediction and anomaly detection
-- Smart Mutations - {mutations_ok} successful bypasses
-- Multi-layer validation with reconnection tests
-- Latency optimization 
