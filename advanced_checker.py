@@ -1774,7 +1774,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         
         log(f"💾 Saved {len(quality_results)} {quality.name} proxies to {filename.name}", "success")
     
-    # Generate statistics JSON
+        # Generate statistics JSON
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
@@ -1793,15 +1793,10 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         },
         "processing_time": time.time() - stats.start_time
     }
-    
+
     with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats_data, f, indent=2)
-    
-      log(f"📊 Statistics saved to {STATS_FILE.name}", "info")
-    
-    # Generate README removed (handled by GitHub Actions)
-    
+
+    log(f"📊 Statistics saved to {STATS_FILE.name}", "info")
+
     return stats_data
-
-
-
