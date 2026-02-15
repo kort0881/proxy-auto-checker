@@ -64,7 +64,7 @@ def load_subscriptions():
 
 
 def format_subscriptions_for_telegram(subscriptions_text):
-    """Форматировать подписки для Telegram (HTML)."""
+    """Форматировать подписки для Telegram (HTML-текст списка)."""
     if not subscriptions_text:
         return ""
 
@@ -83,6 +83,33 @@ def format_subscriptions_for_telegram(subscriptions_text):
             formatted_lines.append(f"📥 <a href='{line}'>{filename}</a>")
 
     return "\n".join(formatted_lines)
+
+
+def parse_subscriptions_for_buttons(subscriptions_text):
+    """
+    Парсит subscriptions_list.txt в список кнопок:
+    [{'text': '📥 ru_white_part1', 'url': 'https://raw.../ru_white_part1.txt'}, ...]
+    """
+    if not subscriptions_text:
+        return []
+
+    lines = subscriptions_text.strip().split("\n")
+    buttons = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("==="):
+            continue
+        if line.startswith("http"):
+            filename = line.split("/")[-1].replace(".txt", "")
+            btn_text = f"📥 {filename}"
+            # Telegram ограничивает длину текста кнопки, подрежем до 32 символов
+            btn_text = btn_text[:32]
+            buttons.append({"text": btn_text, "url": line})
+
+    return buttons
 
 
 def clean_key(k: str) -> str:
@@ -124,31 +151,27 @@ def fix_universal(key: str) -> str:
         return key
 
 
-# ============== НОВАЯ ФУНКЦИЯ ==============
 def load_premium_keys():
     """
     Загрузить ключи из results/premium/ в порядке приоритета:
     elite.txt → premium.txt → good.txt
-    
-    Возвращает: (список ключей, словарь статистики)
     """
     all_keys = []
     stats = {"elite": 0, "premium": 0, "good": 0}
-    
-    # Порядок важен: elite первые, потом premium, потом good
+
     priority_files = [
         ("elite.txt", "elite"),
         ("premium.txt", "premium"),
         ("good.txt", "good"),
     ]
-    
+
     for filename, category in priority_files:
         filepath = os.path.join(PREMIUM_FOLDER, filename)
-        
+
         if not os.path.exists(filepath):
             print(f"  ⚠️ {filename} не найден")
             continue
-        
+
         count = 0
         with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
@@ -158,10 +181,10 @@ def load_premium_keys():
                     if key:
                         all_keys.append(key)
                         count += 1
-        
+
         stats[category] = count
         print(f"  ✅ {filename}: {count} ключей")
-    
+
     return all_keys, stats
 
 
@@ -174,12 +197,12 @@ def load_fallback_keys():
         f for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("verified_") and f.endswith(".txt")
     ]
-    
+
     semi_dead_files = [
         f for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("semi_dead_") and f.endswith(".txt")
     ]
-    
+
     if verified_files:
         latest = max(
             verified_files,
@@ -194,9 +217,9 @@ def load_fallback_keys():
         source = "semi_dead"
     else:
         return [], None, None
-    
+
     filepath = os.path.join(RESULTS_FOLDER, latest)
-    
+
     keys = []
     with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
@@ -205,9 +228,8 @@ def load_fallback_keys():
                 key = fix_universal(clean_key(line))
                 if key:
                     keys.append(key)
-    
+
     return keys, latest, source
-# ============================================
 
 
 def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
@@ -222,7 +244,7 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
     while offset < len(keys):
         added = False
         for current_size in range(per_chunk, 0, -1):
-            part = keys[offset : offset + current_size]
+            part = keys[offset: offset + current_size]
             if not part:
                 break
 
@@ -311,7 +333,9 @@ def create_public_file(all_keys, stats=None):
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Triple-check (TCP + XRAY + Categories)\n")
         if stats:
-            f.write(f"# Elite: {stats.get('elite', 0)} | Premium: {stats.get('premium', 0)} | Good: {stats.get('good', 0)}\n")
+            f.write(
+                f"# Elite: {stats.get('elite', 0)} | Premium: {stats.get('premium', 0)} | Good: {stats.get('good', 0)}\n"
+            )
         f.write(f"# Total: {len(top_keys)}\n\n")
         for key in top_keys:
             f.write(key + "\n")
@@ -331,7 +355,9 @@ def create_private_file(all_keys, stats=None):
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Triple-check (TCP + XRAY + Categories)\n")
         if stats:
-            f.write(f"# Elite: {stats.get('elite', 0)} | Premium: {stats.get('premium', 0)} | Good: {stats.get('good', 0)}\n")
+            f.write(
+                f"# Elite: {stats.get('elite', 0)} | Premium: {stats.get('premium', 0)} | Good: {stats.get('good', 0)}\n"
+            )
         f.write(f"# Keys in file: {len(remaining_keys)}\n")
         f.write("# Keys in posts: 10\n")
         f.write(f"# Total: {len(all_keys)}\n\n")
@@ -371,34 +397,34 @@ def main():
     # Загружаем подписки с GitHub
     subscriptions_raw = load_subscriptions()
     subscriptions_formatted = format_subscriptions_for_telegram(subscriptions_raw)
+    subscriptions_buttons = parse_subscriptions_for_buttons(subscriptions_raw)
 
-    # ============== НОВАЯ ЛОГИКА ЗАГРУЗКИ ==============
+    # ============== ЗАГРУЗКА КЛЮЧЕЙ ==============
     all_keys = []
     key_stats = None
     source_info = ""
-    
-    # Приоритет 1: premium/ (результаты Validator)
+
     if os.path.exists(PREMIUM_FOLDER):
         print("📁 Ищем ключи в results/premium/...")
         all_keys, key_stats = load_premium_keys()
-        
+
         if all_keys:
             source_info = "premium (elite + premium + good)"
             print(f"\n✅ Загружено из premium: {len(all_keys)} ключей")
-            print(f"   Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}")
-    
-    # Приоритет 2: fallback на verified/semi_dead
+            print(
+                f"   Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}"
+            )
+
     if not all_keys:
         print("\n📁 Premium пусто, ищем verified/semi_dead...")
         all_keys, filename, source = load_fallback_keys()
-        
+
         if all_keys:
             source_info = f"{source} ({filename})"
             print(f"✅ Fallback: {len(all_keys)} ключей из {filename}")
         else:
             print("❌ Нет файлов с ключами")
             return 1
-    # ===================================================
 
     total_keys = len(all_keys)
     print(f"\n📦 Всего ключей: {total_keys}")
@@ -419,11 +445,12 @@ def main():
     caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
     caption += f"✅ Лучших: <b>{public_count}</b>\n"
     caption += f"📊 Всего проверено: <b>{total_keys}</b>\n\n"
-    
-    # Показываем распределение по качеству если есть
+
     if key_stats and any(key_stats.values()):
-        caption += f"🏆 Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}\n\n"
-    
+        caption += (
+            f"🏆 Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}\n\n"
+        )
+
     caption += "🔍 Тройная проверка: TCP + XRAY + Categories\n"
     caption += "📡 VLESS | VMess | Trojan | SS\n\n"
     caption += f"💬 {PUBLIC_CHANNEL}\n\n"
@@ -448,11 +475,27 @@ def main():
 
     safe_remove(public_file)
 
-    # Пост с подписками в публичный канал
-    if subscriptions_formatted:
+    # Пост с подписками в публичный канал: красивый текст + кнопки копирования
+    if subscriptions_formatted and subscriptions_buttons:
+        # формируем клавиатуру вручную (Bot API copy_text)
+        keyboard = []
+        row = []
+        for btn in subscriptions_buttons:
+            row.append(
+                {
+                    "text": btn["text"],
+                    "copy_text": {"text": btn["url"]},
+                }
+            )
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+
         subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
         subs_text += subscriptions_formatted
-        subs_text += "\n\n💡 Импортируй любую ссылку в Hiddify, v2rayNG или Clash"
+        subs_text += "\n\n💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash"
 
         try:
             resp = requests.post(
@@ -462,15 +505,18 @@ def main():
                     "text": subs_text,
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
+                    "reply_markup": {"inline_keyboard": keyboard},
                 },
                 timeout=15,
             )
             if resp.json().get("ok"):
-                print("✅ Пост с подписками отправлен")
+                print("✅ Пост с подписками (public) отправлен")
             else:
-                print(f"❌ Ошибка поста с подписками: {resp.json().get('description')}")
+                print(
+                    f"❌ Ошибка поста с подписками (public): {resp.json().get('description')}"
+                )
         except Exception as e:
-            print(f"❌ Ошибка отправки подписок: {e}")
+            print(f"❌ Ошибка отправки подписок (public): {e}")
 
     # Донат-пост
     donate_text = (
@@ -508,10 +554,12 @@ def main():
         caption += f"📦 В файле: <b>{private_count}</b> ключей\n"
         caption += "📝 В постах: <b>10</b> ключей\n"
         caption += f"📊 Всего: <b>{total_keys}</b>\n\n"
-        
+
         if key_stats and any(key_stats.values()):
-            caption += f"🏆 Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}\n\n"
-        
+            caption += (
+                f"🏆 Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}\n\n"
+            )
+
         caption += "🔍 Тройная проверка: TCP + XRAY + Categories\n"
         caption += "📡 VLESS | VMess | Trojan | SS"
 
@@ -525,18 +573,35 @@ def main():
             )
 
             if result and result.get("ok"):
-                print(f"✅ Пост с файлом отправлен ({private_count} ключей в файле)")
+                print(
+                    f"✅ Пост с файлом отправлен ({private_count} ключей в файле)"
+                )
             else:
                 error_msg = result.get("description", "Unknown error") if result else "No response"
                 print(f"❌ Ошибка: {error_msg}")
         else:
             print("⚠️ Нет картинки для приватного канала")
 
-        # Пост с подписками в приватный
-        if subscriptions_formatted:
+        # Пост с подписками в приватный канал (VIP) + кнопки копирования
+        if subscriptions_formatted and subscriptions_buttons:
+            keyboard = []
+            row = []
+            for btn in subscriptions_buttons:
+                row.append(
+                    {
+                        "text": btn["text"],
+                        "copy_text": {"text": btn["url"]},
+                    }
+                )
+                if len(row) == 2:
+                    keyboard.append(row)
+                    row = []
+            if row:
+                keyboard.append(row)
+
             subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
             subs_text += subscriptions_formatted
-            subs_text += "\n\n🎯 Импортируй в клиент для автообновления"
+            subs_text += "\n\n🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
 
             try:
                 resp = requests.post(
@@ -546,11 +611,16 @@ def main():
                         "text": subs_text,
                         "parse_mode": "HTML",
                         "disable_web_page_preview": True,
+                        "reply_markup": {"inline_keyboard": keyboard},
                     },
                     timeout=15,
                 )
                 if resp.json().get("ok"):
                     print("✅ Пост с подписками (приват) отправлен")
+                else:
+                    print(
+                        f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}"
+                    )
             except Exception as e:
                 print(f"❌ Ошибка отправки подписок (приват): {e}")
 
@@ -573,7 +643,9 @@ def main():
                 if resp.json().get("ok"):
                     print(f"✅ Пост {idx}/{len(chunks)} отправлен")
                 else:
-                    print(f"❌ Пост {idx} ошибка: {resp.json().get('description')}")
+                    print(
+                        f"❌ Пост {idx} ошибка: {resp.json().get('description')}"
+                    )
             except Exception as e:
                 print(f"❌ Ошибка отправки поста {idx}: {e}")
 
@@ -590,7 +662,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 
 
