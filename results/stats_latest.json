@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-02-15T10:28:42.881802",
+  "region": "ALL",
+  "total_checked": 4601,
+  "total_working": 1948,
+  "by_quality": {
+    "elite": 101,
+    "premium": 644,
+    "good": 1203
+  },
+  "by_protocol": {
+    "VLESS": 1809,
+    "Trojan": 31,
+    "SS": 108
+  },
+  "mutations": {
+    "tried": 2276,
+    "successful": 89
+  },
+  "ai": {
+    "enabled": true,
+    "anomalies": 0
+  },
+  "processing_time": 5085.920361042023
+}
