@@ -1,10 +1,3 @@
-
-Вот профессиональный, детальный и визуально оформленный `README.md` специально для твоего скрипта **AI Proxy Checker v4.0 BALANCED**.
-
-Я добавил ASCII-схемы, бейджи и подробное описание логики работы (AI, мутации, проверка категорий), чтобы проект выглядел максимально серьезно.
-
-***
-
 # 🌐 AI Proxy Checker v4.0 [BALANCED]
 
 ![Version](https://img.shields.io/badge/Version-4.0%20Balanced-blue?style=for-the-badge)
