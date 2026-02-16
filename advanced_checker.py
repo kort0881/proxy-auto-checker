@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker v4.0 BALANCED
-Soft thresholds + fast checks + AI history + no README generation
+AI Proxy Checker v4.1 SMART
+Two-phase check + parallel categories + session reuse
 """
 
 import os
@@ -72,25 +72,28 @@ KEY_SOURCES = {
 MY_CHANNEL = "@vlesstrojan"
 
 
-# ==================== SOFT CONFIG ====================
+# ==================== CONFIG ====================
 @dataclass
 class Config:
-    # TCP - generous
+    # TCP
     TCP_WORKERS: int = 40
     TCP_TIMEOUT: int = 8
     TCP_RETRIES: int = 1
 
-    # XRAY - conservative workers, proper wait
-    XRAY_WORKERS: int = 12
+    # XRAY - fewer workers = less contention on 2-core CI
+    XRAY_WORKERS: int = 8
     XRAY_STARTUP: float = 5.0
-    XRAY_STARTUP_QUICK: float = 4.0
+    XRAY_STARTUP_QUICK: float = 3.0
     XRAY_TIMEOUT: int = 12
 
-    # Latency - reduced from 5 to 3
+    # Quick check: 1 request to verify proxy works at all
+    QUICK_CHECK_TIMEOUT: int = 8
+
+    # Full check: latency samples
     LATENCY_SAMPLES: int = 3
     MIN_LATENCY_SUCCESS: int = 2
 
-    # Categories - 7 sites, soft threshold
+    # Categories - checked IN PARALLEL, not sequential
     CATEGORY_URLS: List[Tuple[str, str]] = field(default_factory=lambda: [
         ("https://www.google.com", "google"),
         ("https://web.telegram.org", "telegram"),
@@ -100,8 +103,10 @@ class Config:
         ("https://twitter.com", "twitter"),
         ("https://www.tiktok.com", "tiktok"),
     ])
+    CATEGORY_TIMEOUT: int = 6  # per-site timeout (was 10)
+    CATEGORY_PARALLEL: int = 4  # check 4 sites at once
 
-    # Reconnect - reduced from 2 to 1
+    # Reconnect
     RECONNECT_TESTS: int = 1
     MIN_RECONNECT_SUCCESS: int = 1
 
@@ -110,16 +115,16 @@ class Config:
         'http://www.gstatic.com/generate_204',
     ])
 
-    # Mutations - only 1 safe attempt
+    # Mutations
     MAX_SAFE_MUTATIONS: int = 1
 
-    GC_EVERY: int = 60
+    GC_EVERY: int = 50
 
 
 CONFIG = Config()
 
 
-# ==================== SOFT QUALITY THRESHOLDS ====================
+# ==================== QUALITY ====================
 class Quality(Enum):
     ELITE = "elite"
     PREMIUM = "premium"
@@ -133,11 +138,16 @@ class QualityThreshold:
     categories_min: int
 
 
-# SOFT thresholds: much more permissive than v3.x
 QUALITY_THRESHOLDS = {
-    Quality.ELITE:   QualityThreshold(latency_max=200,  jitter_max=80,  categories_min=4),
-    Quality.PREMIUM: QualityThreshold(latency_max=500,  jitter_max=150, categories_min=3),
-    Quality.GOOD:    QualityThreshold(latency_max=2000, jitter_max=500, categories_min=2),
+    Quality.ELITE: QualityThreshold(
+        latency_max=200, jitter_max=80, categories_min=4
+    ),
+    Quality.PREMIUM: QualityThreshold(
+        latency_max=500, jitter_max=150, categories_min=3
+    ),
+    Quality.GOOD: QualityThreshold(
+        latency_max=2000, jitter_max=500, categories_min=2
+    ),
 }
 
 
@@ -168,11 +178,19 @@ class Stats:
     unique: int = 0
     tcp_passed: int = 0
     tcp_failed: int = 0
+    quick_passed: int = 0
+    quick_failed: int = 0
     xray_passed: int = 0
     xray_failed: int = 0
-    by_quality: Dict[Quality, int] = field(default_factory=lambda: defaultdict(int))
-    by_protocol: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    errors: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    by_quality: Dict[Quality, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    by_protocol: Dict[str, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    errors: Dict[str, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
     ai_anomalies: int = 0
     mutations_success: int = 0
     mutations_tried: int = 0
@@ -190,8 +208,12 @@ def record_error(error: str):
 
 # ==================== LOGGING ====================
 def setup_logging():
-    handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=2)
-    handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
+    handler = RotatingFileHandler(
+        LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=2
+    )
+    handler.setFormatter(
+        logging.Formatter('%(asctime)s | %(message)s')
+    )
     logger = logging.getLogger('ProxyChecker')
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
@@ -248,19 +270,19 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 def cleanup_memory():
     gc.collect()
-    time.sleep(0.2)
+    time.sleep(0.1)
 
 
-# ==================== AI ENGINE (lightweight) ====================
+# ==================== AI ENGINE ====================
 class AIEngine:
-    """Lightweight AI: only anomaly detection + history logging"""
-
     def __init__(self):
         self.enabled = AI_AVAILABLE
         self.history: List[Dict] = []
         self.model_anomaly = None
         self.scaler = StandardScaler() if AI_AVAILABLE else None
-        self.protocol_stats = defaultdict(lambda: {'success': 0, 'total': 0})
+        self.protocol_stats = defaultdict(
+            lambda: {'success': 0, 'total': 0}
+        )
         self._load_history()
         if self.enabled:
             self._train()
@@ -302,7 +324,7 @@ class AIEngine:
             self.model_anomaly = IsolationForest(
                 contamination=0.1, random_state=42
             ).fit(X_scaled)
-            log(f"[AI] Anomaly model trained on {len(X)} records")
+            log(f"[AI] Trained on {len(X)} records")
         except Exception as e:
             log(f"[AI] Training failed: {e}")
 
@@ -313,17 +335,13 @@ class AIEngine:
         def score(key):
             kl = key.lower()
             if 'vless://' in kl:
-                proto = 'VLESS'
-                s = 0.7
+                proto, s = 'VLESS', 0.7
             elif 'trojan://' in kl:
-                proto = 'Trojan'
-                s = 0.6
+                proto, s = 'Trojan', 0.6
             elif 'vmess://' in kl:
-                proto = 'VMess'
-                s = 0.5
+                proto, s = 'VMess', 0.5
             else:
-                proto = 'SS'
-                s = 0.4
+                proto, s = 'SS', 0.4
             ps = self.protocol_stats.get(proto)
             if ps and ps['total'] > 10:
                 s = s * 0.3 + (ps['success'] / ps['total']) * 0.7
@@ -338,8 +356,8 @@ class AIEngine:
             return
         try:
             features = [[
-                result.latency, result.jitter, result.reconnect_success,
-                result.categories,
+                result.latency, result.jitter,
+                result.reconnect_success, result.categories,
                 1 if result.protocol == 'VLESS' else 0,
                 1 if result.security == 'reality' else 0,
             ]]
@@ -376,14 +394,16 @@ class AIEngine:
         except:
             pass
 
-    def safe_mutate(self, proxy_config: Dict, attempt: int) -> Tuple[Dict, str]:
-        """Single safe mutation: rotate fingerprint only"""
+    def safe_mutate(self, proxy_config: Dict, attempt: int
+                    ) -> Tuple[Dict, str]:
         mutated = json.loads(json.dumps(proxy_config))
         stream = mutated.get('streamSettings', {})
         name = ""
-
         if attempt == 1:
-            fps = ['chrome', 'firefox', 'safari', 'edge', 'ios', 'android', 'random']
+            fps = [
+                'chrome', 'firefox', 'safari',
+                'edge', 'ios', 'android', 'random'
+            ]
             if 'tlsSettings' in stream:
                 old = stream['tlsSettings'].get('fingerprint', 'chrome')
                 new = random.choice([f for f in fps if f != old])
@@ -394,7 +414,6 @@ class AIEngine:
                 new = random.choice([f for f in fps if f != old])
                 stream['realitySettings']['fingerprint'] = new
                 name = f"FP_{new}"
-
         return mutated, name
 
 
@@ -431,7 +450,10 @@ def setup_xray() -> Optional[Path]:
         else:
             return None
 
-        url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
+        url = (
+            "https://github.com/XTLS/Xray-core/releases"
+            f"/latest/download/{filename}"
+        )
         r = requests.get(url, stream=True, timeout=120)
         zip_path = XRAY_FOLDER / "xray.zip"
         with open(zip_path, 'wb') as f:
@@ -454,12 +476,14 @@ def setup_xray() -> Optional[Path]:
         return None
 
 
-# ==================== XRAY SESSION (with wait_for_port) ====================
+# ==================== XRAY SESSION ====================
 def wait_for_port(port: int, timeout: float = 5.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+            with socket.create_connection(
+                ("127.0.0.1", port), timeout=0.3
+            ):
                 return True
         except:
             time.sleep(0.1)
@@ -480,7 +504,8 @@ def create_xray_config(proxy_config: Dict, http_port: int) -> Dict:
 
 
 class XraySession:
-    def __init__(self, xray_exe: Path, proxy_config: Dict, startup: float = 5.0):
+    def __init__(self, xray_exe: Path, proxy_config: Dict,
+                 startup: float = 5.0):
         self.xray_exe = xray_exe
         self.proxy_config = proxy_config
         self.startup = startup
@@ -489,6 +514,8 @@ class XraySession:
         self.config_file = XRAY_FOLDER / f"config_{self.port}.json"
         self.proxies = None
         self.ok = False
+        # Reusable session for connection pooling
+        self.http_session = None
 
     def __enter__(self):
         try:
@@ -503,17 +530,55 @@ class XraySession:
             )
             register_process(self.process)
 
-            if wait_for_port(self.port, timeout=self.startup) and self.process.poll() is None:
+            if (wait_for_port(self.port, timeout=self.startup)
+                    and self.process.poll() is None):
                 self.proxies = {
                     'http': f'http://127.0.0.1:{self.port}',
                     'https': f'http://127.0.0.1:{self.port}'
                 }
+                # Create reusable HTTP session with connection pooling
+                self.http_session = requests.Session()
+                self.http_session.proxies = self.proxies
+                self.http_session.headers.update({
+                    'User-Agent': (
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                        'AppleWebKit/537.36'
+                    )
+                })
+                # Connection pool: reuse connections
+                adapter = requests.adapters.HTTPAdapter(
+                    pool_connections=10,
+                    pool_maxsize=10,
+                    max_retries=0
+                )
+                self.http_session.mount('http://', adapter)
+                self.http_session.mount('https://', adapter)
                 self.ok = True
         except:
             pass
         return self
 
+    def get(self, url: str, timeout: int = 10,
+            allow_redirects: bool = True) -> Optional[requests.Response]:
+        """Quick wrapper using pooled session"""
+        if not self.ok or not self.http_session:
+            return None
+        try:
+            return self.http_session.get(
+                url, timeout=timeout,
+                allow_redirects=allow_redirects
+            )
+        except:
+            return None
+
     def __exit__(self, *args):
+        # Close HTTP session
+        if self.http_session:
+            try:
+                self.http_session.close()
+            except:
+                pass
+
         if self.process:
             unregister_process(self.process)
             try:
@@ -540,7 +605,9 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
             padding = len(encoded) % 4
             if padding:
                 encoded += '=' * (4 - padding)
-            data = json.loads(base64.b64decode(encoded).decode('utf-8'))
+            data = json.loads(
+                base64.b64decode(encoded).decode('utf-8')
+            )
             return data.get("add"), int(data.get("port", 443))
 
         for prefix in ["vless://", "trojan://", "ss://"]:
@@ -646,7 +713,8 @@ def parse_vless(key: str) -> Optional[Dict]:
             config["streamSettings"]["grpcSettings"] = {
                 "serviceName": params.get("serviceName", "")
             }
-        elif params.get("type") == "tcp" and params.get("headerType") == "http":
+        elif (params.get("type") == "tcp"
+              and params.get("headerType") == "http"):
             config["streamSettings"]["tcpSettings"] = {
                 "header": {
                     "type": "http",
@@ -654,13 +722,17 @@ def parse_vless(key: str) -> Optional[Dict]:
                         "version": "1.1",
                         "method": "GET",
                         "path": [params.get("path", "/")],
-                        "headers": {"Host": [params.get("host", host)]}
+                        "headers": {
+                            "Host": [params.get("host", host)]
+                        }
                     }
                 }
             }
         elif params.get("type") == "kcp":
             config["streamSettings"]["kcpSettings"] = {
-                "header": {"type": params.get("headerType", "none")},
+                "header": {
+                    "type": params.get("headerType", "none")
+                },
                 "seed": params.get("seed")
             }
         elif params.get("type") == "h2":
@@ -680,7 +752,9 @@ def parse_vmess(key: str) -> Optional[Dict]:
         padding = len(encoded) % 4
         if padding:
             encoded += '=' * (4 - padding)
-        data = json.loads(base64.b64decode(encoded).decode('utf-8'))
+        data = json.loads(
+            base64.b64decode(encoded).decode('utf-8')
+        )
         host = data.get("add", "")
         port = int(data.get("port", 443))
 
@@ -699,7 +773,10 @@ def parse_vmess(key: str) -> Optional[Dict]:
             },
             "streamSettings": {
                 "network": data.get("net", "tcp"),
-                "security": data.get("tls", "none") if data.get("tls") else "none"
+                "security": (
+                    data.get("tls", "none")
+                    if data.get("tls") else "none"
+                )
             }
         }
 
@@ -724,7 +801,9 @@ def parse_vmess(key: str) -> Optional[Dict]:
                     "type": "http",
                     "request": {
                         "path": [data.get("path", "/")],
-                        "headers": {"Host": [data.get("host", host)]}
+                        "headers": {
+                            "Host": [data.get("host", host)]
+                        }
                     }
                 }
             }
@@ -829,7 +908,9 @@ def parse_shadowsocks(key: str) -> Optional[Dict]:
 
 
 # ==================== DOWNLOAD ====================
-def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
+def download_and_deduplicate(
+    sources: Dict[str, List[str]] = None
+) -> List[str]:
     if sources is None:
         sources = KEY_SOURCES
 
@@ -856,7 +937,9 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
                 content = r.text.strip()
                 if 'base64' in url:
                     try:
-                        content = base64.b64decode(content).decode('utf-8')
+                        content = base64.b64decode(
+                            content
+                        ).decode('utf-8')
                     except:
                         pass
 
@@ -881,8 +964,10 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
 
     stats.duplicates = duplicates
     stats.unique = len(all_keys)
-    log(f"  Total: {stats.total_downloaded + duplicates} | "
-        f"Dupes: {duplicates} | Unique: {len(all_keys)}")
+    log(
+        f"  Total: {stats.total_downloaded + duplicates} | "
+        f"Dupes: {duplicates} | Unique: {len(all_keys)}"
+    )
     return all_keys
 
 
@@ -895,7 +980,9 @@ def tcp_check(key: str) -> Optional[str]:
 
     for attempt in range(CONFIG.TCP_RETRIES + 1):
         try:
-            with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
+            with socket.create_connection(
+                (host, port), timeout=CONFIG.TCP_TIMEOUT
+            ):
                 return key
         except socket.timeout:
             record_error("tcp_timeout")
@@ -913,13 +1000,63 @@ def tcp_check(key: str) -> Optional[str]:
     return None
 
 
-# ==================== XRAY FULL CHECK ====================
+# ==================== PARALLEL CATEGORY CHECK ====================
+def check_single_category(
+    session: XraySession, url: str, name: str
+) -> Tuple[str, bool]:
+    """Check one category site, returns (name, success)"""
+    resp = session.get(
+        url, timeout=CONFIG.CATEGORY_TIMEOUT,
+        allow_redirects=True
+    )
+    if resp and resp.status_code < 500:
+        return (name, True)
+    return (name, False)
+
+
+def check_categories_parallel(
+    session: XraySession
+) -> Tuple[int, bool]:
+    """Check all categories in parallel batches, returns (count, telegram)"""
+    categories_passed = 0
+    telegram_works = False
+
+    # Split categories into batches of CATEGORY_PARALLEL
+    cat_list = CONFIG.CATEGORY_URLS
+    batch_size = CONFIG.CATEGORY_PARALLEL
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=batch_size
+    ) as cat_executor:
+        futures = {
+            cat_executor.submit(
+                check_single_category, session, url, name
+            ): name
+            for url, name in cat_list
+        }
+
+        for future in concurrent.futures.as_completed(
+            futures, timeout=CONFIG.CATEGORY_TIMEOUT + 3
+        ):
+            try:
+                name, success = future.result(timeout=1)
+                if success:
+                    categories_passed += 1
+                    if name == "telegram":
+                        telegram_works = True
+            except:
+                pass
+
+    return categories_passed, telegram_works
+
+
+# ==================== TWO-PHASE XRAY CHECK ====================
 def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
     """
-    2 xray sessions (reduced from 3):
-      1. Main: Latency(3) + Categories(7)
-      2. Reconnect x1
-    + Optional 1 safe mutation if failed
+    Two-phase approach:
+      Phase A: Quick check (1 request) - kills dead proxies fast
+      Phase B: Full test (latency + parallel categories + reconnect)
+    + Optional 1 safe mutation on failure
     """
     proxy_config, protocol, security = parse_key_to_config(key)
     if not proxy_config:
@@ -928,19 +1065,24 @@ def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
     host, port = extract_host_port(key)
 
     # Try original config
-    result = _run_test(key, proxy_config, protocol, security, xray_exe, host, port)
+    result = _two_phase_test(
+        key, proxy_config, protocol, security, xray_exe, host, port
+    )
 
     if result.alive:
         return result
 
-    # One safe mutation attempt
-    if CONFIG.MAX_SAFE_MUTATIONS >= 1:
-        mutated_config, mutation_name = ai_engine.safe_mutate(proxy_config, 1)
+    # One safe mutation attempt (only if quick check passed)
+    if CONFIG.MAX_SAFE_MUTATIONS >= 1 and result.error != "quick_fail":
+        mutated_config, mutation_name = ai_engine.safe_mutate(
+            proxy_config, 1
+        )
         if mutation_name:
             with stats_lock:
                 stats.mutations_tried += 1
-            mut_result = _run_test(
-                key, mutated_config, protocol, security, xray_exe, host, port
+            mut_result = _two_phase_test(
+                key, mutated_config, protocol, security,
+                xray_exe, host, port
             )
             if mut_result.alive:
                 mut_result.mutation_used = mutation_name
@@ -951,7 +1093,7 @@ def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
     return result
 
 
-def _run_test(
+def _two_phase_test(
     key: str,
     proxy_config: Dict,
     protocol: str,
@@ -960,30 +1102,68 @@ def _run_test(
     host: str,
     port: int
 ) -> CheckResult:
-    """Core test: 1 main session + 1 reconnect"""
+    """
+    Phase A: Quick single-request check (kills dead proxies in ~2s)
+    Phase B: Full quality test (only if Phase A passed)
+    All in ONE xray session = saves startup time
+    """
 
     latencies = []
     categories_passed = 0
     telegram_works = False
 
-    # === SESSION 1: Latency + Categories ===
-    with XraySession(xray_exe, proxy_config, CONFIG.XRAY_STARTUP) as session:
+    # === SINGLE SESSION for Phase A + B ===
+    with XraySession(
+        xray_exe, proxy_config, CONFIG.XRAY_STARTUP
+    ) as session:
         if not session.ok:
             return CheckResult(
                 key=key, alive=False, error="xray_startup",
-                protocol=protocol, host=host, port=port, security=security
+                protocol=protocol, host=host, port=port,
+                security=security
             )
 
-        # Latency (3 samples)
-        for i in range(CONFIG.LATENCY_SAMPLES):
-            url = CONFIG.CHECK_URLS[i % len(CONFIG.CHECK_URLS)]
+        # --- PHASE A: Quick check (1 request) ---
+        quick_ok = False
+        try:
+            t1 = time.time()
+            resp = session.get(
+                CONFIG.CHECK_URLS[0],
+                timeout=CONFIG.QUICK_CHECK_TIMEOUT,
+                allow_redirects=False
+            )
+            if resp and resp.status_code in [200, 204]:
+                quick_latency = (time.time() - t1) * 1000
+                latencies.append(quick_latency)
+                quick_ok = True
+                with stats_lock:
+                    stats.quick_passed += 1
+        except:
+            pass
+
+        if not quick_ok:
+            with stats_lock:
+                stats.quick_failed += 1
+            return CheckResult(
+                key=key, alive=False, error="quick_fail",
+                protocol=protocol, host=host, port=port,
+                security=security
+            )
+
+        # --- PHASE B: Full test (in SAME session) ---
+
+        # Additional latency samples (we already have 1 from quick check)
+        for i in range(CONFIG.LATENCY_SAMPLES - 1):
+            url = CONFIG.CHECK_URLS[
+                (i + 1) % len(CONFIG.CHECK_URLS)
+            ]
             try:
                 t1 = time.time()
-                resp = requests.get(
-                    url, proxies=session.proxies,
-                    timeout=CONFIG.XRAY_TIMEOUT, allow_redirects=False
+                resp = session.get(
+                    url, timeout=CONFIG.XRAY_TIMEOUT,
+                    allow_redirects=False
                 )
-                if resp.status_code in [200, 204]:
+                if resp and resp.status_code in [200, 204]:
                     latencies.append((time.time() - t1) * 1000)
             except:
                 pass
@@ -992,72 +1172,68 @@ def _run_test(
         if len(latencies) < CONFIG.MIN_LATENCY_SUCCESS:
             return CheckResult(
                 key=key, alive=False, error="latency_fail",
-                protocol=protocol, host=host, port=port, security=security
+                protocol=protocol, host=host, port=port,
+                security=security
             )
 
-        # Categories (7 sites)
-        for url, name in CONFIG.CATEGORY_URLS:
-            try:
-                resp = requests.get(
-                    url, proxies=session.proxies,
-                    timeout=10, allow_redirects=True
-                )
-                if resp.status_code < 500:
-                    categories_passed += 1
-                    if name == "telegram":
-                        telegram_works = True
-            except:
-                pass
+        # Parallel category check (in SAME session)
+        categories_passed, telegram_works = check_categories_parallel(
+            session
+        )
 
     avg_latency = mean(latencies)
     jitter = stdev(latencies) if len(latencies) > 1 else 0
 
-    # === SESSION 2: Reconnect x1 ===
+    # === RECONNECT TEST (separate session) ===
     reconnect_success = 0
     for _ in range(CONFIG.RECONNECT_TESTS):
-        time.sleep(0.5)
-        with XraySession(xray_exe, proxy_config, CONFIG.XRAY_STARTUP_QUICK) as session:
+        time.sleep(0.3)
+        with XraySession(
+            xray_exe, proxy_config, CONFIG.XRAY_STARTUP_QUICK
+        ) as session:
             if not session.ok:
                 continue
-            try:
-                url = random.choice(CONFIG.CHECK_URLS)
-                resp = requests.get(
-                    url, proxies=session.proxies,
-                    timeout=8, allow_redirects=False
-                )
-                if resp.status_code in [200, 204]:
-                    reconnect_success += 1
-            except:
-                pass
+            resp = session.get(
+                random.choice(CONFIG.CHECK_URLS),
+                timeout=8, allow_redirects=False
+            )
+            if resp and resp.status_code in [200, 204]:
+                reconnect_success += 1
 
     if reconnect_success < CONFIG.MIN_RECONNECT_SUCCESS:
         return CheckResult(
             key=key, alive=False, error="reconnect_fail",
-            protocol=protocol, host=host, port=port, security=security,
-            latency=round(avg_latency, 1), jitter=round(jitter, 1),
-            reconnect_success=reconnect_success, categories=categories_passed
+            protocol=protocol, host=host, port=port,
+            security=security,
+            latency=round(avg_latency, 1),
+            jitter=round(jitter, 1),
+            reconnect_success=reconnect_success,
+            categories=categories_passed
         )
 
-    # === QUALITY (soft thresholds) ===
+    # === QUALITY ===
     quality = None
     for q in [Quality.ELITE, Quality.PREMIUM, Quality.GOOD]:
         thresh = QUALITY_THRESHOLDS[q]
-        if (avg_latency <= thresh.latency_max and
-            jitter <= thresh.jitter_max and
-            categories_passed >= thresh.categories_min):
+        if (avg_latency <= thresh.latency_max
+                and jitter <= thresh.jitter_max
+                and categories_passed >= thresh.categories_min):
             quality = q
             break
 
-    # If passed reconnect but below even GOOD threshold - still save as GOOD
+    # Fallback: passed reconnect = at least GOOD
     if quality is None and reconnect_success >= CONFIG.MIN_RECONNECT_SUCCESS:
         quality = Quality.GOOD
 
     if quality is None:
         return CheckResult(
             key=key, alive=False, error="below_threshold",
-            protocol=protocol, host=host, port=port, security=security,
-            latency=round(avg_latency, 1), jitter=round(jitter, 1),
-            reconnect_success=reconnect_success, categories=categories_passed
+            protocol=protocol, host=host, port=port,
+            security=security,
+            latency=round(avg_latency, 1),
+            jitter=round(jitter, 1),
+            reconnect_success=reconnect_success,
+            categories=categories_passed
         )
 
     with stats_lock:
@@ -1067,15 +1243,21 @@ def _run_test(
 
     return CheckResult(
         key=key, alive=True,
-        latency=round(avg_latency, 1), jitter=round(jitter, 1),
-        reconnect_success=reconnect_success, categories=categories_passed,
-        telegram=telegram_works, quality=quality,
-        protocol=protocol, host=host, port=port, security=security
+        latency=round(avg_latency, 1),
+        jitter=round(jitter, 1),
+        reconnect_success=reconnect_success,
+        categories=categories_passed,
+        telegram=telegram_works,
+        quality=quality,
+        protocol=protocol, host=host, port=port,
+        security=security
     )
 
 
-# ==================== SAVE RESULTS ====================
-def save_results(results: List[CheckResult], region: str = "ALL"):
+# ==================== SAVE ====================
+def save_results(
+    results: List[CheckResult], region: str = "ALL"
+):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     by_quality = defaultdict(list)
@@ -1083,7 +1265,6 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         if r.alive and r.quality:
             by_quality[r.quality].append(r)
 
-    # Save per quality
     for quality in Quality:
         items = by_quality.get(quality, [])
         if not items:
@@ -1094,22 +1275,31 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(f"# {quality.value.upper()}\n")
             f.write(f"# {MY_CHANNEL}\n")
-            f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(
+                f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+            )
             f.write(f"# Keys: {len(items)}\n\n")
 
             for r in items:
                 tg = "TG+" if r.telegram else ""
-                mut = f"|{r.mutation_used}" if r.mutation_used else ""
+                mut = (
+                    f"|{r.mutation_used}" if r.mutation_used else ""
+                )
                 ai = f"|{r.ai_verdict}" if r.ai_verdict else ""
                 comment = (
                     f"[{r.latency:.0f}ms|j{r.jitter:.0f}|"
-                    f"rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|"
-                    f"{r.categories}cat|{tg}{r.protocol}{mut}{ai}|{MY_CHANNEL}]"
+                    f"rc{r.reconnect_success}/"
+                    f"{CONFIG.RECONNECT_TESTS}|"
+                    f"{r.categories}cat|{tg}{r.protocol}"
+                    f"{mut}{ai}|{MY_CHANNEL}]"
                 )
                 base_key = r.key.split('#')[0]
                 f.write(f"{base_key}#{quote(comment)}\n")
 
-        log(f"[SAVE] {quality.value.upper()}: {len(items)} -> {filename.name}")
+        log(
+            f"[SAVE] {quality.value.upper()}: "
+            f"{len(items)} -> {filename.name}"
+        )
 
     # All working
     all_results = [r for r in results if r.alive]
@@ -1118,24 +1308,35 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
     verified_file = RESULTS_FOLDER / f"verified_{timestamp}.txt"
     with open(verified_file, 'w', encoding='utf-8') as f:
         f.write(f"# {MY_CHANNEL}\n")
-        f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(
+            f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        )
         f.write(f"# Working: {len(all_results)}\n\n")
         for r in all_results:
             comment = (
                 f"{r.quality.value.upper()} {r.latency:.0f}ms "
                 f"{r.protocol} {MY_CHANNEL}"
             )
-            f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
+            f.write(
+                f"{r.key.split('#')[0]}#{quote(comment)}\n"
+            )
 
     log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
 
-    # Stats JSON (no README generation)
+    # Stats JSON
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
         "total_checked": stats.tcp_passed,
         "total_working": len(all_results),
-        "by_quality": {q.value: len(by_quality.get(q, [])) for q in Quality},
+        "quick_check": {
+            "passed": stats.quick_passed,
+            "failed": stats.quick_failed,
+        },
+        "by_quality": {
+            q.value: len(by_quality.get(q, []))
+            for q in Quality
+        },
         "by_protocol": dict(stats.by_protocol),
         "mutations": {
             "tried": stats.mutations_tried,
@@ -1151,16 +1352,23 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         json.dump(stats_data, f, indent=2)
 
     log(f"[SAVE] Stats -> {STATS_FILE.name}")
-
     return stats_data
 
 
 # ==================== MAIN ====================
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="AI Proxy Checker v4.0 Balanced")
-    parser.add_argument('--region', choices=['ALL', 'RU', 'EU'], default='ALL')
-    parser.add_argument('--workers', type=int, default=CONFIG.XRAY_WORKERS)
-    parser.add_argument('--tcp-workers', type=int, default=CONFIG.TCP_WORKERS)
+    parser = argparse.ArgumentParser(
+        description="AI Proxy Checker v4.1 Smart"
+    )
+    parser.add_argument(
+        '--region', choices=['ALL', 'RU', 'EU'], default='ALL'
+    )
+    parser.add_argument(
+        '--workers', type=int, default=CONFIG.XRAY_WORKERS
+    )
+    parser.add_argument(
+        '--tcp-workers', type=int, default=CONFIG.TCP_WORKERS
+    )
     parser.add_argument('--no-ai', action='store_true')
     parser.add_argument('--no-mutations', action='store_true')
     return parser.parse_args()
@@ -1176,26 +1384,53 @@ def main():
         CONFIG.MAX_SAFE_MUTATIONS = 0
 
     print("\n" + "=" * 60)
-    print("  AI Proxy Checker v4.0 BALANCED")
-    print("  Soft thresholds + fast checks + AI history")
+    print("  AI Proxy Checker v4.1 SMART")
+    print("  Two-phase + parallel categories + session pooling")
     print(f"  Channel: {MY_CHANNEL}")
     print("=" * 60)
 
     print(f"\n  Settings:")
-    print(f"    Region: {args.region}")
-    print(f"    TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
-    print(f"    XRAY: {CONFIG.XRAY_WORKERS} workers, {CONFIG.XRAY_TIMEOUT}s timeout")
-    print(f"    Latency: {CONFIG.LATENCY_SAMPLES} samples (min {CONFIG.MIN_LATENCY_SUCCESS})")
-    print(f"    Categories: {len(CONFIG.CATEGORY_URLS)} sites")
-    print(f"    Reconnect: {CONFIG.RECONNECT_TESTS} test(s)")
-    print(f"    Mutations: {CONFIG.MAX_SAFE_MUTATIONS} (safe FP only)")
+    print(
+        f"    Region: {args.region}"
+    )
+    print(
+        f"    TCP: {CONFIG.TCP_WORKERS} workers, "
+        f"{CONFIG.TCP_TIMEOUT}s timeout"
+    )
+    print(
+        f"    XRAY: {CONFIG.XRAY_WORKERS} workers, "
+        f"{CONFIG.XRAY_TIMEOUT}s timeout"
+    )
+    print(
+        f"    Quick check: {CONFIG.QUICK_CHECK_TIMEOUT}s "
+        f"(kills dead proxies fast)"
+    )
+    print(
+        f"    Latency: {CONFIG.LATENCY_SAMPLES} samples "
+        f"(min {CONFIG.MIN_LATENCY_SUCCESS})"
+    )
+    print(
+        f"    Categories: {len(CONFIG.CATEGORY_URLS)} sites "
+        f"(parallel x{CONFIG.CATEGORY_PARALLEL})"
+    )
+    print(
+        f"    Reconnect: {CONFIG.RECONNECT_TESTS} test(s)"
+    )
+    print(
+        f"    Mutations: {CONFIG.MAX_SAFE_MUTATIONS} "
+        f"(safe FP only)"
+    )
     print(f"    AI: {'ON' if ai_engine.enabled else 'OFF'}")
     print()
 
     for q in Quality:
         t = QUALITY_THRESHOLDS[q]
-        print(f"    {q.value.upper():>7}: "
-              f"lat<={t.latency_max}ms  jit<={t.jitter_max}ms  cat>={t.categories_min}")
+        print(
+            f"    {q.value.upper():>7}: "
+            f"lat<={t.latency_max}ms  "
+            f"jit<={t.jitter_max}ms  "
+            f"cat>={t.categories_min}"
+        )
     print()
 
     xray_exe = setup_xray()
@@ -1224,14 +1459,22 @@ def main():
     tcp_start = time.time()
     tcp_passed = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as executor:
-        futures = {executor.submit(tcp_check, key): key for key in all_keys}
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=CONFIG.TCP_WORKERS
+    ) as executor:
+        futures = {
+            executor.submit(tcp_check, key): key
+            for key in all_keys
+        }
         done = 0
         for future in concurrent.futures.as_completed(futures):
             done += 1
             if done % CONFIG.GC_EVERY == 0:
                 cleanup_memory()
-                log(f"  [{done}/{len(all_keys)}] TCP alive: {len(tcp_passed)}")
+                log(
+                    f"  [{done}/{len(all_keys)}] "
+                    f"TCP alive: {len(tcp_passed)}"
+                )
             try:
                 result = future.result(timeout=30)
                 if result:
@@ -1243,7 +1486,10 @@ def main():
                 stats.tcp_failed += 1
 
     tcp_time = time.time() - tcp_start
-    log(f"\n  TCP: {len(tcp_passed)}/{len(all_keys)} in {tcp_time:.1f}s")
+    log(
+        f"\n  TCP: {len(tcp_passed)}/{len(all_keys)} "
+        f"in {tcp_time:.1f}s"
+    )
 
     if not tcp_passed:
         log("[ERR] No TCP connections")
@@ -1252,17 +1498,19 @@ def main():
     # === XRAY ===
     print("\n" + "=" * 60)
     log(f"[XRAY] Phase 2: {CONFIG.XRAY_WORKERS} workers")
-    log(f"  Session 1: Latency({CONFIG.LATENCY_SAMPLES}) + "
-        f"Categories({len(CONFIG.CATEGORY_URLS)})")
-    log(f"  Session 2: Reconnect x{CONFIG.RECONNECT_TESTS}")
-    if CONFIG.MAX_SAFE_MUTATIONS > 0:
-        log(f"  + {CONFIG.MAX_SAFE_MUTATIONS} safe mutation attempt(s) on fail")
+    log(
+        f"  Quick check -> Latency({CONFIG.LATENCY_SAMPLES}) "
+        f"+ Categories({len(CONFIG.CATEGORY_URLS)} parallel) "
+        f"-> Reconnect"
+    )
     print("=" * 60 + "\n")
 
     xray_start = time.time()
     results = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.XRAY_WORKERS) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=CONFIG.XRAY_WORKERS
+    ) as executor:
         futures = {
             executor.submit(xray_full_check, key, xray_exe): key
             for key in tcp_passed
@@ -1282,14 +1530,24 @@ def main():
                 if result.alive:
                     results.append(result)
                     tg = " TG" if result.telegram else ""
-                    mut = f" [{result.mutation_used}]" if result.mutation_used else ""
-                    ai = f" {result.ai_verdict}" if result.ai_verdict else ""
-                    log(f"  [{done}/{len(tcp_passed)}] OK "
+                    mut = (
+                        f" [{result.mutation_used}]"
+                        if result.mutation_used else ""
+                    )
+                    ai = (
+                        f" {result.ai_verdict}"
+                        if result.ai_verdict else ""
+                    )
+                    log(
+                        f"  [{done}/{len(tcp_passed)}] OK "
                         f"{result.quality.value.upper():>7} | "
-                        f"{result.latency:>6.0f}ms j{result.jitter:>4.0f} | "
-                        f"rc:{result.reconnect_success}/{CONFIG.RECONNECT_TESTS} | "
+                        f"{result.latency:>6.0f}ms "
+                        f"j{result.jitter:>4.0f} | "
+                        f"rc:{result.reconnect_success}/"
+                        f"{CONFIG.RECONNECT_TESTS} | "
                         f"{result.categories}cat{tg} | "
-                        f"{result.protocol}{mut}{ai}")
+                        f"{result.protocol}{mut}{ai}"
+                    )
                 else:
                     stats.xray_failed += 1
                     if result.error:
@@ -1301,7 +1559,6 @@ def main():
     xray_time = time.time() - xray_start
     total_time = time.time() - stats.start_time
 
-    # Save
     if results:
         save_results(results, args.region)
 
@@ -1309,11 +1566,22 @@ def main():
     print("\n" + "=" * 60)
     print("  RESULTS")
     print("=" * 60)
-    print(f"  Unique: {stats.unique} (dupes: {stats.duplicates})")
-    print(f"  TCP: {stats.tcp_passed} "
-          f"({stats.tcp_passed * 100 // max(stats.unique, 1)}%)")
-    print(f"  XRAY: {stats.xray_passed} "
-          f"({stats.xray_passed * 100 // max(stats.tcp_passed, 1)}%)")
+    print(
+        f"  Unique: {stats.unique} "
+        f"(dupes: {stats.duplicates})"
+    )
+    print(
+        f"  TCP: {stats.tcp_passed} "
+        f"({stats.tcp_passed * 100 // max(stats.unique, 1)}%)"
+    )
+    print(
+        f"  Quick: {stats.quick_passed} passed, "
+        f"{stats.quick_failed} killed early"
+    )
+    print(
+        f"  XRAY: {stats.xray_passed} "
+        f"({stats.xray_passed * 100 // max(stats.tcp_passed, 1)}%)"
+    )
     print()
 
     for q in Quality:
@@ -1323,20 +1591,29 @@ def main():
     print()
 
     if stats.mutations_tried > 0:
-        print(f"  Mutations: {stats.mutations_success}/{stats.mutations_tried}")
+        print(
+            f"  Mutations: {stats.mutations_success}/"
+            f"{stats.mutations_tried}"
+        )
     if stats.ai_anomalies > 0:
         print(f"  AI anomalies: {stats.ai_anomalies}")
     print()
 
-    for proto, count in sorted(stats.by_protocol.items(), key=lambda x: -x[1]):
+    for proto, count in sorted(
+        stats.by_protocol.items(), key=lambda x: -x[1]
+    ):
         print(f"    {proto}: {count}")
     print()
-    print(f"  TCP={tcp_time:.1f}s  XRAY={xray_time:.1f}s  "
-          f"TOTAL={total_time / 60:.1f}min")
+    print(
+        f"  TCP={tcp_time:.1f}s  XRAY={xray_time:.1f}s  "
+        f"TOTAL={total_time / 60:.1f}min"
+    )
 
     if stats.errors:
         print("\n  Error breakdown:")
-        for error, count in sorted(stats.errors.items(), key=lambda x: -x[1])[:5]:
+        for error, count in sorted(
+            stats.errors.items(), key=lambda x: -x[1]
+        )[:8]:
             print(f"    {error}: {count}")
 
     print("=" * 60)
