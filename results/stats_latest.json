@@ -1,25 +1,25 @@
 {
-  "timestamp": "2026-02-16T14:36:09.552725",
+  "timestamp": "2026-02-16T20:25:16.364138",
   "region": "ALL",
-  "total_checked": 3628,
-  "total_working": 1106,
+  "total_checked": 4489,
+  "total_working": 1523,
   "by_quality": {
-    "elite": 2,
-    "premium": 82,
-    "good": 1022
+    "elite": 18,
+    "premium": 482,
+    "good": 1023
   },
   "by_protocol": {
-    "VLESS": 984,
-    "Trojan": 16,
-    "SS": 106
+    "VLESS": 1396,
+    "Trojan": 23,
+    "SS": 104
   },
   "mutations": {
-    "tried": 2141,
-    "successful": 54
+    "tried": 2649,
+    "successful": 95
   },
   "ai": {
     "enabled": true,
-    "anomalies": 328
+    "anomalies": 441
   },
-  "processing_time": 4466.015678405762
+  "processing_time": 5304.605236053467
 }
