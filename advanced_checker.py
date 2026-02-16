@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker v4.1 SMART
-Two-phase check + parallel categories + session reuse
+AI Proxy Checker v4.2 SMART+
+Two-phase check + parallel categories + session pooling
++ Dynamic AI scoring + adaptive categories + scalable training
 """
 
 import os
@@ -50,6 +51,7 @@ PREMIUM_FOLDER = RESULTS_FOLDER / "premium"
 HISTORY_FILE = RESULTS_FOLDER / "history.jsonl"
 STATS_FILE = RESULTS_FOLDER / "stats_latest.json"
 LOG_FILE = RESULTS_FOLDER / "checker.log"
+CATEGORY_STATS_FILE = RESULTS_FOLDER / "category_stats.json"
 
 for d in [XRAY_FOLDER, RESULTS_FOLDER, PREMIUM_FOLDER]:
     d.mkdir(parents=True, exist_ok=True)
@@ -75,25 +77,21 @@ MY_CHANNEL = "@vlesstrojan"
 # ==================== CONFIG ====================
 @dataclass
 class Config:
-    # TCP
     TCP_WORKERS: int = 40
     TCP_TIMEOUT: int = 8
     TCP_RETRIES: int = 1
 
-    # XRAY - fewer workers = less contention on 2-core CI
     XRAY_WORKERS: int = 8
     XRAY_STARTUP: float = 5.0
     XRAY_STARTUP_QUICK: float = 3.0
     XRAY_TIMEOUT: int = 12
 
-    # Quick check: 1 request to verify proxy works at all
     QUICK_CHECK_TIMEOUT: int = 8
 
-    # Full check: latency samples
     LATENCY_SAMPLES: int = 3
     MIN_LATENCY_SUCCESS: int = 2
 
-    # Categories - checked IN PARALLEL, not sequential
+    # Categories checked in parallel
     CATEGORY_URLS: List[Tuple[str, str]] = field(default_factory=lambda: [
         ("https://www.google.com", "google"),
         ("https://web.telegram.org", "telegram"),
@@ -103,10 +101,9 @@ class Config:
         ("https://twitter.com", "twitter"),
         ("https://www.tiktok.com", "tiktok"),
     ])
-    CATEGORY_TIMEOUT: int = 6  # per-site timeout (was 10)
-    CATEGORY_PARALLEL: int = 4  # check 4 sites at once
+    CATEGORY_TIMEOUT: int = 6
+    CATEGORY_PARALLEL: int = 4
 
-    # Reconnect
     RECONNECT_TESTS: int = 1
     MIN_RECONNECT_SUCCESS: int = 1
 
@@ -115,10 +112,14 @@ class Config:
         'http://www.gstatic.com/generate_204',
     ])
 
-    # Mutations
     MAX_SAFE_MUTATIONS: int = 1
-
     GC_EVERY: int = 50
+
+    # AI scalability
+    AI_MAX_HISTORY: int = 15000
+    AI_TRAIN_BATCH: int = 5000
+    AI_RETRAIN_EVERY: int = 200
+    AI_TREND_WINDOW: int = 50
 
 
 CONFIG = Config()
@@ -159,6 +160,7 @@ class CheckResult:
     jitter: float = 0
     reconnect_success: int = 0
     categories: int = 0
+    category_details: Dict[str, bool] = field(default_factory=dict)
     telegram: bool = False
     quality: Optional[Quality] = None
     protocol: str = ""
@@ -169,6 +171,7 @@ class CheckResult:
     mutation_used: str = ""
     is_anomaly: bool = False
     ai_verdict: str = ""
+    ai_score: float = 0.0
 
 
 @dataclass
@@ -192,6 +195,7 @@ class Stats:
         default_factory=lambda: defaultdict(int)
     )
     ai_anomalies: int = 0
+    ai_retrains: int = 0
     mutations_success: int = 0
     mutations_tried: int = 0
     start_time: float = field(default_factory=time.time)
@@ -273,17 +277,48 @@ def cleanup_memory():
     time.sleep(0.1)
 
 
-# ==================== AI ENGINE ====================
+# ==================== AI ENGINE (dynamic + scalable) ====================
 class AIEngine:
+    """
+    Dynamic AI engine with:
+    - Historical performance tracking per host/protocol
+    - Latency trend analysis (improving/degrading)
+    - Adaptive category weighting
+    - Scalable batch training with data pruning
+    """
+
     def __init__(self):
         self.enabled = AI_AVAILABLE
         self.history: List[Dict] = []
         self.model_anomaly = None
         self.scaler = StandardScaler() if AI_AVAILABLE else None
-        self.protocol_stats = defaultdict(
-            lambda: {'success': 0, 'total': 0}
-        )
+        self._lock = threading.Lock()
+        self._checks_since_retrain = 0
+
+        # Dynamic performance tracking
+        self.protocol_stats = defaultdict(lambda: {
+            'success': 0, 'total': 0,
+            'latencies': [],         # rolling window
+            'trend': 0.0,            # positive = improving
+            'last_success_rate': 0.5
+        })
+
+        # Per-host performance (keyed by host:port)
+        self.host_stats = defaultdict(lambda: {
+            'success': 0, 'total': 0,
+            'avg_latency': 0.0,
+            'last_seen': 0,
+            'quality_history': []    # last N quality values
+        })
+
+        # Dynamic category weights (learned from data)
+        self.category_weights = defaultdict(lambda: {
+            'success': 0, 'total': 0, 'avg_time': 0.0,
+            'weight': 1.0
+        })
+
         self._load_history()
+        self._load_category_stats()
         if self.enabled:
             self._train()
 
@@ -292,48 +327,229 @@ class AIEngine:
             return
         try:
             with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                for line in f.readlines()[-10000:]:
+                lines = f.readlines()
+                # Scalability: only load last AI_MAX_HISTORY records
+                lines = lines[-CONFIG.AI_MAX_HISTORY:]
+                for line in lines:
                     try:
                         rec = json.loads(line)
                         self.history.append(rec)
-                        proto = rec.get('protocol', '')
-                        self.protocol_stats[proto]['total'] += 1
-                        if rec.get('alive'):
-                            self.protocol_stats[proto]['success'] += 1
+                        self._update_stats_from_record(rec)
                     except:
                         continue
+            log(f"[AI] Loaded {len(self.history)} history records")
         except:
             pass
 
-    def _train(self):
-        if len(self.history) < 50:
+    def _load_category_stats(self):
+        """Load learned category weights from disk"""
+        if not CATEGORY_STATS_FILE.exists():
             return
         try:
+            with open(CATEGORY_STATS_FILE, 'r') as f:
+                data = json.load(f)
+                for cat_name, cat_data in data.items():
+                    self.category_weights[cat_name].update(cat_data)
+            log(f"[AI] Loaded category weights for {len(data)} sites")
+        except:
+            pass
+
+    def _save_category_stats(self):
+        """Persist category weights to disk"""
+        try:
+            data = {}
+            for name, w in self.category_weights.items():
+                data[name] = {
+                    'success': w['success'],
+                    'total': w['total'],
+                    'avg_time': w['avg_time'],
+                    'weight': w['weight']
+                }
+            with open(CATEGORY_STATS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+        except:
+            pass
+
+    def _update_stats_from_record(self, rec: Dict):
+        """Update internal stats from a history record"""
+        proto = rec.get('protocol', '')
+        ps = self.protocol_stats[proto]
+        ps['total'] += 1
+        if rec.get('alive'):
+            ps['success'] += 1
+            lat = rec.get('latency', 0)
+            if lat > 0:
+                ps['latencies'].append(lat)
+                # Keep rolling window
+                if len(ps['latencies']) > CONFIG.AI_TREND_WINDOW * 2:
+                    ps['latencies'] = ps['latencies'][
+                        -CONFIG.AI_TREND_WINDOW * 2:
+                    ]
+
+        # Per-host stats
+        host_key = rec.get('host_key', '')
+        if host_key:
+            hs = self.host_stats[host_key]
+            hs['total'] += 1
+            hs['last_seen'] = rec.get('timestamp', 0)
+            if rec.get('alive'):
+                hs['success'] += 1
+                hs['avg_latency'] = (
+                    hs['avg_latency'] * 0.8
+                    + rec.get('latency', 0) * 0.2
+                )
+                q = rec.get('quality')
+                if q:
+                    hs['quality_history'].append(q)
+                    if len(hs['quality_history']) > 20:
+                        hs['quality_history'] = hs['quality_history'][-20:]
+
+        # Category stats
+        cat_details = rec.get('category_details', {})
+        for cat_name, success in cat_details.items():
+            cw = self.category_weights[cat_name]
+            cw['total'] += 1
+            if success:
+                cw['success'] += 1
+
+    def _compute_trends(self):
+        """Compute latency trends per protocol"""
+        for proto, ps in self.protocol_stats.items():
+            lats = ps['latencies']
+            if len(lats) < CONFIG.AI_TREND_WINDOW:
+                ps['trend'] = 0.0
+                continue
+
+            # Compare recent window vs older window
+            window = CONFIG.AI_TREND_WINDOW
+            old_window = lats[-window * 2:-window]
+            new_window = lats[-window:]
+
+            if old_window and new_window:
+                old_avg = mean(old_window)
+                new_avg = mean(new_window)
+                if old_avg > 0:
+                    # Positive = improving (latency decreased)
+                    ps['trend'] = (old_avg - new_avg) / old_avg
+                else:
+                    ps['trend'] = 0.0
+
+            # Update success rate
+            if ps['total'] > 0:
+                ps['last_success_rate'] = ps['success'] / ps['total']
+
+    def _update_category_weights(self):
+        """Recalculate category weights based on actual success rates"""
+        for name, cw in self.category_weights.items():
+            if cw['total'] > 10:
+                rate = cw['success'] / cw['total']
+                # Weight = how reliably this site works via proxy
+                # Sites that always fail get low weight
+                # Sites that always succeed are "easy" = lower weight
+                # Best weight for sites at 50-80% success (discriminating)
+                if rate > 0.9:
+                    cw['weight'] = 0.5  # too easy, low value
+                elif rate > 0.6:
+                    cw['weight'] = 1.5  # good discriminator
+                elif rate > 0.3:
+                    cw['weight'] = 1.0  # moderate
+                else:
+                    cw['weight'] = 0.3  # mostly fails, low value
+
+    def _train(self):
+        """Train anomaly model with scalability controls"""
+        if len(self.history) < 50:
+            return
+
+        self._compute_trends()
+        self._update_category_weights()
+
+        try:
+            # Scalability: use last AI_TRAIN_BATCH records
+            train_data = self.history[-CONFIG.AI_TRAIN_BATCH:]
+
             X = []
-            for rec in self.history:
-                X.append([
-                    rec.get('latency', 999),
-                    rec.get('jitter', 100),
-                    rec.get('reconnect', 0),
-                    rec.get('categories', 0),
-                    1 if rec.get('protocol') == 'VLESS' else 0,
-                    1 if rec.get('security') == 'reality' else 0,
-                ])
+            for rec in train_data:
+                X.append(self._extract_features(rec))
+
             X = np.array(X)
             X_scaled = self.scaler.fit_transform(X)
             self.model_anomaly = IsolationForest(
-                contamination=0.1, random_state=42
+                contamination=0.1, random_state=42,
+                n_estimators=100, max_samples=min(len(X), 1000)
             ).fit(X_scaled)
-            log(f"[AI] Trained on {len(X)} records")
+            log(
+                f"[AI] Trained on {len(X)} records "
+                f"(total history: {len(self.history)})"
+            )
         except Exception as e:
             log(f"[AI] Training failed: {e}")
 
+    def _extract_features(self, rec: Dict) -> List[float]:
+        """Extract feature vector from a record"""
+        proto = rec.get('protocol', '')
+        ps = self.protocol_stats.get(proto, {})
+
+        return [
+            rec.get('latency', 999),
+            rec.get('jitter', 100),
+            rec.get('reconnect', 0),
+            rec.get('categories', 0),
+            1 if proto == 'VLESS' else 0,
+            1 if proto == 'VMess' else 0,
+            1 if proto == 'Trojan' else 0,
+            1 if rec.get('security') == 'reality' else 0,
+            1 if rec.get('security') == 'tls' else 0,
+            # Dynamic features
+            ps.get('last_success_rate', 0.5),
+            ps.get('trend', 0.0),
+        ]
+
+    def _maybe_retrain(self):
+        """Retrain model periodically as new data comes in"""
+        with self._lock:
+            self._checks_since_retrain += 1
+            if self._checks_since_retrain >= CONFIG.AI_RETRAIN_EVERY:
+                self._checks_since_retrain = 0
+                if self.enabled and len(self.history) >= 100:
+                    self._train()
+                    self._prune_history()
+                    with stats_lock:
+                        stats.ai_retrains += 1
+
+    def _prune_history(self):
+        """Scalability: keep history file from growing forever"""
+        if len(self.history) > CONFIG.AI_MAX_HISTORY:
+            # Keep only recent records
+            self.history = self.history[-CONFIG.AI_MAX_HISTORY:]
+            try:
+                with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                    for rec in self.history:
+                        f.write(json.dumps(rec) + '\n')
+                log(
+                    f"[AI] Pruned history to "
+                    f"{len(self.history)} records"
+                )
+            except:
+                pass
+
     def prioritize_keys(self, keys: List[str]) -> List[str]:
+        """
+        Dynamic prioritization using:
+        1. Protocol success rate (historical)
+        2. Latency trend (improving protocols first)
+        3. Host reputation (if seen before)
+        4. Security type bonus
+        """
         if not self.enabled:
             return keys
 
+        self._compute_trends()
+
         def score(key):
             kl = key.lower()
+
+            # Base protocol score
             if 'vless://' in kl:
                 proto, s = 'VLESS', 0.7
             elif 'trojan://' in kl:
@@ -342,35 +558,128 @@ class AIEngine:
                 proto, s = 'VMess', 0.5
             else:
                 proto, s = 'SS', 0.4
+
             ps = self.protocol_stats.get(proto)
             if ps and ps['total'] > 10:
-                s = s * 0.3 + (ps['success'] / ps['total']) * 0.7
+                # Weight by historical success rate
+                rate = ps['success'] / ps['total']
+                s = s * 0.2 + rate * 0.5
+
+                # Bonus for improving trend
+                trend = ps.get('trend', 0)
+                if trend > 0:
+                    s += trend * 0.2  # up to +0.2 for improving
+                elif trend < -0.1:
+                    s -= 0.1  # penalty for degrading
+
+            # Host reputation
+            host, port = extract_host_port(key)
+            if host and port:
+                host_key = f"{host}:{port}"
+                hs = self.host_stats.get(host_key)
+                if hs and hs['total'] > 3:
+                    host_rate = hs['success'] / hs['total']
+                    s += host_rate * 0.15
+
+                    # Bonus for recently successful hosts
+                    age = time.time() - hs.get('last_seen', 0)
+                    if age < 86400 and host_rate > 0.7:  # 24h
+                        s += 0.1
+
+                    # Bonus for consistently high quality
+                    qh = hs.get('quality_history', [])
+                    if qh:
+                        elite_ratio = qh.count('elite') / len(qh)
+                        s += elite_ratio * 0.1
+
+            # Security type bonus
             if 'security=reality' in kl:
                 s += 0.15
+            elif 'security=tls' in kl:
+                s += 0.05
+
             return s
 
         return sorted(keys, key=score, reverse=True)
+
+    def get_adaptive_categories(self) -> List[Tuple[str, str, float]]:
+        """
+        Return categories sorted by discrimination value.
+        Format: (url, name, weight)
+        Categories that are too easy or always fail get lower priority.
+        """
+        result = []
+        for url, name in CONFIG.CATEGORY_URLS:
+            cw = self.category_weights.get(name, {})
+            weight = cw.get('weight', 1.0)
+            result.append((url, name, weight))
+
+        # Sort: best discriminators first
+        result.sort(key=lambda x: x[2], reverse=True)
+        return result
+
+    def weighted_category_score(
+        self, category_details: Dict[str, bool]
+    ) -> float:
+        """
+        Calculate weighted category score instead of simple count.
+        Sites that are better discriminators count more.
+        """
+        score = 0.0
+        max_score = 0.0
+        for name, passed in category_details.items():
+            cw = self.category_weights.get(name, {})
+            weight = cw.get('weight', 1.0)
+            max_score += weight
+            if passed:
+                score += weight
+        if max_score == 0:
+            return 0
+        return score / max_score  # normalized 0..1
 
     def analyze_result(self, result: CheckResult):
         if not self.enabled or not self.model_anomaly or not result.alive:
             return
         try:
-            features = [[
-                result.latency, result.jitter,
-                result.reconnect_success, result.categories,
-                1 if result.protocol == 'VLESS' else 0,
-                1 if result.security == 'reality' else 0,
-            ]]
+            rec = {
+                'latency': result.latency,
+                'jitter': result.jitter,
+                'reconnect': result.reconnect_success,
+                'categories': result.categories,
+                'protocol': result.protocol,
+                'security': result.security,
+            }
+            features = [self._extract_features(rec)]
             fs = self.scaler.transform(features)
+
             if self.model_anomaly.predict(fs)[0] == -1:
                 result.is_anomaly = True
                 result.ai_verdict = "[ANOMALY]"
                 with stats_lock:
                     stats.ai_anomalies += 1
+
+            # Compute dynamic AI score (0..1)
+            # Based on how this result compares to historical norms
+            proto_ps = self.protocol_stats.get(result.protocol, {})
+            avg_lats = proto_ps.get('latencies', [])
+            if avg_lats:
+                historical_avg = mean(avg_lats[-50:])
+                if historical_avg > 0:
+                    # Lower latency than average = higher score
+                    ratio = result.latency / historical_avg
+                    result.ai_score = max(0, min(1, 1.5 - ratio))
+                else:
+                    result.ai_score = 0.5
+            else:
+                result.ai_score = 0.5
+
         except:
             pass
 
     def save_result(self, result: CheckResult):
+        host_key = (
+            f"{result.host}:{result.port}" if result.host else ""
+        )
         record = {
             'timestamp': time.time(),
             'alive': result.alive,
@@ -379,23 +688,30 @@ class AIEngine:
             'jitter': result.jitter,
             'reconnect': result.reconnect_success,
             'categories': result.categories,
-            'quality': result.quality.value if result.quality else None,
+            'category_details': result.category_details,
+            'quality': (
+                result.quality.value if result.quality else None
+            ),
             'security': result.security,
             'error': result.error,
             'mutation': result.mutation_used,
+            'host_key': host_key,
+            'ai_score': result.ai_score,
         }
         try:
             with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(record) + '\n')
             self.history.append(record)
-            self.protocol_stats[result.protocol]['total'] += 1
-            if result.alive:
-                self.protocol_stats[result.protocol]['success'] += 1
+            self._update_stats_from_record(record)
         except:
             pass
 
-    def safe_mutate(self, proxy_config: Dict, attempt: int
-                    ) -> Tuple[Dict, str]:
+        # Periodic retrain check
+        self._maybe_retrain()
+
+    def safe_mutate(
+        self, proxy_config: Dict, attempt: int
+    ) -> Tuple[Dict, str]:
         mutated = json.loads(json.dumps(proxy_config))
         stream = mutated.get('streamSettings', {})
         name = ""
@@ -405,16 +721,28 @@ class AIEngine:
                 'edge', 'ios', 'android', 'random'
             ]
             if 'tlsSettings' in stream:
-                old = stream['tlsSettings'].get('fingerprint', 'chrome')
+                old = stream['tlsSettings'].get(
+                    'fingerprint', 'chrome'
+                )
                 new = random.choice([f for f in fps if f != old])
                 stream['tlsSettings']['fingerprint'] = new
                 name = f"FP_{new}"
             elif 'realitySettings' in stream:
-                old = stream['realitySettings'].get('fingerprint', 'chrome')
+                old = stream['realitySettings'].get(
+                    'fingerprint', 'chrome'
+                )
                 new = random.choice([f for f in fps if f != old])
                 stream['realitySettings']['fingerprint'] = new
                 name = f"FP_{new}"
         return mutated, name
+
+    def finalize(self):
+        """Save learned data at end of run"""
+        self._save_category_stats()
+        self._compute_trends()
+        log(
+            "[AI] Saved category weights and computed trends"
+        )
 
 
 ai_engine = AIEngine()
@@ -514,17 +842,21 @@ class XraySession:
         self.config_file = XRAY_FOLDER / f"config_{self.port}.json"
         self.proxies = None
         self.ok = False
-        # Reusable session for connection pooling
         self.http_session = None
 
     def __enter__(self):
         try:
-            config = create_xray_config(self.proxy_config, self.port)
+            config = create_xray_config(
+                self.proxy_config, self.port
+            )
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
 
             self.process = subprocess.Popen(
-                [str(self.xray_exe), "run", "-c", str(self.config_file)],
+                [
+                    str(self.xray_exe), "run",
+                    "-c", str(self.config_file)
+                ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
@@ -536,7 +868,6 @@ class XraySession:
                     'http': f'http://127.0.0.1:{self.port}',
                     'https': f'http://127.0.0.1:{self.port}'
                 }
-                # Create reusable HTTP session with connection pooling
                 self.http_session = requests.Session()
                 self.http_session.proxies = self.proxies
                 self.http_session.headers.update({
@@ -545,7 +876,6 @@ class XraySession:
                         'AppleWebKit/537.36'
                     )
                 })
-                # Connection pool: reuse connections
                 adapter = requests.adapters.HTTPAdapter(
                     pool_connections=10,
                     pool_maxsize=10,
@@ -559,8 +889,8 @@ class XraySession:
         return self
 
     def get(self, url: str, timeout: int = 10,
-            allow_redirects: bool = True) -> Optional[requests.Response]:
-        """Quick wrapper using pooled session"""
+            allow_redirects: bool = True
+            ) -> Optional[requests.Response]:
         if not self.ok or not self.http_session:
             return None
         try:
@@ -572,13 +902,11 @@ class XraySession:
             return None
 
     def __exit__(self, *args):
-        # Close HTTP session
         if self.http_session:
             try:
                 self.http_session.close()
             except:
                 pass
-
         if self.process:
             unregister_process(self.process)
             try:
@@ -597,7 +925,9 @@ class XraySession:
 
 
 # ==================== PARSERS ====================
-def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
+def extract_host_port(
+    key: str
+) -> Tuple[Optional[str], Optional[int]]:
     try:
         key = key.strip()
         if key.lower().startswith("vmess://"):
@@ -630,7 +960,9 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
         return None, None
 
 
-def parse_key_to_config(key: str) -> Tuple[Optional[Dict], str, str]:
+def parse_key_to_config(
+    key: str
+) -> Tuple[Optional[Dict], str, str]:
     key_lower = key.lower()
     security = "none"
     if "security=reality" in key_lower:
@@ -666,7 +998,9 @@ def parse_vless(key: str) -> Optional[Dict]:
 
         params = {}
         if "?" in rest:
-            for param in rest.split("?")[1].split("#")[0].split("&"):
+            for param in (
+                rest.split("?")[1].split("#")[0].split("&")
+            ):
                 if "=" in param:
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
@@ -795,7 +1129,10 @@ def parse_vmess(key: str) -> Optional[Dict]:
             config["streamSettings"]["grpcSettings"] = {
                 "serviceName": data.get("path", "")
             }
-        elif data.get("net") == "tcp" and data.get("type") == "http":
+        elif (
+            data.get("net") == "tcp"
+            and data.get("type") == "http"
+        ):
             config["streamSettings"]["tcpSettings"] = {
                 "header": {
                     "type": "http",
@@ -833,7 +1170,9 @@ def parse_trojan(key: str) -> Optional[Dict]:
 
         params = {}
         if "?" in rest:
-            for param in rest.split("?")[1].split("#")[0].split("&"):
+            for param in (
+                rest.split("?")[1].split("#")[0].split("&")
+            ):
                 if "=" in param:
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
@@ -860,7 +1199,9 @@ def parse_trojan(key: str) -> Optional[Dict]:
         if params.get("type") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
-                "headers": {"Host": params.get("host", host)}
+                "headers": {
+                    "Host": params.get("host", host)
+                }
             }
         return config
     except:
@@ -878,7 +1219,9 @@ def parse_shadowsocks(key: str) -> Optional[Dict]:
             if padding:
                 encoded += '=' * (4 - padding)
             try:
-                decoded = base64.b64decode(encoded).decode('utf-8')
+                decoded = base64.b64decode(
+                    encoded
+                ).decode('utf-8')
                 method, password = decoded.split(":", 1)
             except:
                 method, password = encoded.split(":", 1)
@@ -947,7 +1290,10 @@ def download_and_deduplicate(
                 for line in content.split('\n'):
                     line = html.unescape(line.strip())
                     if not line or not line.lower().startswith(
-                        ("vless://", "vmess://", "trojan://", "ss://")
+                        (
+                            "vless://", "vmess://",
+                            "trojan://", "ss://"
+                        )
                     ):
                         continue
                     normalized = line.split("#")[0].strip()
@@ -1003,77 +1349,93 @@ def tcp_check(key: str) -> Optional[str]:
 # ==================== PARALLEL CATEGORY CHECK ====================
 def check_single_category(
     session: XraySession, url: str, name: str
-) -> Tuple[str, bool]:
-    """Check one category site, returns (name, success)"""
+) -> Tuple[str, bool, float]:
+    """Returns (name, success, response_time_ms)"""
+    t1 = time.time()
     resp = session.get(
         url, timeout=CONFIG.CATEGORY_TIMEOUT,
         allow_redirects=True
     )
+    elapsed = (time.time() - t1) * 1000
     if resp and resp.status_code < 500:
-        return (name, True)
-    return (name, False)
+        return (name, True, elapsed)
+    return (name, False, elapsed)
 
 
 def check_categories_parallel(
     session: XraySession
-) -> Tuple[int, bool]:
-    """Check all categories in parallel batches, returns (count, telegram)"""
+) -> Tuple[int, bool, Dict[str, bool]]:
+    """
+    Check categories in parallel, using adaptive ordering.
+    Returns (count, telegram, details_dict)
+    """
     categories_passed = 0
     telegram_works = False
+    details = {}
 
-    # Split categories into batches of CATEGORY_PARALLEL
-    cat_list = CONFIG.CATEGORY_URLS
-    batch_size = CONFIG.CATEGORY_PARALLEL
+    # Get adaptively ordered categories
+    adaptive_cats = ai_engine.get_adaptive_categories()
 
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=batch_size
+        max_workers=CONFIG.CATEGORY_PARALLEL
     ) as cat_executor:
         futures = {
             cat_executor.submit(
                 check_single_category, session, url, name
             ): name
-            for url, name in cat_list
+            for url, name, weight in adaptive_cats
         }
 
         for future in concurrent.futures.as_completed(
-            futures, timeout=CONFIG.CATEGORY_TIMEOUT + 3
+            futures, timeout=CONFIG.CATEGORY_TIMEOUT + 5
         ):
             try:
-                name, success = future.result(timeout=1)
+                name, success, elapsed = future.result(
+                    timeout=1
+                )
+                details[name] = success
                 if success:
                     categories_passed += 1
                     if name == "telegram":
                         telegram_works = True
+
+                # Update category stats for AI learning
+                cw = ai_engine.category_weights[name]
+                cw['total'] += 1
+                if success:
+                    cw['success'] += 1
+                # Rolling average response time
+                cw['avg_time'] = (
+                    cw['avg_time'] * 0.8 + elapsed * 0.2
+                )
             except:
                 pass
 
-    return categories_passed, telegram_works
+    return categories_passed, telegram_works, details
 
 
 # ==================== TWO-PHASE XRAY CHECK ====================
-def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
-    """
-    Two-phase approach:
-      Phase A: Quick check (1 request) - kills dead proxies fast
-      Phase B: Full test (latency + parallel categories + reconnect)
-    + Optional 1 safe mutation on failure
-    """
+def xray_full_check(
+    key: str, xray_exe: Path
+) -> CheckResult:
     proxy_config, protocol, security = parse_key_to_config(key)
     if not proxy_config:
-        return CheckResult(key=key, alive=False, error="parse_error")
+        return CheckResult(
+            key=key, alive=False, error="parse_error"
+        )
 
     host, port = extract_host_port(key)
 
-    # Try original config
     result = _two_phase_test(
-        key, proxy_config, protocol, security, xray_exe, host, port
+        key, proxy_config, protocol, security,
+        xray_exe, host, port
     )
 
     if result.alive:
         return result
 
-    # One safe mutation attempt (only if quick check passed)
-    if CONFIG.MAX_SAFE_MUTATIONS >= 1 and result.error != "quick_fail":
+    if (CONFIG.MAX_SAFE_MUTATIONS >= 1
+            and result.error != "quick_fail"):
         mutated_config, mutation_name = ai_engine.safe_mutate(
             proxy_config, 1
         )
@@ -1102,17 +1464,11 @@ def _two_phase_test(
     host: str,
     port: int
 ) -> CheckResult:
-    """
-    Phase A: Quick single-request check (kills dead proxies in ~2s)
-    Phase B: Full quality test (only if Phase A passed)
-    All in ONE xray session = saves startup time
-    """
-
     latencies = []
     categories_passed = 0
     telegram_works = False
+    category_details = {}
 
-    # === SINGLE SESSION for Phase A + B ===
     with XraySession(
         xray_exe, proxy_config, CONFIG.XRAY_STARTUP
     ) as session:
@@ -1123,7 +1479,7 @@ def _two_phase_test(
                 security=security
             )
 
-        # --- PHASE A: Quick check (1 request) ---
+        # --- PHASE A: Quick check ---
         quick_ok = False
         try:
             t1 = time.time()
@@ -1133,8 +1489,7 @@ def _two_phase_test(
                 allow_redirects=False
             )
             if resp and resp.status_code in [200, 204]:
-                quick_latency = (time.time() - t1) * 1000
-                latencies.append(quick_latency)
+                latencies.append((time.time() - t1) * 1000)
                 quick_ok = True
                 with stats_lock:
                     stats.quick_passed += 1
@@ -1150,9 +1505,7 @@ def _two_phase_test(
                 security=security
             )
 
-        # --- PHASE B: Full test (in SAME session) ---
-
-        # Additional latency samples (we already have 1 from quick check)
+        # --- PHASE B: Full test ---
         for i in range(CONFIG.LATENCY_SAMPLES - 1):
             url = CONFIG.CHECK_URLS[
                 (i + 1) % len(CONFIG.CHECK_URLS)
@@ -1164,7 +1517,9 @@ def _two_phase_test(
                     allow_redirects=False
                 )
                 if resp and resp.status_code in [200, 204]:
-                    latencies.append((time.time() - t1) * 1000)
+                    latencies.append(
+                        (time.time() - t1) * 1000
+                    )
             except:
                 pass
             time.sleep(0.1)
@@ -1176,15 +1531,17 @@ def _two_phase_test(
                 security=security
             )
 
-        # Parallel category check (in SAME session)
-        categories_passed, telegram_works = check_categories_parallel(
-            session
-        )
+        # Parallel categories with adaptive ordering
+        (
+            categories_passed,
+            telegram_works,
+            category_details
+        ) = check_categories_parallel(session)
 
     avg_latency = mean(latencies)
     jitter = stdev(latencies) if len(latencies) > 1 else 0
 
-    # === RECONNECT TEST (separate session) ===
+    # === RECONNECT ===
     reconnect_success = 0
     for _ in range(CONFIG.RECONNECT_TESTS):
         time.sleep(0.3)
@@ -1208,11 +1565,18 @@ def _two_phase_test(
             latency=round(avg_latency, 1),
             jitter=round(jitter, 1),
             reconnect_success=reconnect_success,
-            categories=categories_passed
+            categories=categories_passed,
+            category_details=category_details
         )
 
     # === QUALITY ===
     quality = None
+
+    # Use weighted category score for smarter evaluation
+    weighted_score = ai_engine.weighted_category_score(
+        category_details
+    )
+
     for q in [Quality.ELITE, Quality.PREMIUM, Quality.GOOD]:
         thresh = QUALITY_THRESHOLDS[q]
         if (avg_latency <= thresh.latency_max
@@ -1221,8 +1585,15 @@ def _two_phase_test(
             quality = q
             break
 
-    # Fallback: passed reconnect = at least GOOD
-    if quality is None and reconnect_success >= CONFIG.MIN_RECONNECT_SUCCESS:
+    # Weighted bonus: if weighted score is high, upgrade quality
+    if quality == Quality.GOOD and weighted_score > 0.7:
+        quality = Quality.PREMIUM
+    elif quality == Quality.PREMIUM and weighted_score > 0.85:
+        quality = Quality.ELITE
+
+    # Fallback
+    if (quality is None
+            and reconnect_success >= CONFIG.MIN_RECONNECT_SUCCESS):
         quality = Quality.GOOD
 
     if quality is None:
@@ -1233,7 +1604,8 @@ def _two_phase_test(
             latency=round(avg_latency, 1),
             jitter=round(jitter, 1),
             reconnect_success=reconnect_success,
-            categories=categories_passed
+            categories=categories_passed,
+            category_details=category_details
         )
 
     with stats_lock:
@@ -1247,6 +1619,7 @@ def _two_phase_test(
         jitter=round(jitter, 1),
         reconnect_success=reconnect_success,
         categories=categories_passed,
+        category_details=category_details,
         telegram=telegram_works,
         quality=quality,
         protocol=protocol, host=host, port=port,
@@ -1283,15 +1656,23 @@ def save_results(
             for r in items:
                 tg = "TG+" if r.telegram else ""
                 mut = (
-                    f"|{r.mutation_used}" if r.mutation_used else ""
+                    f"|{r.mutation_used}"
+                    if r.mutation_used else ""
                 )
-                ai = f"|{r.ai_verdict}" if r.ai_verdict else ""
+                ai = (
+                    f"|{r.ai_verdict}"
+                    if r.ai_verdict else ""
+                )
+                score_tag = (
+                    f"|s{r.ai_score:.1f}"
+                    if r.ai_score > 0 else ""
+                )
                 comment = (
                     f"[{r.latency:.0f}ms|j{r.jitter:.0f}|"
                     f"rc{r.reconnect_success}/"
                     f"{CONFIG.RECONNECT_TESTS}|"
                     f"{r.categories}cat|{tg}{r.protocol}"
-                    f"{mut}{ai}|{MY_CHANNEL}]"
+                    f"{mut}{ai}{score_tag}|{MY_CHANNEL}]"
                 )
                 base_key = r.key.split('#')[0]
                 f.write(f"{base_key}#{quote(comment)}\n")
@@ -1301,7 +1682,6 @@ def save_results(
             f"{len(items)} -> {filename.name}"
         )
 
-    # All working
     all_results = [r for r in results if r.alive]
     all_results.sort(key=lambda x: x.latency)
 
@@ -1324,6 +1704,30 @@ def save_results(
     log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
 
     # Stats JSON
+    # Compute trend summary
+    trend_summary = {}
+    for proto, ps in ai_engine.protocol_stats.items():
+        if ps['total'] > 0:
+            trend_summary[proto] = {
+                'success_rate': round(
+                    ps['success'] / ps['total'], 3
+                ),
+                'trend': round(ps.get('trend', 0), 3),
+                'total': ps['total']
+            }
+
+    # Category effectiveness
+    cat_summary = {}
+    for name, cw in ai_engine.category_weights.items():
+        if cw['total'] > 0:
+            cat_summary[name] = {
+                'success_rate': round(
+                    cw['success'] / cw['total'], 3
+                ),
+                'weight': round(cw['weight'], 2),
+                'avg_time_ms': round(cw['avg_time'], 1)
+            }
+
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
@@ -1344,7 +1748,11 @@ def save_results(
         },
         "ai": {
             "enabled": ai_engine.enabled,
-            "anomalies": stats.ai_anomalies
+            "anomalies": stats.ai_anomalies,
+            "retrains": stats.ai_retrains,
+            "history_size": len(ai_engine.history),
+            "protocol_trends": trend_summary,
+            "category_effectiveness": cat_summary,
         },
         "processing_time": time.time() - stats.start_time
     }
@@ -1358,7 +1766,7 @@ def save_results(
 # ==================== MAIN ====================
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="AI Proxy Checker v4.1 Smart"
+        description="AI Proxy Checker v4.2 Smart+"
     )
     parser.add_argument(
         '--region', choices=['ALL', 'RU', 'EU'], default='ALL'
@@ -1384,15 +1792,13 @@ def main():
         CONFIG.MAX_SAFE_MUTATIONS = 0
 
     print("\n" + "=" * 60)
-    print("  AI Proxy Checker v4.1 SMART")
-    print("  Two-phase + parallel categories + session pooling")
+    print("  AI Proxy Checker v4.2 SMART+")
+    print("  Dynamic AI + adaptive categories + trends")
     print(f"  Channel: {MY_CHANNEL}")
     print("=" * 60)
 
     print(f"\n  Settings:")
-    print(
-        f"    Region: {args.region}"
-    )
+    print(f"    Region: {args.region}")
     print(
         f"    TCP: {CONFIG.TCP_WORKERS} workers, "
         f"{CONFIG.TCP_TIMEOUT}s timeout"
@@ -1402,8 +1808,7 @@ def main():
         f"{CONFIG.XRAY_TIMEOUT}s timeout"
     )
     print(
-        f"    Quick check: {CONFIG.QUICK_CHECK_TIMEOUT}s "
-        f"(kills dead proxies fast)"
+        f"    Quick check: {CONFIG.QUICK_CHECK_TIMEOUT}s"
     )
     print(
         f"    Latency: {CONFIG.LATENCY_SAMPLES} samples "
@@ -1417,11 +1822,42 @@ def main():
         f"    Reconnect: {CONFIG.RECONNECT_TESTS} test(s)"
     )
     print(
-        f"    Mutations: {CONFIG.MAX_SAFE_MUTATIONS} "
-        f"(safe FP only)"
+        f"    AI: {'ON' if ai_engine.enabled else 'OFF'} "
+        f"(history: {len(ai_engine.history)}, "
+        f"retrain every {CONFIG.AI_RETRAIN_EVERY})"
     )
-    print(f"    AI: {'ON' if ai_engine.enabled else 'OFF'}")
     print()
+
+    # Show protocol trends if available
+    if ai_engine.enabled:
+        for proto, ps in ai_engine.protocol_stats.items():
+            if ps['total'] > 10:
+                rate = ps['success'] / ps['total']
+                trend = ps.get('trend', 0)
+                arrow = (
+                    "^" if trend > 0.05
+                    else "v" if trend < -0.05
+                    else "="
+                )
+                print(
+                    f"    {proto}: {rate:.0%} success "
+                    f"{arrow} (trend: {trend:+.2f})"
+                )
+        print()
+
+    # Show category weights
+    if ai_engine.category_weights:
+        high_value = [
+            n for n, cw
+            in ai_engine.category_weights.items()
+            if cw.get('weight', 1) > 1.0
+        ]
+        if high_value:
+            print(
+                f"    Best discriminators: "
+                f"{', '.join(high_value)}"
+            )
+            print()
 
     for q in Quality:
         t = QUALITY_THRESHOLDS[q]
@@ -1448,7 +1884,7 @@ def main():
         return 1
 
     if ai_engine.enabled:
-        log("[AI] Prioritizing keys...")
+        log("[AI] Prioritizing keys (dynamic scoring)...")
         all_keys = ai_engine.prioritize_keys(all_keys)
 
     # === TCP ===
@@ -1499,9 +1935,8 @@ def main():
     print("\n" + "=" * 60)
     log(f"[XRAY] Phase 2: {CONFIG.XRAY_WORKERS} workers")
     log(
-        f"  Quick check -> Latency({CONFIG.LATENCY_SAMPLES}) "
-        f"+ Categories({len(CONFIG.CATEGORY_URLS)} parallel) "
-        f"-> Reconnect"
+        f"  Quick -> Latency({CONFIG.LATENCY_SAMPLES}) "
+        f"+ Categories(parallel) -> Reconnect"
     )
     print("=" * 60 + "\n")
 
@@ -1538,6 +1973,10 @@ def main():
                         f" {result.ai_verdict}"
                         if result.ai_verdict else ""
                     )
+                    sc = (
+                        f" s{result.ai_score:.1f}"
+                        if result.ai_score > 0 else ""
+                    )
                     log(
                         f"  [{done}/{len(tcp_passed)}] OK "
                         f"{result.quality.value.upper():>7} | "
@@ -1546,7 +1985,7 @@ def main():
                         f"rc:{result.reconnect_success}/"
                         f"{CONFIG.RECONNECT_TESTS} | "
                         f"{result.categories}cat{tg} | "
-                        f"{result.protocol}{mut}{ai}"
+                        f"{result.protocol}{mut}{ai}{sc}"
                     )
                 else:
                     stats.xray_failed += 1
@@ -1558,6 +1997,9 @@ def main():
 
     xray_time = time.time() - xray_start
     total_time = time.time() - stats.start_time
+
+    # Finalize AI (save learned data)
+    ai_engine.finalize()
 
     if results:
         save_results(results, args.region)
@@ -1597,13 +2039,41 @@ def main():
         )
     if stats.ai_anomalies > 0:
         print(f"  AI anomalies: {stats.ai_anomalies}")
+    if stats.ai_retrains > 0:
+        print(f"  AI retrains: {stats.ai_retrains}")
     print()
 
     for proto, count in sorted(
         stats.by_protocol.items(), key=lambda x: -x[1]
     ):
-        print(f"    {proto}: {count}")
+        ps = ai_engine.protocol_stats.get(proto, {})
+        trend = ps.get('trend', 0)
+        arrow = (
+            "^" if trend > 0.05
+            else "v" if trend < -0.05
+            else "="
+        )
+        print(f"    {proto}: {count} {arrow}")
     print()
+
+    # Category effectiveness report
+    if ai_engine.category_weights:
+        print("  Category effectiveness:")
+        for name, cw in sorted(
+            ai_engine.category_weights.items(),
+            key=lambda x: x[1].get('weight', 0),
+            reverse=True
+        ):
+            if cw['total'] > 0:
+                rate = cw['success'] / cw['total']
+                print(
+                    f"    {name:>12}: "
+                    f"{rate:.0%} success, "
+                    f"weight={cw['weight']:.1f}, "
+                    f"avg={cw['avg_time']:.0f}ms"
+                )
+        print()
+
     print(
         f"  TCP={tcp_time:.1f}s  XRAY={xray_time:.1f}s  "
         f"TOTAL={total_time / 60:.1f}min"
