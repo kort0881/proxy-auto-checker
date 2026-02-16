@@ -1,590 +1,350 @@
-# AI Proxy Checker v4.0 BALANCED
-
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Telegram](https://img.shields.io/badge/Telegram-@vlesstrojan-blue)](https://t.me/vlesstrojan)
-
-**Профессиональная система автоматической проверки и публикации VPN-ключей** с искусственным интеллектом, многоступенчатой валидацией и интеграцией с Telegram.
-
----
-
-## 🎯 Возможности
-
-### **Основной функционал**
-- ✅ **Многопротокольная поддержка**: VLESS, VMess, Trojan, Shadowsocks
-- 🔍 **Трёхступенчатая проверка**: TCP → Xray → Категории сайтов
-- 🧠 **AI-движок** (опционально): приоритизация ключей, детекция аномалий
-- 📊 **Классификация по качеству**: Elite / Premium / Good
-- 🔄 **Автоматическая публикация** в Telegram (публичный + приватный каналы)
-- 🔐 **Безопасные мутации**: авто-подбор fingerprint при сбое
-
-### **Продвинутые возможности**
-- 📈 **Исторический анализ**: хранение и использование данных о проверках
-- 🚀 **Оптимизированная производительность**: настройка workers/timeouts
-- 🌍 **Поддержка регионов**: EU, RU, ALL
-- 📁 **Структурированные результаты**: отдельные файлы по качеству
-- 🔄 **Реконнект-тесты**: проверка стабильности соединения
-
----
-
-## 📦 Установка
-
-### Требования
-- **Python 3.8+**
-- **Git**
-- **2+ GB RAM** (рекомендуется 4 GB для AI-режима)
-
-### Быстрая установка
-
-```bash
-# 1. Клонирование репозитория
-git clone https://github.com/kort0881/proxy-auto-checker.git
-cd proxy-auto-checker
-
-# 2. Установка зависимостей
-pip install -r requirements.txt
-
-# 3. (Опционально) AI-функции
-pip install scikit-learn numpy
-
-# 4. Запуск
-python checker_v4_balanced.py
-```
-
-### Зависимости
-
-```txt
-requests>=2.31.0
-# Опционально для AI:
-scikit-learn>=1.3.0
-numpy>=1.24.0
-```
-
----
-
-## 🚀 Использование
-
-### Базовая проверка
-
-```bash
-# Проверка всех регионов
-python checker_v4_balanced.py
-
-# Только RU-серверы
-python checker_v4_balanced.py --region RU
-
-# Только EU-серверы
-python checker_v4_balanced.py --region EU
-```
-
-### Настройка производительности
-
-```bash
-# Увеличить параллелизм (мощный сервер)
-python checker_v4_balanced.py --workers 20 --tcp-workers 60
-
-# Уменьшить нагрузку (слабый VPS)
-python checker_v4_balanced.py --workers 6 --tcp-workers 20
-
-# Отключить AI (экономия памяти)
-python checker_v4_balanced.py --no-ai
-
-# Отключить мутации (быстрая проверка)
-python checker_v4_balanced.py --no-mutations
-```
-
-### Публикация в Telegram
-
-```bash
-# Настройка переменных окружения
-export TELEGRAM_BOT_TOKEN_PUBLIC="your_public_bot_token"
-export TELEGRAM_BOT_TOKEN="your_private_bot_token"
-export TELEGRAM_PRIVATE_CHANNEL="@your_private_channel"
-
-# Запуск публикации
-python telegram_poster_v2.py
-```
-
----
-
-## 📂 Структура проекта
-
-```
-proxy-auto-checker/
-├── checker_v4_balanced.py      # Основной скрипт проверки
-├── checker_v3_relaxed.py       # Альтернативная версия (мягкие пороги)
-├── telegram_poster_v2.py       # Постинг в Telegram
-├── xray/                       # Xray-core (скачивается автоматически)
-├── results/                    # Результаты проверок
-│   ├── premium/                # Категоризированные ключи
-│   │   ├── elite.txt           # <200ms, jitter<80, 4+ сайтов
-│   │   ├── premium.txt         # <500ms, jitter<150, 3+ сайтов
-│   │   └── good.txt            # <2000ms, jitter<500, 2+ сайтов
-│   ├── verified_*.txt          # Все рабочие ключи
-│   ├── history.jsonl           # История проверок (AI)
-│   ├── stats_latest.json       # Статистика последнего запуска
-│   └── checker.log             # Логи работы
-├── cover_public.jpg            # Обложка для публичного канала
-├── cover_private.jpg           # Обложка для приватного канала
-└── requirements.txt            # Python-зависимости
-```
-
----
-
-## 🔧 Конфигурация
-
-### Настройка порогов качества
-
-В `checker_v4_balanced.py`:
-
-```python
-QUALITY_THRESHOLDS = {
-    Quality.ELITE:   QualityThreshold(
-        latency_max=200,   # мс
-        jitter_max=80,     # мс
-        categories_min=4   # доступных сайтов
-    ),
-    Quality.PREMIUM: QualityThreshold(
-        latency_max=500, 
-        jitter_max=150, 
-        categories_min=3
-    ),
-    Quality.GOOD:    QualityThreshold(
-        latency_max=2000, 
-        jitter_max=500, 
-        categories_min=2
-    ),
-}
-```
-
-### Настройка производительности
-
-```python
-class Config:
-    # TCP-проверка
-    TCP_WORKERS = 40          # параллельных потоков
-    TCP_TIMEOUT = 8           # таймаут (секунды)
-    TCP_RETRIES = 1           # повторные попытки
-    
-    # Xray-проверка
-    XRAY_WORKERS = 12         # параллельных процессов
-    XRAY_STARTUP = 5.0        # время на запуск (сек)
-    XRAY_TIMEOUT = 12         # таймаут запроса (сек)
-    
-    # Тесты
-    LATENCY_SAMPLES = 3       # измерений задержки
-    MIN_LATENCY_SUCCESS = 2   # минимум успешных
-    RECONNECT_TESTS = 1       # тестов реконнекта
-```
-
-### Добавление источников ключей
-
-```python
-KEY_SOURCES = {
-    "RU": [
-        "https://raw.githubusercontent.com/user/repo/main/ru_keys.txt",
-    ],
-    "EU": [
-        "https://raw.githubusercontent.com/user/repo/main/eu_keys.txt",
-    ],
-    "CUSTOM": [  # новый регион
-        "https://example.com/keys.txt",
-    ]
-}
-```
-
----
-
-## 📊 Алгоритм проверки
-
-### Ступень 1: TCP-валидация (быстрая фильтрация)
-```
-Ключи (1000+) → TCP Connect → Живые (~30-50%)
-├─ Timeout: 8s
-├─ Retries: 1
-└─ Workers: 40
-```
-
-### Ступень 2: Xray Full Check (глубокая проверка)
-
-**Сессия 1 - Базовые метрики:**
-- Измерение задержки (3 пробы через Cloudflare/Google)
-- Проверка доступности категорий сайтов (7 URL):
-  - Google, Telegram, YouTube, VK, Instagram, Twitter, TikTok
-- Расчёт jitter (стабильность задержки)
-
-**Сессия 2 - Стабильность:**
-- Тест реконнекта (переподключение и повторная проверка)
-
-**Опциональная мутация:**
-- При провале: авто-подбор fingerprint (chrome/firefox/safari/edge)
-
-### AI-анализ (если включён)
-
-1. **Приоритизация**:
-   - Сортировка по успешности протокола (VLESS > Trojan > VMess > SS)
-   - Reality-ключи получают бонус
-
-2. **Детекция аномалий** (IsolationForest):
-   - Анализ по 6 признакам: latency, jitter, reconnect, categories, protocol, security
-   - Подозрительные ключи помечаются `[ANOMALY]`
-
-3. **Обучение на истории**:
-   - Модель тренируется на последних 10,000 проверках
-   - Адаптация к изменениям в сети
-
----
-
-## 📤 Telegram-публикация
-
-### Публичный канал
-- **Топ-100 ключей** в TXT-файле
-- **Обложка** с метриками
-- **Ссылки на подписки** (кнопки копирования)
-- **Донат-пост**
-
-### Приватный канал (VIP)
-- **10 лучших ключей** в постах (Markdown + код-блоки)
-- **Остальные ключи** в TXT-файле
-- **Расширенная статистика** (Elite/Premium/Good)
-- **VIP-подписки** с инлайн-кнопками
-
-### Формат постов
-
-```markdown
-⚠️ Материал из открытых источников
-
-⚙️ *Ключ 1:*
-```
-vless://uuid@host:port?type=ws&security=tls...
-```
-
-🔒 *Ключ 2:*
-```
-trojan://password@host:port?security=tls...
-```
-
-Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket
-#прокси #v2ray #vless #trojan
-```
-
----
-
-## 🔬 Технические детали
-
-### Поддерживаемые протоколы
-
-| Протокол | Транспорты | Безопасность | Fingerprint |
-|----------|-----------|--------------|-------------|
-| **VLESS** | TCP, WS, gRPC, H2, KCP, xHTTP | TLS, Reality, None | ✅ |
-| **VMess** | TCP, WS, gRPC, H2 | TLS, None | ⚠️ |
-| **Trojan** | TCP, WS, gRPC | TLS | ✅ |
-| **Shadowsocks** | TCP | None | ❌ |
-
-### Безопасность
-
-- **Изолированные процессы**: каждый Xray-процесс использует случайный порт
-- **Автоочистка**: kill всех процессов при завершении/ошибке
-- **Signal handlers**: обработка Ctrl+C / SIGTERM
-- **Валидация конфигов**: парсинг с fallback на дефолты
-
-### Оптимизации
-
-- **Adaptive retries**: повторные попытки только для таймаутов
-- **Port waiting**: явное ожидание открытия порта (не sleep)
-- **Garbage collection**: принудительный сбор мусора каждые 60 ключей
-- **Config caching**: JSON-конфиги в /tmp для переиспользования
-
----
-
-## 📈 Метрики и статистика
-
-### Выходной JSON (`stats_latest.json`)
-
-```json
-{
-  "timestamp": "2024-01-15T14:30:00",
-  "region": "ALL",
-  "total_checked": 1247,
-  "total_working": 89,
-  "by_quality": {
-    "elite": 12,
-    "premium": 34,
-    "good": 43
-  },
-  "by_protocol": {
-    "VLESS": 45,
-    "VMess": 21,
-    "Trojan": 18,
-    "SS": 5
-  },
-  "mutations": {
-    "tried": 15,
-    "successful": 7
-  },
-  "ai": {
-    "enabled": true,
-    "anomalies": 3
-  },
-  "processing_time": 1847.3
-}
-```
-
-### История проверок (`history.jsonl`)
-
-```jsonl
-{"timestamp": 1705329600, "alive": true, "protocol": "VLESS", "latency": 143.5, "jitter": 22.1, "reconnect": 1, "categories": 5, "quality": "elite", "security": "reality"}
-{"timestamp": 1705329601, "alive": false, "protocol": "VMess", "error": "tcp_timeout"}
-```
-
----
-
-## 🛠️ Расширенные сценарии
-
-### GitHub Actions (CI/CD)
-
-```yaml
-name: Daily Proxy Check
-
-on:
-  schedule:
-    - cron: '0 */6 * * *'  # Каждые 6 часов
-  workflow_dispatch:
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install scikit-learn numpy
-      
-      - name: Run checker
-        run: python checker_v4_balanced.py --region ALL
-      
-      - name: Post to Telegram
-        env:
-          TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.BOT_TOKEN_PUBLIC }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN_PRIVATE }}
-          TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.PRIVATE_CHANNEL }}
-        run: python telegram_poster_v2.py
-      
-      - name: Upload results
-        uses: actions/upload-artifact@v3
-        with:
-          name: premium-keys
-          path: results/premium/
-```
-
-### Docker
-
-```dockerfile
-FROM python:3.10-slim
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    wget unzip && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install scikit-learn numpy
-
-COPY . .
-
-CMD ["python", "checker_v4_balanced.py"]
-```
-
-```bash
-# Сборка
-docker build -t proxy-checker .
-
-# Запуск
-docker run -v $(pwd)/results:/app/results \
-           -e TELEGRAM_BOT_TOKEN_PUBLIC=xxx \
-           -e TELEGRAM_BOT_TOKEN=xxx \
-           proxy-checker
-```
-
-### Systemd Service (автозапуск)
-
-```ini
-[Unit]
-Description=AI Proxy Checker
-After=network.target
-
-[Service]
-Type=simple
-User=proxycheck
-WorkingDirectory=/opt/proxy-checker
-ExecStart=/usr/bin/python3 checker_v4_balanced.py
-Restart=on-failure
-RestartSec=3600
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable proxy-checker
-sudo systemctl start proxy-checker
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Проблема: "Xray не запускается"
-
-```bash
-# Проверка архитектуры
-python3 -c "import platform; print(platform.machine())"
-
-# Ручная установка xray
-cd xray/
-wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
-unzip Xray-linux-64.zip
-chmod +x xray
-```
-
-### Проблема: "Out of Memory"
-
-```bash
-# Уменьшить workers
-python checker_v4_balanced.py --workers 4 --tcp-workers 15 --no-ai
-
-# Или увеличить swap
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-```
-
-### Проблема: "Telegram rate limit"
-
-```python
-# В telegram_poster_v2.py добавить задержки
-import time
-for chunk in chunks:
-    send_message(chunk)
-    time.sleep(3)  # 3 секунды между постами
-```
-
-### Проблема: "AI model не тренируется"
-
-```bash
-# Проверка зависимостей
-pip install --upgrade scikit-learn numpy
-
-# Очистка истории
-rm results/history.jsonl
-
-# Запуск без AI
-python checker_v4_balanced.py --no-ai
-```
-
----
-
-## 📝 FAQ
-
-**Q: Сколько ключей можно проверить за раз?**  
-A: До 5000+ при мощном сервере (8+ cores, 16GB RAM). На VPS (2 cores, 4GB) ~ 500-1000.
-
-**Q: Почему некоторые ключи пропускаются?**  
-A: Возможны причины:
-- Неверный формат URI
-- TCP-порт закрыт
-- Xray не смог установить соединение
-- Не прошёл категорийные тесты
-
-**Q: Как добавить свой тест?**  
-A: В `CONFIG.CATEGORY_URLS` добавьте кортеж `(url, name)`:
-```python
-("https://example.com", "custom_site")
-```
-
-**Q: Можно ли проверять локальные ключи?**  
-A: Да, создайте файл `custom_keys.txt` и измените `download_and_deduplicate()`:
-```python
-with open('custom_keys.txt') as f:
-    return f.read().splitlines()
-```
-
-**Q: Работает ли на Windows?**  
-A: Да, но для WSL рекомендуется Ubuntu 22.04+. Native Windows поддерживается с ограничениями.
-
----
-
-## 🤝 Вклад в проект
-
-Приветствуются PR с:
-- Новыми источниками ключей
-- Оптимизациями алгоритмов
-- Поддержкой новых протоколов (TUIC, Hysteria2)
-- Улучшениями AI-моделей
-
-### Гайдлайны
-
-1. Fork → Branch → Commit → Push → PR
-2. Код должен проходить `flake8` / `black`
-3. Добавляйте тесты для новых функций
-4. Обновляйте README при изменении API
-
----
-
-## 📜 Лицензия
-
-**MIT License**
-
-```
-Copyright (c) 2024 kort0881
-
-Разрешается использование, модификация, распространение
-при сохранении копирайта и дисклеймера об ответственности.
-```
-
----
-
-## ⚠️ Дисклеймер
-
-Проект предоставлен **в образовательных целях**. Автор не несёт ответственности за:
-- Нарушение ToS провайдеров
-- Использование в незаконных целях
-- Потерю данных или повреждение систем
-
-**Используйте VPN-сервисы в соответствии с законодательством вашей страны.**
-
----
-
-## 📞 Контакты
-
-- **Telegram-канал**: [@vlesstrojan](https://t.me/vlesstrojan)
-- **GitHub Issues**: [Создать issue](https://github.com/kort0881/proxy-auto-checker/issues)
-- **Email**: [Не указан - используйте Issues]
-
----
-
-## 🌟 Благодарности
-
-- **Xray Project** за отличный прокси-движок
-- **scikit-learn** за AI-инструменты
-- Сообществу за фидбек и баг-репорты
-
----
-
-<div align="center">
-
-**Сделано с ❤️ для свободного интернета**
-
-[![Star on GitHub](https://img.shields.io/github/stars/kort0881/proxy-auto-checker?style=social)](https://github.com/kort0881/proxy-auto-checker)
-
-</div>
+# 🔥 AI Proxy Collection
+
+![Total](https://img.shields.io/badge/Total-1631-brightgreen)
+![Elite](https://img.shields.io/badge/Elite-2-gold)
+![Premium](https://img.shields.io/badge/Premium-82-blue)
+![Updated](https://img.shields.io/badge/Updated-2026-02-16-orange)
+
+## 📊 Statistics
+
+| Quality | Count | Link |
+|---------|-------|------|
+| **Elite** | 2 | [elite.txt](results/premium/elite.txt) |
+| **Premium** | 82 | [premium.txt](results/premium/premium.txt) |
+| **Total** | 1631 | [All Files](results/premium/) |
+
+## 📥 Quick Download
+
+\\# ELITE
+# @vlesstrojan
+# 2026-02-15 17:32
+# Keys: 326
+
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTplNDA2ZGE1MGIzMzQzNDBl@51.89.10.151:11201#%5B100ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo0ZjAzMmQ5OTNkZmVjMzE4@141.95.104.145:11201#%5B100ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@193.29.139.204:8080#%5B103ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://5dd6763c-d4f5-4e58-8ab9-6f8f828f7e83@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&sni=google.com#%5B104ms%7Cj24%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3NTc4MjkyMWE4ZTcwODAy@195.7.6.160:18550#%5B106ms%7Cj65%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://d6b1327d-2bec-4366-a3a1-9b1284f95841@77.239.125.99:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=sun6-21.userapi.com&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&sid=6ba85179e30d4fc2&type=tcp&headerType=none#%5B107ms%7Cj42%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.202:8080#%5B108ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://0341d8f2-99e0-4f6c-af0a-345ac26815cf@ab.fxgoldensignals.com:51269?mode=gun&security=&encryption=none&type=grpc#%5B109ms%7Cj69%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://261fd1f6-6d3c-4943-81f0-bee516378ea1@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B109ms%7Cj20%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpjdklJODVUclc2bjBPR3lmcEhWUzF1@193.29.139.179:8080#%5B111ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpRQ1hEeHVEbFRUTUQ3anRnSFVqSW9q@193.29.139.189:8080#%5B112ms%7Cj48%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://891300bc-11b2-4b24-8056-b329b098888b@216.106.187.194:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=qq&pbk=sg2tKPvraASV-iF2qIJ1Tk4MpIdymoMOrFO9-ANaUVA&sid=30c2592b42db6b&sni=t.me&spx=/#%5B112ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://0be1cd52-6d91-4785-8e77-6851eeed56d7@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B112ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3NDkxOGJjODAxZDUzYTRi@57.130.28.148:11201#%5B112ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.87:23576?security=reality&encryption=none&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=fuck.rkn&sid=01#%5B112ms%7Cj41%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@57.129.53.182:23576?security=reality&type=tcp&sni=fuck.rkn&fp=chrome&flow=xtls-rprx-vision&sid=01&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&encryption=none#%5B112ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5b223b5b-b869-4b26-a43a-3b14fc2554d9@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B112ms%7Cj18%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://485cbd09-513c-4967-9123-169486db21a9@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=768c60&sni=www.google.com&type=tcp#%5B112ms%7Cj23%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7f49e948-ca13-447a-a237-4d3192f4a5a3@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&sni=google.com#%5B112ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f9e185aa-8116-49cc-9d84-07443169da00@85.192.40.51:443?security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&sni=apple.com#%5B112ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://417f31a6-bbd6-4527-9e68-6aaf6f3962a6@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=www.google.com#%5B113ms%7Cj28%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8baaab05-700c-4153-b677-0b44410a6969@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B114ms%7Cj26%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://717b019a-fd3e-427d-9ef9-f409c38e6c41@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B114ms%7Cj19%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://eb44b7c0-fe5a-47a7-90ea-e61a126b2a22@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B115ms%7Cj21%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpkMDZhOGJjMDkxM2U5MTNj@51.89.10.173:11201#%5B115ms%7Cj73%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://8edb4633-613e-465c-b41c-2fdab7c5b138@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B115ms%7Cj29%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://YWVzLTEyOC1nY206c2hhZG93c29ja3M@141.98.101.181:443#%5B116ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://97cfc877-9d44-24c7-81c5-6180d4e4cecb@188.245.209.90:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=10afHwCh2N-Qeqsskwvp9gLC0JrOA-CSfuRbgcK7YkA&security=reality&sid=d9a8dad452a7644f&sni=miro.com&type=tcp#%5B116ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6fc297ff-17c0-436a-b982-623d682e339a@91.198.77.216:42206?encryption=none&security=none&type=tcp#%5B116ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@57.129.53.182:23576?security=reality&sni=fuck.rkn&fp=chrome&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&sid=01&type=tcp&flow=xtls-rprx-vision&encryption=none#%5B117ms%7Cj66%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6bfa4ffe-1666-4281-8e69-22fa1413d4fb@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B117ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f8e29d54-7745-46c2-9358-868994c79aca@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B117ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8eb60c19-7d2d-4177-a5c0-45949a66a98b@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=www.google.com#%5B118ms%7Cj27%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://29eb05af-f89d-4563-a8c5-44f0c5733860@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B118ms%7Cj25%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3OGMyZTM5MTIxYzgyMGZi@51.89.10.72:11201#%5B118ms%7Cj74%7Crc1/1%7C6cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpkNWI4NzhjYmI0NmYzZTMz@51.178.114.83:11202#%5B118ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://cf329d44-c89d-4bce-a175-ad6d784b5303@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B119ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6b71b891-7495-4365-893f-e7a9a280b858@144.31.100.120:443?security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&sni=google.com#%5B119ms%7Cj18%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7fbd497e-8fb2-4722-aa1f-c2c0873e7944@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B120ms%7Cj20%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4393f658-e04e-4e66-aa9d-df79bcc120cb@144.31.100.120:443?encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=54c71eb172a3&sni=google.com&type=tcp#%5B121ms%7Cj33%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://373a56eb-aaa9-4a92-b209-503dd916900f@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=www.google.com#%5B121ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpRQ1hEeHVEbFRUTUQ3anRnSFVqSW9q@193.29.139.157:8080#%5B121ms%7Cj24%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo1MjY3MTY0N2FmMGNmZmEw@38.242.222.183:11201#%5B121ms%7Cj75%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://74880a39-bc7c-4dc6-8b2f-02984b7f8f51@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&sni=google.com#%5B121ms%7Cj37%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ba77276e-9939-4c6c-a73e-90e02b6faf13@37.221.125.34:443?type=tcp&encryption=none&flow=xtls-rprx-vision&sni=hls-svod.itunes.apple.com&fp=chrome&security=reality&pbk=llaiqC-oIhL_bjc236FPq26LSn7IVhIa4cIC6OVytws&sid=175d#%5B121ms%7Cj17%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f4fec1b0-a67e-4967-b9ea-0bd832b57a4d@37.218.247.35:8443?encryption=none&fp=chrome&pbk=upDCW94g-pSYQrmXvOrTVYlwBUrSKhYFF9QwrqObdVo&security=reality&sid=3ca620a7ed5f3196&sni=sun6-21.userapi.com&type=tcp#%5B121ms%7Cj50%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5f5fe741-d316-4a28-ad00-3c8d77bd9dab@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=google.com#%5B122ms%7Cj19%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6f084623-4524-4ad6-aab2-29b3e14b118e@osn.takovpn.ru:443?security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=www.google.com#%5B122ms%7Cj14%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo0YTJyZml4b3BoZGpmZmE4S1ZBNEFh@193.29.139.206:8080#%5B122ms%7Cj72%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@57.129.53.182:23576?encryption=none&flow=xtls-rprx-vision&type=raw&headerType=none&security=reality&fp=chrome&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&sni=fuck.rkn&sid=01#%5B122ms%7Cj23%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://58d36dc5-b143-4a59-995a-dc059bab4592@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&spx=%2FhUm9dpj72MwpazX&type=tcp&headerType=none#%5B122ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://229eaa9f-ac95-46bc-9426-361b698e1b28@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B123ms%7Cj25%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@193.29.139.141:8080#%5B124ms%7Cj43%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://316d1df7-3222-4665-9a20-e6976e9b43d1@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B124ms%7Cj22%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://20b0976f-3b0d-4e29-a629-ce119d2b3da2@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B124ms%7Cj34%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://891300bc-11b2-4b24-8056-b329b098888b@208.69.78.51:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=EFvlYXZ3rzSZ1GExmKKisVGeQP0sOPJOP1LbhVL4bwc&sid=31ec5330f6b859&sni=github.com#%5B124ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://eba1f167-396f-40cc-8e67-09e700ae1afe@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B124ms%7Cj21%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpRQ1hEeHVEbFRUTUQ3anRnSFVqSW9q@193.29.139.217:8080#%5B124ms%7Cj70%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://8edb4633-613e-465c-b41c-2fdab7c5b138@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=google.com#%5B125ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e21cbfd0-2e8a-40d4-ab3a-dc6e3b2af8fe@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&sni=www.google.com#%5B125ms%7Cj26%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9cd1b59f-24e9-44a5-8ec3-f403ea961019@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B125ms%7Cj47%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ad5d8d51-18f4-451b-9c01-7baff1d9b244@185.143.238.229:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=30eHXS9LpzFg443EtLaGLuDFo2QGa4zvLM7WdT-tSiM&sid=35debf0dc757d053&sni=www.google.com#%5B125ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://a99a4d61-e955-4b16-8e49-0788febdafc4@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B125ms%7Cj29%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://562eb7c0-f526-4572-b10d-3d083efcd791@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=google.com#%5B125ms%7Cj26%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://35b82948-ae78-487a-9ec6-d65e749b5695@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=www.google.com#%5B126ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://daf49b95-317c-4b72-8354-dc6cb89b10e9@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=9de7&sni=www.google.com#%5B126ms%7Cj43%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_random%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo0YjQ3NjNlZmVmYTk1MTE0@135.125.10.106:10018#%5B126ms%7Cj61%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.179:8080#%5B126ms%7Cj65%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.187:8080#%5B126ms%7Cj76%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://24be359e-82a5-472e-9aa6-855e57c8a932@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=qq&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B126ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.194:8080#%5B127ms%7Cj66%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://6c18406a-d4c7-4db7-9b99-c7274b214044@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B127ms%7Cj26%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e1f3a788-3525-4060-a671-e58e50ba4fdc@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&sni=www.google.com#%5B128ms%7Cj50%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8d25e0fa-2046-4365-8c2d-8edd60d6d5b4@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B128ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://71afb2b4-e5fa-4e1c-a718-73a933fa9fbe@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B128ms%7Cj35%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c02aeb3d-acff-4b1d-b38e-f855e0b9aa23@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B128ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7f8f1d9d-b842-4ca6-b757-ff2b570663ac@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&sni=google.com#%5B128ms%7Cj37%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://993ed252-32f1-46e1-9ffd-6fbc099d0030@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B129ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://165e8686-3eec-4d59-8540-ccbd1f63234a@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B129ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://44dba2c2-929b-44eb-be56-96b2e3ec823b@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B130ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://316d1df7-3222-4665-9a20-e6976e9b43d1@osn.takovpn.ru:443?security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=google.com#%5B130ms%7Cj23%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.80:23576?security=reality&encryption=none&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=fuck.rkn&sid=01#%5B130ms%7Cj37%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d338dd5b-94e8-4aa4-8c66-6b21c21f077e@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=google.com&spx=/Gt2RyFdEq0dkLYY#%5B130ms%7Cj26%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://373a56eb-aaa9-4a92-b209-503dd916900f@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B130ms%7Cj33%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo0YTJyZml4b3BoZGpmZmE4S1ZBNEFh@193.29.139.179:8080#%5B130ms%7Cj64%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpjdklJODVUclc2bjBPR3lmcEhWUzF1@193.29.139.157:8080#%5B130ms%7Cj60%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://a5e746f7-328f-4b65-a65f-e2e2a4a5b1a9@212.34.142.191:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=wNcFqVd4_PkgJbfgJJeouSU6Pn_Swuce4q4Chw5T0hY&security=reality&sid=f7aa9e61197d3ac6&sni=tradingview.com&type=tcp#%5B131ms%7Cj33%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://20fe73d2-c308-4a43-95bc-71b0a4687b3f@144.31.100.120:443?encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=768c60&sni=www.google.com#%5B131ms%7Cj35%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://b7a5780f-3f7c-4f58-b9b2-32ba7d6fc7b2@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=google.com#%5B131ms%7Cj33%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5678ccb4-62e2-4570-87d9-7686e1c2646e@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B131ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://934f91c7-1903-4e7e-a6d0-a112f27480c7@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B132ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://01e92d42-9bbd-4e77-82a5-f64402c2e161@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B132ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://74880a39-bc7c-4dc6-8b2f-02984b7f8f51@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B132ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.191:8080#%5B132ms%7Cj75%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://b8509ba9-3359-44ae-a36b-3ba329a43c7c@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=97&sni=google.com#%5B132ms%7Cj27%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@193.29.139.251:8080#%5B132ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://04ff3c3b-c9b8-4891-8d3f-a3a39316f3d2@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B133ms%7Cj29%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f8e29d54-7745-46c2-9358-868994c79aca@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=google.com#%5B133ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo0YTJyZml4b3BoZGpmZmE4S1ZBNEFh@193.29.139.173:8080#%5B133ms%7Cj68%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://ee30dfba-cea1-47a0-96a1-4e8cf054420f@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=3d3c3fc7e9&sni=www.google.com#%5B134ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6b71b891-7495-4365-893f-e7a9a280b858@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B134ms%7Cj3%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@57.129.53.181:23576?security=reality&encryption=none&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=fuck.rkn&sid=01#%5B134ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://12319401-960e-4a2c-881b-917cf0af6c83@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B134ms%7Cj43%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9e80088b-28a3-43ed-ad02-090b7b074a48@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B134ms%7Cj29%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://1f030b12-a40d-4a9a-ba88-d20f7a2686fe@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=www.google.com#%5B134ms%7Cj42%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d6b1327d-2bec-4366-a3a1-9b1284f95841@77.239.125.99:443?type=tcp&encryption=none&flow=xtls-rprx-vision&sni=sun6-21.userapi.com&fp=chrome&security=reality&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&sid=6ba85179e30d4fc2#%5B134ms%7Cj64%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://229eaa9f-ac95-46bc-9426-361b698e1b28@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=google.com&spx=/LE69f2u5mQNmKKJ#%5B135ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f4fec1b0-a67e-4967-b9ea-0bd832b57a4d@37.218.247.35:8443?type=tcp&encryption=none&flow=&sni=sun6-21.userapi.com&fp=chrome&security=reality&pbk=upDCW94g-pSYQrmXvOrTVYlwBUrSKhYFF9QwrqObdVo&sid=3ca620a7ed5f3196#%5B135ms%7Cj36%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://90bdbda3-7159-4757-8c05-c634e0f005ed@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B135ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e6692609-9960-4113-a609-97c2fb0ecee5@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B136ms%7Cj39%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://98e10e51-3410-43b4-8cff-3438c81603ca@144.31.100.120:443?encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=768c60&sni=www.google.com&type=tcp#%5B136ms%7Cj18%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpmMTllMzU5YTJmMGM0ZjVm@51.68.83.117:11201#%5B136ms%7Cj76%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://25c71b7f-229e-43e0-bde9-8e19aee9ab6f@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=www.google.com#%5B136ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bbc5126c-0f1c-4301-b2f4-1e9d0780d0c4@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B136ms%7Cj51%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5757c746-9878-4cfd-874a-edd95485f26d@nd.fasti.win:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=qq&pbk=XBBVeMURFu7jmYJ9MZwjEWgfQlGTnRs0B5So5Fy7jWs&sid=992f3294e2336744&sni=nd.fasti.win#%5B136ms%7Cj7%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9e0fe137-0da7-45b0-9a6d-a767f109d666@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&sni=google.com#%5B136ms%7Cj22%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://1067894b-b8ac-427c-b3d6-dfb52c100489@osn.takovpn.ru:443?security=reality&encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&headerType=none&fp=chrome&type=tcp&sni=www.google.com&sid=3d3c3fc7e9#%5B136ms%7Cj21%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://29e33103-8909-4173-abc9-aa20a13119cd@144.31.100.120:443?security=reality&encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&headerType=none&fp=chrome&type=tcp&sni=www.google.com&sid=9de7#%5B137ms%7Cj50%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://af4dc576-45a5-4954-8fc3-6034d2d2f06e@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=google.com#%5B137ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4604876a-0652-4835-88bd-4421ea5c40da@94.228.213.240:443?flow=xtls-rprx-vision&security=reality&encryption=none&sni=hls-svod.itunes.apple.com&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=175d&spx=/&type=tcp&path=/#%5B137ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://a49e4ab5-2d44-417f-be6a-5757efa892b7@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B138ms%7Cj60%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://71afb2b4-e5fa-4e1c-a718-73a933fa9fbe@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&sni=www.google.com&spx=/lqjxl0umXDpkwPJ#%5B138ms%7Cj41%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://92a532c6-543f-4b82-9c5c-90f1f9f6aa1d@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=1283729a0a9c1f&sni=www.google.com&type=tcp#%5B138ms%7Cj18%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://b7a5780f-3f7c-4f58-b9b2-32ba7d6fc7b2@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B138ms%7Cj27%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.205:8080#%5B138ms%7Cj72%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://eb071647-72a6-46be-8e89-ff3d228d52f6@pl.jojack.ru:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=qq&pbk=hSTtlpXKAYVVu5ybX3hQfq8dfsUrO_HoFVgfGGoCHVw&sid=a7ab02dfcc1f2c04&sni=pl.jojack.ru#%5B138ms%7Cj33%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://57e63c31-de17-4afd-a575-089c8b9e4daf@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=768c60&sni=google.com#%5B138ms%7Cj43%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ae50e9ec-4815-41bb-a3bb-8188134eb247@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=1283729a0a9c1f&sni=www.google.com#%5B138ms%7Cj39%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_ios%7C%40vlesstrojan%5D
+vless://100cf905-0d2b-4250-98d2-5a7029d8fcfc@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=9de7&sni=www.google.com#%5B138ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ecb19889-e45f-4220-9b62-010e3058f955@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B139ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://92a532c6-543f-4b82-9c5c-90f1f9f6aa1d@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B139ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://58e1272a-d0ba-4aa8-a4b2-a5830077ccfa@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B139ms%7Cj24%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8baaab05-700c-4153-b677-0b44410a6969@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=google.com#%5B140ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2f55066d-2c2c-4c89-b32a-4cbcfa7cbf64@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B140ms%7Cj35%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://298ba036-bb24-4721-a810-1b82294b50d4@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B140ms%7Cj41%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://3518eb7c-9fb0-4690-a908-9034d7d98e28@37.202.205.111:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&security=reality&sid=6ba85179e30d4fc2&sni=ign.dev&type=tcp#%5B140ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://af4dc576-45a5-4954-8fc3-6034d2d2f06e@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=google.com&type=tcp#%5B140ms%7Cj74%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://373a56eb-aaa9-4a92-b209-503dd916900f@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&sni=www.google.com#%5B140ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://03fcd147-3785-44dc-a6ac-3a2115cee501@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B140ms%7Cj10%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4604876a-0652-4835-88bd-4421ea5c40da@nl04-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=175d&sni=hls-svod.itunes.apple.com&path=&host=&spx=/#%5B141ms%7Cj28%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ff3c2d81-30d5-458c-a596-88ab74441f44@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B141ms%7Cj42%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e42fa468-4eef-49ca-9d94-dcbf25c30863@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B141ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://a6baa464-ab9b-44f0-9c65-729af3a89e8b@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B141ms%7Cj15%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMXY1ZzlGZWZkb08=@57.129.140.88:8388#%5B141ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://a44920ab-fcc4-45cd-819e-5597abe13457@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B142ms%7Cj48%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7812bc6b-959b-4e65-9093-5c1a318ee4bf@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=47e4c3980f872e68&sni=google.com&type=tcp#%5B142ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://937b3af1-a2ca-49cd-843e-d5d77bc83a8b@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B142ms%7Cj37%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2ae7b0e3-b3f5-423e-b202-bc1badf0a921@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B142ms%7Cj9%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2ad15591-8356-4f9e-b1bf-03becd0385a8@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B142ms%7Cj44%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.8:23576?security=reality&type=tcp&sni=fuck.rkn&fp=chrome&flow=xtls-rprx-vision&sid=01&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&encryption=none#%5B142ms%7Cj74%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.25:23576?security=reality&encryption=none&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=fuck.rkn&sid=01#%5B143ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c70a7410-f469-48d4-bc54-fb254ad61545@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=www.google.com#%5B143ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://48ff2b70-e180-582f-8866-d9a2edeed5f5@51.158.206.29:23576?security=reality&type=tcp&sni=fuck.rkn&fp=chrome&flow=xtls-rprx-vision&sid=01&pbk=1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s&encryption=none#%5B143ms%7Cj66%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d21113d8-8589-4b3c-89f3-7851b8845320@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=firefox&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B143ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7812bc6b-959b-4e65-9093-5c1a318ee4bf@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=firefox&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B143ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://229eaa9f-ac95-46bc-9426-361b698e1b28@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=google.com#%5B143ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6b16c63d-5a44-4bf5-b3c6-f978bddab026@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B144ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+trojan://7LBbob9IutFObLxLf9Svc1HaV@45.89.111.142:443?sni=hl-freedom-1.undef.network&peer=hl-freedom-1.undef.network&security=tls#%5B144ms%7Cj50%7Crc1/1%7C5cat%7CTG%2BTrojan%7C%40vlesstrojan%5D
+vless://454dfe09-9562-4217-bd9c-2dcc188d9272@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B144ms%7Cj58%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8254489c-3f0f-4e96-8039-0de99e403acc@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&spx=%2F9wg0igRDzsBF26z&type=tcp&headerType=none#%5B145ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://3ffea3f6-602e-4bc5-9eaf-c49bbda0f081@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B145ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5757c746-9878-4cfd-874a-edd95485f26d@gb.fasti.win:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=-YTGWg5DjsLDyaDfr1D83kiUK22LVcrK3yC53lqqigs&sid=feedbacc&sni=uk.fasti.win#%5B145ms%7Cj26%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://1355c868-257e-4532-8852-e197dd4e682a@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&spx=%2FeX9lbq3bFUsvNoB&type=tcp&headerType=none#%5B145ms%7Cj60%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://a49e4ab5-2d44-417f-be6a-5757efa892b7@144.31.100.120:443?encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=www.google.com&type=tcp#%5B146ms%7Cj61%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ba86dbea-c76b-4694-a154-faee9f36e8b4@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B146ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://456bd17d-9407-4b88-959f-aa320b0a572e@144.31.100.120:443?encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=47e4c3980f872e68&sni=google.com&type=tcp#%5B146ms%7Cj69%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://83df271c-1e50-4847-9beb-a56d0de7e8d3@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=www.google.com&type=tcp#%5B146ms%7Cj55%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d666d581-b288-4a8e-b283-12c4b818873f@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=352e3a94&sni=google.com#%5B146ms%7Cj42%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://937b3af1-a2ca-49cd-843e-d5d77bc83a8b@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B146ms%7Cj19%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://456bd17d-9407-4b88-959f-aa320b0a572e@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=firefox&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B147ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://0ae09864-90e0-4026-8439-cc82695ff7be@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B147ms%7Cj67%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://514f4d0f-fc98-4866-aa18-4bee56125e71@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B147ms%7Cj39%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://be795528-3696-49d6-9267-52e04420ed27@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B148ms%7Cj42%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d840270a-05f6-41ed-8d69-2d71ba84f2d1@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=google.com#%5B148ms%7Cj28%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@37.143.129.98:990#%5B148ms%7Cj41%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://4c99be33-d2f4-4a1d-80cc-897ef7f0aeaf@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=www.google.com&spx=/bUR9rn9IOiiOC4l#%5B148ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6c18406a-d4c7-4db7-9b99-c7274b214044@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=97&sni=www.google.com&type=tcp#%5B148ms%7Cj44%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://25c71b7f-229e-43e0-bde9-8e19aee9ab6f@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B149ms%7Cj12%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://332c03ef-f61e-4ed6-8c7d-5dc2a8d4cfb1@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B149ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://35b82948-ae78-487a-9ec6-d65e749b5695@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=www.google.com#%5B149ms%7Cj12%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6d5371e1-783f-446a-b3e1-284b5915b7a8@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B149ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://YWVzLTEyOC1nY206c2hhZG93c29ja3M@141.98.101.178:443#%5B149ms%7Cj76%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+ss://YWVzLTEyOC1nY206c2hhZG93c29ja3M=@141.98.101.179:443#%5B149ms%7Cj58%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://0b12dd98-2266-420b-8f79-026dab5786d5@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=google.com#%5B149ms%7Cj12%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://229eaa9f-ac95-46bc-9426-361b698e1b28@144.31.100.120:443?encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=54c71eb172a3&sni=google.com&type=tcp#%5B149ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2ad15591-8356-4f9e-b1bf-03becd0385a8@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B150ms%7Cj36%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7e7a0203-6c9b-4f77-ae2d-0c537e636107@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B150ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e83c0c47-2160-4149-922d-be05c9154ab3@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B150ms%7Cj59%7Crc1/1%7C6cat%7CVLESS%7C%40vlesstrojan%5D
+vless://18f72be7-0651-4037-928b-8a309d685796@193.42.11.83:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=qFBIVGsvXTMeJcdJz6GiL7DG0XNhCg7rItza7t0qTgU&security=reality&sid=9eb31eb7572c0882&sni=google.com&type=tcp#%5B150ms%7Cj17%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ae50e9ec-4815-41bb-a3bb-8188134eb247@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=www.google.com#%5B150ms%7Cj46%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://454dfe09-9562-4217-bd9c-2dcc188d9272@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B151ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://52dfeddf-a0fa-4750-9d8a-ee198dea79b7@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B152ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ad3a3494-833b-4f6f-bcda-7b74d5444cdf@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&sni=google.com#%5B152ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://113a17ba-c307-4627-b9d7-acc76ee929ca@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B152ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://456bd17d-9407-4b88-959f-aa320b0a572e@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=47e4c3980f872e68&sni=google.com&type=tcp#%5B152ms%7Cj61%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://1d1da06b-473f-4efb-ab54-2926e8eec4fa@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&sni=google.com#%5B152ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e40b55f7-f6d5-4fa8-94b8-478e885900b0@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B152ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://562eb7c0-f526-4572-b10d-3d083efcd791@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=google.com#%5B152ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://32939076-7490-4484-a2db-d91de1899416@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B152ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6961680b-a9f3-4b3e-b8df-82ef0b2ca29d@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=google.com#%5B152ms%7Cj37%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://aa952152-f76b-4aee-a790-b182dbceab8a@osn.takovpn.ru:443?security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=www.google.com#%5B153ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://b01ec4c8-3c7f-454e-9edc-b1ae09710cc5@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B153ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://309fa273-6579-4cb2-9143-7cad50401eba@91.99.106.117:443?security=reality&encryption=none&pbk=gZGVp5PUdafgsmi1gawa1yLuha_XhXRc_W9SvPiGmTY&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=www.cloudflare.com&sid=7cad5040#%5B153ms%7Cj42%7Crc1/1%7C5cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d21113d8-8589-4b3c-89f3-7851b8845320@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=1283729a0a9c1f&sni=www.google.com#%5B154ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c37b5cc9-afd6-4467-8fc1-fd2b5abfb2b8@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B154ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ecc0327b-1b56-4521-ac2f-a2ef5fedf36c@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=768c60&sni=google.com&type=tcp#%5B154ms%7Cj57%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6b71b891-7495-4365-893f-e7a9a280b858@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B154ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9e0fe137-0da7-45b0-9a6d-a767f109d666@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=3d3c3fc7e9&sni=google.com&type=tcp#%5B154ms%7Cj55%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7f49e948-ca13-447a-a237-4d3192f4a5a3@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B154ms%7Cj55%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f0e086ad-26b6-4d84-9eb4-864bdb80bad1@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B154ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://0e143563-0f9e-41fe-89c4-8f6d5c1af18e@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=9de7&sni=www.google.com#%5B155ms%7Cj50%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://3c518ee1-07db-4689-8220-7aa3ee29f626@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=google.com#%5B155ms%7Cj58%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://191ad29d-bca0-49b3-b267-2146d6fb1019@144.31.87.206:16779?encryption=none&fp=chrome&pbk=vthUYwmko8x_tMHse_cYB3S-qOzR3h9s4NcQRubf1B8&security=reality&sid=06e2&sni=google.com&type=tcp#%5B155ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6b16c63d-5a44-4bf5-b3c6-f978bddab026@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=firefox&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B156ms%7Cj76%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4604876a-0652-4835-88bd-4421ea5c40da@nl03-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=48720c&sni=hls-svod.itunes.apple.com#%5B156ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7c3f08c8-7b3b-4028-91d8-378a18c2b62a@185.227.149.123:443?security=reality&encryption=none&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=mycatcollection.com&sid=6ba85179e30d4fc2#%5B156ms%7Cj12%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bbc5126c-0f1c-4301-b2f4-1e9d0780d0c4@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B156ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://660e94db-ee00-4f46-b88e-7c73d5fe2989@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B156ms%7Cj11%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://20fe73d2-c308-4a43-95bc-71b0a4687b3f@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=www.google.com#%5B156ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6024f212-df57-4f88-b2ad-4f7256333fe7@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B157ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9bc247bd-6fef-468b-91e7-2400e8c0903f@nl.harknmav.fun:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=zwmzheFdRaB1IwtMIqzB6xfrL_Mako1kDAXO1IocCW0&sid=68ec10761460dce4&sni=www.io.ozone.ru&path=&host=#%5B157ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d8b39f21-7a23-449d-b26c-c88d47400eae@46.226.167.136:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=Xi95V6TcWnC9ycq1jIxw8PmuxT96Jg4YGNXchHJ21y8&sid=fc7c&sni=web.telegram.org&spx=/6dLJI6Lh5sZMtAO#%5B157ms%7Cj62%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://12319401-960e-4a2c-881b-917cf0af6c83@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=www.google.com#%5B157ms%7Cj65%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5beacbc2-ecb7-4050-8787-42bb56048b94@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=google.com&spx=/5Xl4m7DRrrzKHIR#%5B157ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bfd77c84-6951-43f7-acde-23d6376f72bc@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&sni=www.google.com#%5B157ms%7Cj66%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d21113d8-8589-4b3c-89f3-7851b8845320@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B157ms%7Cj60%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2b9c6fa8-4b29-454e-9668-4e976bfff86e@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=3d3c3fc7e9&sni=www.google.com&type=tcp#%5B158ms%7Cj66%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://24be359e-82a5-472e-9aa6-855e57c8a932@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&spx=%2FbpsKlT5Fzkn1y59&type=tcp&headerType=none#%5B158ms%7Cj67%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://de81aca2-e23e-4c8b-a0ae-7e37375fbcd3@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B158ms%7Cj61%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f74d98a4-9198-4f78-b921-47d4f4950953@de3.teleport.lat:443?encryption=none&flow=xtls-rprx-vision&type=raw&headerType=none&security=tls&sni=de3.teleport.lat#%5B158ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bc94ee0c-eead-4118-8160-1fc050c2ae48@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B158ms%7Cj19%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c7b56eef-8b7a-4971-a14e-d1bebc0f2f26@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=google.com&spx=/HAgpAfDEFC9cS26#%5B158ms%7Cj46%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ac6d7209-944c-48cc-8722-de3728be7d29@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=www.google.com#%5B159ms%7Cj63%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5a7fd686-d60f-440a-9495-273b6a6f8755@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=google.com#%5B159ms%7Cj32%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_safari%7C%40vlesstrojan%5D
+vless://7e7a0203-6c9b-4f77-ae2d-0c537e636107@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&sni=google.com#%5B159ms%7Cj18%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+trojan://7LBbob9IutFObLxLf9Svc1HaV@45.89.111.142:443?security=tls&sni=hl-freedom-1.undef.network#%5B159ms%7Cj52%7Crc1/1%7C6cat%7CTG%2BTrojan%7C%40vlesstrojan%5D
+vless://b766e2e5-5327-4b3a-a670-38ecf2662f99@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B159ms%7Cj70%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://92a532c6-543f-4b82-9c5c-90f1f9f6aa1d@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=firefox&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B160ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_ios%7C%40vlesstrojan%5D
+vless://0d57032d-f54e-49a4-8285-39840bbf329e@nl02-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=31&sni=hls-svod.itunes.apple.com&path=&host=&spx=/#%5B160ms%7Cj39%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_random%7C%40vlesstrojan%5D
+vless://14ab342f-3d0e-4b8f-b6a2-db7c9bc52702@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=97&sni=google.com&type=tcp#%5B160ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://fefe4869-d4fc-44cd-bf01-c36d60c565a8@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&sni=www.google.com&spx=/uJxoNlhxCTj87Ne#%5B160ms%7Cj70%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://387f5c7b-da4f-4fd8-a27f-8c5825ffacb2@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B161ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e42fa468-4eef-49ca-9d94-dcbf25c30863@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=3d3c3fc7e9&sni=www.google.com#%5B161ms%7Cj30%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://86892801-a7d4-47f1-846e-68c2706a55b6@144.31.100.120:443?security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=google.com#%5B161ms%7Cj14%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://0ea0ce13-85c2-4e97-8903-ef1232a2a2c6@194.87.216.7:8443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=qq&pbk=cZsRvk8pr8wfYiX1CNxdDjR38tow3HuL6IpBj8P82l8&sid=e18eda8458cab0d7&sni=github.com&path=&host=#%5B162ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://138b5e4d-ec70-406c-8271-2ce5f467f9b0@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B162ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://373a56eb-aaa9-4a92-b209-503dd916900f@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B162ms%7Cj69%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://fab0608b-f139-470c-bb02-e28336e1204a@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B162ms%7Cj55%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://a49e4ab5-2d44-417f-be6a-5757efa892b7@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=firefox&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B162ms%7Cj73%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bbc5126c-0f1c-4301-b2f4-1e9d0780d0c4@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=google.com#%5B163ms%7Cj51%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5dd6763c-d4f5-4e58-8ab9-6f8f828f7e83@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=47e4c3980f872e68&sni=google.com&type=tcp#%5B163ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://454dfe09-9562-4217-bd9c-2dcc188d9272@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&spx=%2F3VVoIRuc0WVqi9m&type=tcp&headerType=none#%5B163ms%7Cj68%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://b8509ba9-3359-44ae-a36b-3ba329a43c7c@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&spx=%2Fhci4yLrMfy2SATl&type=tcp&headerType=none#%5B163ms%7Cj26%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://61bb581c-0864-4fd0-9d20-68959004e35c@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B164ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7fbd497e-8fb2-4722-aa1f-c2c0873e7944@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B164ms%7Cj68%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d7c7fe0d-e532-44bd-a051-78f1194ed080@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=www.google.com#%5B165ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_safari%7C%40vlesstrojan%5D
+vless://0d57032d-f54e-49a4-8285-39840bbf329e@nl03-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=e499f276e7bd6420&sni=hls-svod.itunes.apple.com#%5B165ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4604876a-0652-4835-88bd-4421ea5c40da@94.228.215.7:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&path=%2F&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&security=reality&sid=e499f276e7bd6420&sni=hls-svod.itunes.apple.com&type=tcp#%5B165ms%7Cj20%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7812bc6b-959b-4e65-9093-5c1a318ee4bf@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B166ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7c3f08c8-7b3b-4028-91d8-378a18c2b62a@185.227.149.123:443?type=tcp&security=reality&sni=mycatcollection.com&fp=qq&flow=xtls-rprx-vision&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&sid=6ba85179e30d4fc2#%5B167ms%7Cj18%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6bfa4ffe-1666-4281-8e69-22fa1413d4fb@144.31.100.120:443?security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=google.com#%5B167ms%7Cj60%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c63e4b9c-44bc-4a94-9f6d-af14a2ab5791@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=google.com#%5B167ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8eb60c19-7d2d-4177-a5c0-45949a66a98b@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B167ms%7Cj58%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f6d382fa-3a53-4497-beb0-b285ac9bcf3a@nd.fasti.win:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=XBBVeMURFu7jmYJ9MZwjEWgfQlGTnRs0B5So5Fy7jWs&sid=992f3294e2336744&sni=nd.fasti.win#%5B167ms%7Cj31%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://02da1868-c2c9-48fa-ba1d-9ec3a7bbd9cf@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=google.com&spx=/CkfukOkLjATrKFP#%5B167ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d3501dfb-7eff-473b-995a-e47ace016c7e@79.127.240.85:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&path=%2F&pbk=ISa-DZOI4LRRb9DHMFYm5oFqBXDjYzz0hVWUfWvzLmo&security=reality&sid=dc8109baf0f607ea&sni=tradingview.com&type=tcp#%5B167ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://add14a5b-f648-4423-8a1f-8b8f54c0daef@195.154.200.13:17401?encryption=none&fp=chrome&pbk=IXcXrT_Y0ATTZlGOhPnSmKo-cuGr4yMKV9Rz4-nA3yU&security=reality&sid=8ef4455ba637425b&sni=itunes.apple.com&type=tcp#%5B168ms%7Cj79%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://3518eb7c-9fb0-4690-a908-9034d7d98e28@37.202.205.116:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&security=reality&sid=6ba85179e30d4fc2&sni=ign.dev&type=tcp#%5B168ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://210f3d47-bf99-4c05-94c3-dbc11c46893c@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B168ms%7Cj72%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+trojan://7LBbob9IutFObLxLf9Svc1HaV@45.89.111.142:443?type=raw&headerType=none&security=tls&sni=hl-freedom-1.undef.network#%5B168ms%7Cj68%7Crc1/1%7C6cat%7CTG%2BTrojan%7C%40vlesstrojan%5D
+vless://36d8b4dc-e38e-4ad9-89be-b5f657d97368@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B169ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5f5fe741-d316-4a28-ad00-3c8d77bd9dab@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B169ms%7Cj69%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://adc7b34f-ee40-4d76-ac0b-74cafe53e4c1@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=google.com#%5B169ms%7Cj56%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://24be359e-82a5-472e-9aa6-855e57c8a932@144.31.100.120:443?encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&security=reality&sid=1283729a0a9c1f&sni=www.google.com&type=tcp#%5B170ms%7Cj72%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bbc5126c-0f1c-4301-b2f4-1e9d0780d0c4@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=google.com#%5B170ms%7Cj38%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://62cc6c7f-c060-4275-a1a0-7c823d27797d@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B170ms%7Cj52%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://af74cf96-4d48-4154-b09f-65d0c8bd0a69@144.31.100.120:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=www.google.com#%5B171ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://cf329d44-c89d-4bce-a175-ad6d784b5303@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&sni=google.com#%5B171ms%7Cj60%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2ad15591-8356-4f9e-b1bf-03becd0385a8@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B171ms%7Cj52%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://2f55066d-2c2c-4c89-b32a-4cbcfa7cbf64@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B171ms%7Cj39%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://aa952152-f76b-4aee-a790-b182dbceab8a@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B171ms%7Cj62%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://18f72be7-0651-4037-928b-8a309d685796@de.pineappled.org:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=qFBIVGsvXTMeJcdJz6GiL7DG0XNhCg7rItza7t0qTgU&sid=9eb31eb7572c0882&sni=google.com#%5B172ms%7Cj79%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://bba678ff-7bb8-4ace-a92f-e407fed38615@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B172ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://0d57032d-f54e-49a4-8285-39840bbf329e@che01-plr-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=f79448a30d&sni=hls-svod.itunes.apple.com#%5B172ms%7Cj33%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@185.213.23.63:990#%5B172ms%7Cj9%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://0d57032d-f54e-49a4-8285-39840bbf329e@nl02-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=31&sni=hls-svod.itunes.apple.com#%5B173ms%7Cj79%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://92a532c6-543f-4b82-9c5c-90f1f9f6aa1d@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B173ms%7Cj70%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://a0f40d0f-73b0-4765-8124-5b0687c6361e@2.56.164.138:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&path=%2F&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&security=reality&sni=dropbox.com&type=tcp#%5B174ms%7Cj24%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5dd6763c-d4f5-4e58-8ab9-6f8f828f7e83@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B174ms%7Cj78%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5a7fd686-d60f-440a-9495-273b6a6f8755@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B174ms%7Cj67%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://8e3a3121-93e6-416e-8a8a-8e5ea918a81b@nl-2s.kopobkatopta.ru:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=CZMSH26YUGx6id9so_c3qLgfqTF-Dcbng7tHVFKC5i8&sid=0005737f0f&sni=nl-2s.kopobkatopta.ru#%5B175ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c7db6499-1935-4105-9922-071a5d9fbffb@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=352e3a94&type=tcp&headerType=none#%5B175ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d159a65d-51db-4b73-88bc-b665c10ee151@87.251.77.211:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=PycIxLERS3Kg4Kh7TQuiD1Kf9pNySxp5jMKEaIb_PjU&security=reality&sid=f740030928&sni=ya.ru&type=tcp#%5B175ms%7Cj52%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4bf1fd03-976d-4bf4-a49c-e0185979692f@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B175ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://0d57032d-f54e-49a4-8285-39840bbf329e@nl04-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=86e999a2cdc2&sni=hls-svod.itunes.apple.com&path=&host=&spx=/#%5B176ms%7Cj35%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://18f376e5-a4ce-4df3-b67b-77ed68533133@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B176ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://891300bc-11b2-4b24-8056-b329b098888b@borik-crash.org:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=8Bz3fNBZ5es7DVPlw8FRzufcncR6auyV_FJFFAKT-WE&sid=a1590469acbe31&sni=readthedocs.org#%5B176ms%7Cj39%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d840270a-05f6-41ed-8d69-2d71ba84f2d1@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&type=tcp&headerType=none#%5B176ms%7Cj59%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@185.237.185.89:990#%5B177ms%7Cj49%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://4e59a524-a9a9-4de1-be9f-86eec4460599@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&sni=www.google.com#%5B177ms%7Cj7%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://14c4daf7-b195-4d3e-ace8-c8ba2c45c0d8@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=54c71eb172a3&sni=google.com#%5B178ms%7Cj54%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ecc0327b-1b56-4521-ac2f-a2ef5fedf36c@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B179ms%7Cj78%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f4eee586-aa51-49d2-bb76-a44afee3dfcc@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&sni=www.google.com#%5B180ms%7Cj68%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4c0374b7-9414-4d0f-a4f1-b837061a1693@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=1283729a0a9c1f&type=tcp&headerType=none#%5B180ms%7Cj67%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e83c0c47-2160-4149-922d-be05c9154ab3@osn.takovpn.ru:443?type=tcp&security=reality&encryption=none&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&sni=google.com#%5B182ms%7Cj48%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9e8a182e-6ace-47fa-8dfe-fe37e4c4779c@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=3d3c3fc7e9&type=tcp&headerType=none#%5B184ms%7Cj74%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9bc247bd-6fef-468b-91e7-2400e8c0903f@nl2.harknmav.fun:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=uO6Gm9E_o0K-qqROroclkJ6ab0Cu2C0rOc6DZmyo_TE&sid=3efee45aff58842b&sni=www.io.ozone.ru&path=&host=#%5B184ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://fcb5d9c6-0bef-46ca-8690-6ddcd7a72b38@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B184ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://00dd814b-8e7c-401a-a06b-a3b4aaf78b16@de.vpnone.ru:8443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=ya.ru&fp=chrome&pbk=PycIxLERS3Kg4Kh7TQuiD1Kf9pNySxp5jMKEaIb_PjU&sid=4216490519225e&type=tcp&headerType=none#%5B185ms%7Cj16%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://7177f5c4-f26a-4ab5-820f-62cb6ba649f7@31.170.22.193:47997?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=cFora2YYa3aZdpWW8vMD9iX97qRKtyLzXv4pWgXoh20&security=reality&sid=ead461&sni=apple.com&type=tcp#%5B186ms%7Cj20%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://990e5a63-71e4-4dca-b110-ea8f9bf9f54b@93.114.98.171:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=9hLM71lkMgoCAzQJ2WBv5TXI_4Lucl5DctQveS85A0Q&sid=1c&sni=www.amd.com#%5B187ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://9bc247bd-6fef-468b-91e7-2400e8c0903f@144.31.100.106:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=uO6Gm9E_o0K-qqROroclkJ6ab0Cu2C0rOc6DZmyo_TE&security=reality&sid=3efee45aff58842b&sni=www.io.ozone.ru&type=tcp#%5B188ms%7Cj58%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://b3172ad4-d309-47b2-9e1a-12fbc16fd963@31.170.22.193:47997?type=tcp&security=reality&flow=xtls-rprx-vision&fp=qq&pbk=cFora2YYa3aZdpWW8vMD9iX97qRKtyLzXv4pWgXoh20&sid=ead461&sni=apple.com&spx=/#%5B188ms%7Cj21%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://eb071647-72a6-46be-8e89-ff3d228d52f6@pl.jojack.ru:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=hSTtlpXKAYVVu5ybX3hQfq8dfsUrO_HoFVgfGGoCHVw&sid=f189d91760bb6663&sni=pl.jojack.ru&path=&host=&spx=/#%5B188ms%7Cj42%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://d7cef7c3-350c-4b67-8fc6-462c9d3e5ef7@osn.takovpn.ru:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=47e4c3980f872e68&type=tcp&headerType=none#%5B189ms%7Cj71%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f4b8678c-f8a1-47cc-9515-571b7b2cd0d6@ger118.onlinebytony.org:29067?encryption=none&flow=xtls-rprx-vision&security=reality&sni=dropbox.com&fp=chrome&pbk=V8ErluHnGnuDfAKwUqi14WLkAs-aRJBYa6Anj2nwU3I&sid=0aa5332cb70bec77&type=tcp&headerType=none#%5B189ms%7Cj8%7Crc1/1%7C7cat%7CTG%2BVLESS%7CFP_random%7C%40vlesstrojan%5D
+vless://fd8972d9-cf5e-11f0-9970-45e1d80c4039@5.253.59.44:8443?security=reality&encryption=none&pbk=H2_xU4399VG3oT9j7e0Bg8qhescX-CTgpeV1HBoCUWY&headerType=none&fp=random&spx=%2F&type=tcp&flow=xtls-rprx-vision&sni=images.apple.com&sid=5d8ae11254#%5B190ms%7Cj68%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ef762689-e8eb-4c25-828d-cd561a023b8d@144.31.100.120:443?encryption=none&security=reality&sni=www.google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=9de7&type=tcp&headerType=none#%5B191ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://f6d382fa-3a53-4497-beb0-b285ac9bcf3a@pol.fasti.win:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=-YTGWg5DjsLDyaDfr1D83kiUK22LVcrK3yC53lqqigs&sid=feedbacc&sni=pl.fasti.win#%5B191ms%7Cj48%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://4604876a-0652-4835-88bd-4421ea5c40da@che01-plr-vlr01.tcp-reset-club.net:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=8453e5fd9af927&sni=hls-svod.itunes.apple.com&path=&host=&spx=/#%5B192ms%7Cj18%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://14ab342f-3d0e-4b8f-b6a2-db7c9bc52702@144.31.100.120:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B192ms%7Cj43%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@82.38.31.62:8080#%5B194ms%7Cj45%7Crc1/1%7C7cat%7CTG%2BSS%7C%40vlesstrojan%5D
+vless://84158b32-9999-4a38-a209-a6cd945c74be@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=97&type=tcp&headerType=none#%5B197ms%7Cj78%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://5757c746-9878-4cfd-874a-edd95485f26d@pol.fasti.win:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=-YTGWg5DjsLDyaDfr1D83kiUK22LVcrK3yC53lqqigs&sid=feedbacc&sni=pl.fasti.win#%5B199ms%7Cj73%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://906a31c1-3b7a-4a06-af04-5b37b1e16cc9@osn.takovpn.ru:443?encryption=none&security=reality&sni=google.com&fp=chrome&pbk=ihtXyG0UidSbXjvCJXUhABwZGCCB62DUsVBFn_qVd3g&sid=768c60&type=tcp&headerType=none#%5B199ms%7Cj31%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://e821a4aa-5892-4feb-bf76-a127cb3a2e56@144.31.19.3:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=luT4YDul5FI4hOdnV14CDyYTjdiYwRPRW3C149baYFM&security=reality&sid=b7816d8b&sni=apple.com&type=tcp#%5B199ms%7Cj30%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D\
+
+*Auto-generated by AI Proxy Checker Pro*
