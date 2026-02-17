@@ -83,48 +83,43 @@ MY_CHANNEL = "@vlesstrojan"
 # ==================== CONFIG ====================
 @dataclass
 class Config:
-    TCP_WORKERS: int = 40
-    TCP_TIMEOUT: int = 8
+    # ==================== WORKERS ====================
+    TCP_WORKERS: int = 60  # ↑ +50%
+    XRAY_WORKERS: int = 16  # ↑ +100% ГЛАВНОЕ!
+    # ==================== TIMEOUTS ====================
+    TCP_TIMEOUT: int = 6  # ↓ -2 сек
     TCP_RETRIES: int = 1
-
-    XRAY_WORKERS: int = 8
-    XRAY_STARTUP: float = 6.0  # Увеличено для DPI
-    XRAY_STARTUP_QUICK: float = 4.0
-    XRAY_TIMEOUT: int = 15  # Увеличено для DPI
-
-    QUICK_CHECK_TIMEOUT: int = 10  # Увеличено для медленных соединений
-
-    LATENCY_SAMPLES: int = 3
-    MIN_LATENCY_SUCCESS: int = 2
-
+    XRAY_TIMEOUT: int = 12  # ↓ -3 сек
+    XRAY_STARTUP: float = 4.5  # ↓ -1.5 сек
+    XRAY_STARTUP_QUICK: float = 3.5  # ↓ -0.5 сек
+    QUICK_CHECK_TIMEOUT: int = 7  # ↓ -3 сек
+    CATEGORY_TIMEOUT: int = 6  # ↓ -2 сек
+    # ==================== SAMPLES & TESTS ====================
+    LATENCY_SAMPLES: int = 2  # ↓ -1 проба
+    MIN_LATENCY_SUCCESS: int = 1  # ↓ -1
+    RECONNECT_TESTS: int = 1  # ↓ -1 тест
+    MIN_RECONNECT_SUCCESS: int = 1
+    # ==================== CATEGORIES ====================
+    CATEGORY_URLS: List[Tuple[str, str, str]] = field(default_factory=lambda: [
+        ("https://web.telegram.org", "telegram", "critical"),
+        ("https://www.youtube.com", "youtube", "critical"),
+        ("https://www.google.com", "google", "important"),
+        ("https://www.instagram.com", "instagram", "important"),
+        ("https://twitter.com", "twitter", "important"),
+        # Убраны: vk, tiktok для скорости
+    ])
+    CATEGORY_PARALLEL: int = 4
+    # RF-критерии
+    RF_MIN_CRITICAL_CATEGORIES: int = 1  # Минимум critical категорий
+    RF_MIN_TOTAL_CATEGORIES: int = 2  # Минимум категорий всего
+    RF_MAX_LATENCY: float = 1000  # Макс латентность для RF
+    
     # Нейтральные сайты для базовой проверки alive
     NEUTRAL_URLS: List[str] = field(default_factory=lambda: [
         'https://cp.cloudflare.com/generate_204',
         'http://www.gstatic.com/generate_204',
         'https://captive.apple.com/hotspot-detect.html',
     ])
-    
-    # Категории для детальной проверки (не влияют на alive)
-    CATEGORY_URLS: List[Tuple[str, str, str]] = field(default_factory=lambda: [
-        # (url, name, priority: "critical"|"important"|"optional")
-        ("https://web.telegram.org", "telegram", "critical"),
-        ("https://www.youtube.com", "youtube", "critical"),
-        ("https://www.google.com", "google", "important"),
-        ("https://www.instagram.com", "instagram", "important"),
-        ("https://twitter.com", "twitter", "important"),
-        ("https://vk.com", "vk", "optional"),
-        ("https://www.tiktok.com", "tiktok", "optional"),
-    ])
-    CATEGORY_TIMEOUT: int = 8  # Увеличено
-    CATEGORY_PARALLEL: int = 4
-
-    RECONNECT_TESTS: int = 2  # Увеличено для надежности
-    MIN_RECONNECT_SUCCESS: int = 1
-
-    # RF-критерии
-    RF_MIN_CRITICAL_CATEGORIES: int = 1  # Минимум critical категорий
-    RF_MIN_TOTAL_CATEGORIES: int = 2  # Минимум категорий всего
-    RF_MAX_LATENCY: float = 1000  # Макс латентность для RF
     
     # SNI configuration
     SNI_LIST: List[str] = field(default_factory=lambda: [
