@@ -46,33 +46,55 @@ MY_CHANNEL = "@vlesstrojan"
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 FINAL_FILE = os.path.join(RESULTS_FOLDER, f"verified_{timestamp}.txt")
 
-# ==================== RELAXED НАСТРОЙКИ ====================
+# ==================== АГРЕССИВНЫЕ НАСТРОЙКИ ====================
 class Config:
+    # Лимит времени (1.5 часа = 90 минут)
+    MAX_RUNTIME_MINUTES = 90
+    MAX_KEYS_TO_CHECK = 5000  # Максимум ключей для проверки
+    
     # Ступень 1: TCP
-    TCP_WORKERS = 30           # Было 100 → 30
-    TCP_TIMEOUT = 10           # Было 5 → 10
-    TCP_RETRIES = 2            # НОВОЕ: повторные попытки
+    TCP_WORKERS = 50
+    TCP_TIMEOUT = 3
+    TCP_RETRIES = 1
     
     # Ступень 2: XRAY
-    XRAY_WORKERS = 8           # Было 15 → 8
-    XRAY_STARTUP_TIMEOUT = 10  # Было 5 → 10
-    XRAY_REQUEST_TIMEOUT = 20  # Было 12 → 20
-    XRAY_RETRIES = 2           # НОВОЕ
+    XRAY_WORKERS = 10
+    XRAY_STARTUP_TIMEOUT = 5
+    XRAY_REQUEST_TIMEOUT = 10
+    XRAY_RETRIES = 1
     
-    # Дополнительные URL для проверки
+    # URL для проверки (только один самый быстрый)
     CHECK_URLS = [
-        'https://cp.cloudflare.com/generate_204',
         'http://www.gstatic.com/generate_204',
-        'http://connectivitycheck.android.com/generate_204',
     ]
     
     # Очистка памяти
-    GC_EVERY = 200
+    GC_EVERY = 150
     
     # Rate limiting
-    DELAY_BETWEEN_CHECKS = 0.1
+    DELAY_BETWEEN_CHECKS = 0.05
+    
+    # Минимум рабочих для сохранения
+    MIN_RESULTS_TO_SAVE = 10
 
 CONFIG = Config()
+
+# Глобальный таймер
+_start_time = time.time()
+
+def is_time_exceeded():
+    """Проверка превышения лимита времени"""
+    elapsed = (time.time() - _start_time) / 60
+    return elapsed >= CONFIG.MAX_RUNTIME_MINUTES
+
+def check_timeout_decorator(func):
+    """Декоратор для проверки таймаута"""
+    def wrapper(*args, **kwargs):
+        if is_time_exceeded():
+            return None
+        return func(*args, **kwargs)
+    return wrapper
+
 # ==========================================================
 
 # Потокобезопасные счётчики
@@ -133,6 +155,7 @@ atexit.register(cleanup_all_processes)
 def signal_handler(signum, frame):
     print("\n\n⚠️  Прерывание! Завершаю процессы xray...")
     cleanup_all_processes()
+    save_partial_results()
     sys.exit(1)
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -143,7 +166,24 @@ def log(msg):
 
 def cleanup_memory():
     gc.collect()
-    time.sleep(0.5)
+
+# Временное хранилище результатов
+_partial_results = []
+_results_lock = threading.Lock()
+
+def add_partial_result(result):
+    with _results_lock:
+        _partial_results.append(result)
+
+def get_partial_results():
+    with _results_lock:
+        return list(_partial_results)
+
+def save_partial_results():
+    """Сохранение частичных результатов при прерывании"""
+    results = get_partial_results()
+    if len(results) >= CONFIG.MIN_RESULTS_TO_SAVE:
+        save_results(results, suffix="_partial")
 
 # ------------------ Установка XRAY ------------------
 def setup_xray():
@@ -177,7 +217,7 @@ def setup_xray():
         
         url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
         
-        r = requests.get(url, stream=True, timeout=120)
+        r = requests.get(url, stream=True, timeout=60)
         zip_path = os.path.join(XRAY_FOLDER, "xray.zip")
         
         with open(zip_path, 'wb') as f:
@@ -253,21 +293,25 @@ def extract_host_port(original_key):
     except:
         return None, None
 
-# ------------------ СТУПЕНЬ 1: TCP ПРОВЕРКА (С RETRY) ------------------
+# ------------------ СТУПЕНЬ 1: TCP ПРОВЕРКА ------------------
+@check_timeout_decorator
 def stage1_port_check(key):
     """TCP проверка с повторными попытками"""
     checked = stage1_checked.increment()
     
     if checked % 100 == 0:
-        log(f"📊 Ступень 1: {checked}/{total_keys.value} | Живых: {stage1_live.value}")
+        elapsed = (time.time() - _start_time) / 60
+        log(f"📊 Ступень 1: {checked}/{total_keys.value} | Живых: {stage1_live.value} | Время: {elapsed:.1f}м")
     
     host, port = extract_host_port(key)
     if not host or not port:
         record_error("parse_error")
         return None
     
-    # Несколько попыток
     for attempt in range(CONFIG.TCP_RETRIES + 1):
+        if is_time_exceeded():
+            return None
+            
         try:
             with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
                 stage1_live.increment()
@@ -275,24 +319,16 @@ def stage1_port_check(key):
         except socket.timeout:
             record_error("tcp_timeout")
             if attempt < CONFIG.TCP_RETRIES:
-                time.sleep(0.5)
-        except ConnectionRefusedError:
-            record_error("tcp_refused")
-            break  # Retry бесполезен
-        except socket.gaierror:
-            record_error("dns_error")
-            break  # Retry бесполезен
-        except OSError as e:
-            record_error(f"tcp_os_error")
-            if attempt < CONFIG.TCP_RETRIES:
-                time.sleep(0.5)
-        except Exception as e:
-            record_error("tcp_other")
+                time.sleep(0.3)
+        except (ConnectionRefusedError, socket.gaierror):
             break
+        except:
+            if attempt < CONFIG.TCP_RETRIES:
+                time.sleep(0.3)
     
     return None
 
-# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ ------------------
+# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ (без изменений) ------------------
 def parse_vless(key):
     try:
         if not key.lower().startswith("vless://"):
@@ -351,7 +387,7 @@ def parse_vless(key):
         if params.get("security") == "tls":
             config["streamSettings"]["tlsSettings"] = {
                 "serverName": params.get("sni", host),
-                "allowInsecure": True,  # Более мягко
+                "allowInsecure": True,
                 "fingerprint": params.get("fp", "chrome")
             }
         elif params.get("security") == "reality":
@@ -371,16 +407,6 @@ def parse_vless(key):
             config["streamSettings"]["grpcSettings"] = {
                 "serviceName": params.get("serviceName", ""),
                 "multiMode": params.get("mode", "gun") == "multi"
-            }
-        elif params.get("type") == "tcp" and params.get("headerType") == "http":
-            config["streamSettings"]["tcpSettings"] = {
-                "header": {
-                    "type": "http",
-                    "request": {
-                        "path": [params.get("path", "/")],
-                        "headers": {"Host": [params.get("host", host)]}
-                    }
-                }
             }
         
         return config
@@ -433,10 +459,6 @@ def parse_vmess(key):
             config["streamSettings"]["wsSettings"] = {
                 "path": data.get("path", "/"),
                 "headers": {"Host": data.get("host", host)}
-            }
-        elif data.get("net") == "grpc":
-            config["streamSettings"]["grpcSettings"] = {
-                "serviceName": data.get("path", "")
             }
         
         return config
@@ -492,26 +514,20 @@ def parse_trojan(key):
             },
             "streamSettings": {
                 "network": params.get("type", "tcp"),
-                "security": params.get("security", "tls")
+                "security": "tls"
             }
         }
         
-        if config["streamSettings"]["security"] in ["tls", ""]:
-            config["streamSettings"]["security"] = "tls"
-            config["streamSettings"]["tlsSettings"] = {
-                "serverName": params.get("sni", host),
-                "allowInsecure": True,
-                "fingerprint": params.get("fp", "chrome")
-            }
+        config["streamSettings"]["tlsSettings"] = {
+            "serverName": params.get("sni", host),
+            "allowInsecure": True,
+            "fingerprint": params.get("fp", "chrome")
+        }
         
         if params.get("type") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
                 "headers": {"Host": params.get("host", host)}
-            }
-        elif params.get("type") == "grpc":
-            config["streamSettings"]["grpcSettings"] = {
-                "serviceName": params.get("serviceName", "")
             }
         
         return config
@@ -605,22 +621,18 @@ def parse_proxy_key(key):
     return None, None
 
 def create_xray_config(proxy_config, http_port=10808):
-    """Создаёт конфиг xray"""
     return {
         "log": {"loglevel": "none"},
         "inbounds": [{
             "port": http_port,
             "listen": "127.0.0.1",
             "protocol": "http",
-            "settings": {
-                "timeout": 30  # Увеличено
-            }
+            "settings": {"timeout": 20}
         }],
         "outbounds": [proxy_config]
     }
 
-def wait_for_port(port, timeout=10):
-    """Ждём пока xray откроет порт"""
+def wait_for_port(port, timeout=5):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -630,15 +642,16 @@ def wait_for_port(port, timeout=10):
             time.sleep(0.2)
     return False
 
-# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА (С RETRY) ------------------
+# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА ------------------
+@check_timeout_decorator
 def stage2_xray_check(key, xray_exe):
-    """Проверка через xray с несколькими попытками и URL"""
+    """Проверка через xray"""
     checked = stage2_checked.increment()
     
     if checked % 10 == 0:
-        log(f"🔥 Ступень 2: {checked}/{stage1_live.value} | Рабочих: {stage2_live.value}")
+        elapsed = (time.time() - _start_time) / 60
+        log(f"🔥 Ступень 2: {checked}/{stage1_live.value} | Рабочих: {stage2_live.value} | Время: {elapsed:.1f}м")
     
-    # Небольшая задержка для rate limiting
     time.sleep(CONFIG.DELAY_BETWEEN_CHECKS)
     
     proxy_config, protocol = parse_proxy_key(key)
@@ -665,7 +678,6 @@ def stage2_xray_check(key, xray_exe):
         )
         register_process(process)
         
-        # Больше времени на старт
         if not wait_for_port(http_port, timeout=CONFIG.XRAY_STARTUP_TIMEOUT):
             record_error("xray_startup_timeout")
             return None
@@ -679,8 +691,10 @@ def stage2_xray_check(key, xray_exe):
             'https': f'http://127.0.0.1:{http_port}'
         }
         
-        # Пробуем несколько URL с retry
         for attempt in range(CONFIG.XRAY_RETRIES + 1):
+            if is_time_exceeded():
+                return None
+                
             for url in CONFIG.CHECK_URLS:
                 try:
                     t1 = time.time()
@@ -696,18 +710,14 @@ def stage2_xray_check(key, xray_exe):
                         success = True
                         break
                         
-                except requests.exceptions.Timeout:
-                    record_error("http_timeout")
-                except requests.exceptions.ConnectionError:
-                    record_error("http_connection_error")
-                except Exception as e:
-                    record_error("http_other")
+                except:
+                    pass
             
             if success:
                 break
             
             if attempt < CONFIG.XRAY_RETRIES:
-                time.sleep(1)
+                time.sleep(0.5)
         
         if success:
             stage2_live.increment()
@@ -728,23 +738,23 @@ def stage2_xray_check(key, xray_exe):
                 host = proxy_config["settings"]["servers"][0]["address"]
                 port = proxy_config["settings"]["servers"][0]["port"]
             
-            return (latency, quality, protocol, host, port, key)
+            result = (latency, quality, protocol, host, port, key)
+            add_partial_result(result)  # Сохраняем частично
+            return result
         
         return None
         
-    except Exception as e:
-        record_error(f"xray_exception")
+    except:
         return None
     finally:
         if process:
             unregister_process(process)
             try:
                 process.terminate()
-                process.wait(timeout=3)
+                process.wait(timeout=2)
             except:
                 try:
                     process.kill()
-                    process.wait(timeout=2)
                 except:
                     pass
         
@@ -786,6 +796,11 @@ def download_keys():
             seen.add(key_normalized)
             unique_keys.append(key)
     
+    # Ограничиваем количество
+    if len(unique_keys) > CONFIG.MAX_KEYS_TO_CHECK:
+        log(f"⚠️  Ограничено до {CONFIG.MAX_KEYS_TO_CHECK} ключей (было {len(unique_keys)})")
+        unique_keys = unique_keys[:CONFIG.MAX_KEYS_TO_CHECK]
+    
     log(f"\n📦 Всего уникальных ключей: {len(unique_keys)}")
     
     return unique_keys
@@ -799,29 +814,41 @@ def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> s
     new_tag = f"{quality} {latency}ms {protocol} {MY_CHANNEL}"
     return f"{base}#{quote(new_tag, safe='')}"
 
-def print_error_stats():
-    """Выводим статистику ошибок"""
-    if not error_stats:
+def save_results(results, suffix=""):
+    """Сохранение результатов"""
+    if not results:
         return
     
-    print("\n📊 СТАТИСТИКА ОШИБОК:")
-    sorted_errors = sorted(error_stats.items(), key=lambda x: -x[1])
-    total_errors = sum(error_stats.values())
+    results.sort(key=lambda x: x[0])
     
-    for error_type, count in sorted_errors[:10]:
-        pct = count * 100 // total_errors if total_errors > 0 else 0
-        print(f"   {error_type}: {count} ({pct}%)")
+    filename = FINAL_FILE.replace(".txt", f"{suffix}.txt") if suffix else FINAL_FILE
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(f"# Канал: {MY_CHANNEL}\n")
+        f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"# Проверено: {len(results)} рабочих\n")
+        f.write(f"#\n\n")
+        
+        for latency, quality, protocol, host, port, key in results:
+            key_with_tag = add_comment_to_uri(key, latency, quality, protocol)
+            f.write(key_with_tag + "\n")
+    
+    log(f"💾 Сохранено: {filename}")
 
 def main():
+    global _start_time
+    _start_time = time.time()
+    
     print("\n" + "="*70)
-    print(" " * 10 + "🔥 XRAY PROXY CHECKER v4 (RELAXED) 🔥")
+    print(" " * 10 + "🔥 XRAY PROXY CHECKER v5 (FAST) 🔥")
     print(" " * 15 + f"Канал: {MY_CHANNEL}")
     print("="*70)
     
-    print(f"\n⚙️  НАСТРОЙКИ (RELAXED):")
-    print(f"   TCP: {CONFIG.TCP_WORKERS} workers, timeout={CONFIG.TCP_TIMEOUT}s, retries={CONFIG.TCP_RETRIES}")
-    print(f"   XRAY: {CONFIG.XRAY_WORKERS} workers, startup={CONFIG.XRAY_STARTUP_TIMEOUT}s, request={CONFIG.XRAY_REQUEST_TIMEOUT}s")
-    print(f"   Retries: {CONFIG.XRAY_RETRIES}")
+    print(f"\n⚙️  НАСТРОЙКИ:")
+    print(f"   Max time: {CONFIG.MAX_RUNTIME_MINUTES} минут")
+    print(f"   Max keys: {CONFIG.MAX_KEYS_TO_CHECK}")
+    print(f"   TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
+    print(f"   XRAY: {CONFIG.XRAY_WORKERS} workers, {CONFIG.XRAY_REQUEST_TIMEOUT}s timeout")
     print()
     
     xray_exe = setup_xray()
@@ -839,137 +866,82 @@ def main():
     
     # ========== СТУПЕНЬ 1 ==========
     print("\n" + "="*70)
-    log(f"⚡ СТУПЕНЬ 1: TCP проверка ({CONFIG.TCP_WORKERS} workers, timeout={CONFIG.TCP_TIMEOUT}s)")
+    log(f"⚡ СТУПЕНЬ 1: TCP проверка")
     print("="*70 + "\n")
     
-    start_time = time.time()
     stage1_results = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as executor:
         futures = {executor.submit(stage1_port_check, key): key for key in all_keys}
         
-        done = 0
         for future in concurrent.futures.as_completed(futures):
-            done += 1
-            
-            if done % CONFIG.GC_EVERY == 0:
-                cleanup_memory()
+            if is_time_exceeded():
+                log("\n⏰ Достигнут лимит времени! Прерывание...")
+                break
             
             try:
-                result = future.result(timeout=30)
+                result = future.result(timeout=10)
                 if result:
                     stage1_results.append(result)
             except:
                 pass
+            
+            if stage1_checked.value % CONFIG.GC_EVERY == 0:
+                cleanup_memory()
     
-    stage1_time = time.time() - start_time
-    
-    log(f"\n✅ Ступень 1 завершена: {stage1_live.value}/{total_keys.value} ({stage1_live.value*100//total_keys.value}%)")
-    log(f"   Время: {stage1_time:.1f}с")
-    
-    print_error_stats()
-    error_stats.clear()
+    log(f"\n✅ Ступень 1: {stage1_live.value}/{total_keys.value}")
     
     if not stage1_results:
-        log("\n❌ Все серверы недоступны на этапе TCP")
+        log("\n❌ Нет живых серверов")
         return 1
     
     # ========== СТУПЕНЬ 2 ==========
     print("\n" + "="*70)
-    log(f"⚡ СТУПЕНЬ 2: XRAY проверка ({CONFIG.XRAY_WORKERS} workers)")
+    log(f"⚡ СТУПЕНЬ 2: XRAY проверка")
     print("="*70 + "\n")
-    
-    stage2_start = time.time()
-    results = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.XRAY_WORKERS) as executor:
         futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
         
-        done = 0
         for future in concurrent.futures.as_completed(futures):
-            done += 1
-            
-            if done % 50 == 0:
-                cleanup_memory()
+            if is_time_exceeded():
+                log("\n⏰ Достигнут лимит времени! Завершение...")
+                break
             
             try:
-                result = future.result(timeout=60)
-                if result:
-                    results.append(result)
+                future.result(timeout=30)
             except:
                 pass
     
-    stage2_time = time.time() - stage2_start
-    total_time = time.time() - start_time
-    
-    print_error_stats()
-    
     # ========== РЕЗУЛЬТАТЫ ==========
+    results = get_partial_results()
+    
     if results:
-        results.sort(key=lambda x: x[0])
-        
-        with open(FINAL_FILE, 'w', encoding='utf-8') as f:
-            f.write(f"# Канал: {MY_CHANNEL}\n")
-            f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"# Проверено: {len(results)} рабочих из {total_keys.value}\n")
-            f.write(f"# Метод: TCP + XRAY (multi-URL, retry)\n")
-            f.write(f"#\n")
-            f.write(f"# Качество: ⚡fast (<150ms), ✓good (<300ms), ~normal (<500ms), slow (>500ms)\n")
-            f.write(f"#\n\n")
-            
-            for latency, quality, protocol, host, port, key in results:
-                key_with_tag = add_comment_to_uri(key, latency, quality, protocol)
-                f.write(key_with_tag + "\n")
+        save_results(results)
         
         print("\n" + "="*70)
-        print("🎉 РЕЗУЛЬТАТЫ ПРОВЕРКИ")
+        print("🎉 РЕЗУЛЬТАТЫ")
         print("="*70)
-        print(f"")
-        print(f"  📊 Ступень 1 (TCP):     {stage1_live.value:>4}/{total_keys.value} за {stage1_time:.1f}с")
-        print(f"  📊 Ступень 2 (XRAY):    {len(results):>4}/{stage1_live.value} за {stage2_time:.1f}с")
-        print(f"")
-        print(f"  ✅ ИТОГО РАБОЧИХ:       {len(results)}/{total_keys.value} ({len(results)*100//total_keys.value}%)")
-        print(f"  ⏱️  Общее время:         {total_time:.1f}с ({total_time/60:.1f} мин)")
-        print(f"")
-        print(f"  📁 Результат сохранён:")
-        print(f"     {FINAL_FILE}")
-        print("")
-        
-        fast = sum(1 for r in results if r[0] < 150)
-        good = sum(1 for r in results if 150 <= r[0] < 300)
-        normal = sum(1 for r in results if 300 <= r[0] < 500)
-        slow = sum(1 for r in results if r[0] >= 500)
-        
-        print(f"  📈 Распределение по качеству:")
-        print(f"     ⚡ fast (<150ms):   {fast}")
-        print(f"     ✓ good (<300ms):   {good}")
-        print(f"     ~ normal (<500ms): {normal}")
-        print(f"     ⊘ slow (>500ms):   {slow}")
+        print(f"  ✅ Рабочих: {len(results)}")
+        print(f"  📁 {FINAL_FILE}")
         print("="*70)
         
         return 0
     else:
-        print("\n" + "="*70)
-        log("❌ НЕТ РАБОЧИХ КЛЮЧЕЙ")
-        log(f"   Проверено: {total_keys.value}")
-        log(f"   Прошли TCP: {stage1_live.value}")
-        log(f"   Прошли XRAY: 0")
-        print("="*70)
+        log("\n❌ НЕТ РАБОЧИХ КЛЮЧЕЙ")
         return 1
 
 if __name__ == "__main__":
     try:
         exit_code = main()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Прервано пользователем")
-        cleanup_all_processes()
+        save_partial_results()
         exit_code = 1
     except Exception as e:
-        print(f"\n\n❌ Критическая ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        cleanup_all_processes()
+        print(f"\n❌ Ошибка: {e}")
+        save_partial_results()
         exit_code = 1
+    finally:
+        cleanup_all_processes()
     
     sys.exit(exit_code)
-
