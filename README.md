@@ -1,26 +1,42 @@
 # 🔥 AI Proxy Collection
 
-![Total](https://img.shields.io/badge/Total-2048-brightgreen)
-![Elite](https://img.shields.io/badge/Elite-18-gold)
-![Premium](https://img.shields.io/badge/Premium-482-blue)
-![Updated](https://img.shields.io/badge/Updated-2026-02-16-orange)
+![Total](https://img.shields.io/badge/Total-1834-brightgreen)
+![Elite](https://img.shields.io/badge/Elite-171-gold)
+![Premium](https://img.shields.io/badge/Premium-779-blue)
+![Updated](https://img.shields.io/badge/Updated-2026-02-17-orange)
 
 ## 📊 Statistics
 
 | Quality | Count | Link |
 |---------|-------|------|
-| **Elite** | 18 | [elite.txt](results/premium/elite.txt) |
-| **Premium** | 482 | [premium.txt](results/premium/premium.txt) |
-| **Total** | 2048 | [All Files](results/premium/) |
+| **Elite** | 171 | [elite.txt](results/premium/elite.txt) |
+| **Premium** | 779 | [premium.txt](results/premium/premium.txt) |
+| **Total** | 1834 | [All Files](results/premium/) |
 
 ## 📥 Quick Download
 
 \\# ELITE
 # @vlesstrojan
-# 2026-02-16 14:36
-# Keys: 2
+# 2026-02-16 20:25
+# Keys: 18
 
-ss://YWVzLTI1Ni1nY206akpIcTgwN2JRN1RNMHlPaA@94.72.127.58:80#%5B131ms%7Cj29%7Crc1/1%7C7cat%7CTG%2BSS%7C%5BANOMALY%5D%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206NW1DSDQ2MjRRZmxPMWNGUg@185.111.156.33:80#%5B155ms%7Cj40%7Crc1/1%7C7cat%7CTG%2BSS%7C%5BANOMALY%5D%7C%40vlesstrojan%5D\
+vless://8dc7722c-2767-4eea-a28b-2f8daacc07e3@45.82.251.115:8880?encryption=none&security=none&type=grpc#%5B84ms%7Cj57%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%5BANOMALY%5D%7C%40vlesstrojan%5D
+vless://8dc7722c-2767-4eea-a28b-2f8daacc07e3@45.82.251.208:8880?mode=gun&security=none&encryption=none&type=grpc#%5B86ms%7Cj58%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%5BANOMALY%5D%7C%40vlesstrojan%5D
+ss://YWVzLTI1Ni1nY206NW1DSDQ2MjRRZmxPMWNGUg@185.111.156.33:80#%5B92ms%7Cj53%7Crc1/1%7C7cat%7CTG%2BSS%7C%5BANOMALY%5D%7C%40vlesstrojan%5D
+vless://eb071647-72a6-46be-8e89-ff3d228d52f6@nyc.cdn.stun.su:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=qq&pbk=u4S6MmhgEOkPjlLVZ6twDLy-V9JIpLtyj8vDobOVM0w&sid=1c8eebcb20f6d0ce&sni=nyc.cdn.stun.su&spx=/#%5B101ms%7Cj34%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://99948da1-26e1-41b1-897a-6bb1392f67d4@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B127ms%7Cj22%7Crc1/1%7C5cat%7CVLESS%7C%40vlesstrojan%5D
+vless://a0e49fd8-d4bf-41b0-aab4-5b4a7cf9daf7@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B129ms%7Cj26%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c46c7e4e-5524-4094-943a-73f5e6d1f46d@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B131ms%7Cj16%7Crc1/1%7C4cat%7CTG%2BVLESS%7CFP_ios%7C%40vlesstrojan%5D
+vless://94197116-21b0-46b9-806a-26960bf7f228@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=chrome&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B132ms%7Cj28%7Crc1/1%7C5cat%7CVLESS%7C%40vlesstrojan%5D
+vless://b6e588b4-0d47-4482-a0fa-9b214af33109@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B133ms%7Cj20%7Crc1/1%7C4cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://14ea6d8a-779a-48dd-a283-78f7f2821499@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B136ms%7Cj25%7Crc1/1%7C4cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://995829fe-8e58-4d87-a698-4267b53a6db9@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B138ms%7Cj30%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://cac76fbf-c9b9-4434-9377-efaa55a88295@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B143ms%7Cj30%7Crc1/1%7C6cat%7CTG%2BVLESS%7CFP_ios%7C%40vlesstrojan%5D
+vless://3b584216-862c-40d8-90c9-f1cc3f3f7237@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B144ms%7Cj12%7Crc1/1%7C4cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://c14644ac-0b14-4116-822e-2c9e75e61240@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B147ms%7Cj5%7Crc1/1%7C4cat%7CVLESS%7CFP_random%7C%40vlesstrojan%5D
+vless://4f0c83c3-92c7-4ccf-bdde-95edb955d408@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B151ms%7Cj9%7Crc1/1%7C6cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://6bbfe779-68f8-498a-ae33-5bac4e85858e@5.34.179.145:3443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=google.com&fp=qq&pbk=CsUm6jBZvd5KzFN8Klm9KYF5kiUmztspcA9InbcnwXM&sid=e49b4e3d5f46d5c2&type=tcp&headerType=none#%5B156ms%7Cj20%7Crc1/1%7C4cat%7CVLESS%7C%40vlesstrojan%5D
+vless://2f8a9b9c-4976-4b66-be1f-2bcac17a3fef@37.1.214.101:24569?encryption=none&security=reality&sni=ign.com&fp=chrome&pbk=f9Da-SR8Y8cAbTicKYnaz4GSz6ohT0m_ZM-3klm9LFg&sid=6798721f6d&type=tcp&headerType=none#%5B173ms%7Cj48%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D
+vless://ccedb1b1-35f3-46d1-a85a-c699eef5f3e1@usa.scroogethebest.com:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=AYQOZFxjvHN-RIzKYEibwFiFsp03cdlWGdCmyFfuNVc&sid=4fa44664f6a566d3&sni=usa.scroogethebest.com#%5B181ms%7Cj22%7Crc1/1%7C7cat%7CTG%2BVLESS%7C%40vlesstrojan%5D\
 
 *Auto-generated by AI Proxy Checker Pro*

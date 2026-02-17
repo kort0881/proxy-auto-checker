@@ -1,25 +1,90 @@
 {
-  "timestamp": "2026-02-16T20:25:16.364138",
+  "timestamp": "2026-02-17T03:05:24.945867",
   "region": "ALL",
-  "total_checked": 4489,
-  "total_working": 1523,
+  "total_checked": 3711,
+  "total_working": 1309,
+  "quick_check": {
+    "passed": 1429,
+    "failed": 2054
+  },
   "by_quality": {
-    "elite": 18,
-    "premium": 482,
-    "good": 1023
+    "elite": 171,
+    "premium": 779,
+    "good": 359
   },
   "by_protocol": {
-    "VLESS": 1396,
-    "Trojan": 23,
-    "SS": 104
+    "VLESS": 1179,
+    "Trojan": 25,
+    "SS": 105
   },
   "mutations": {
-    "tried": 2649,
-    "successful": 95
+    "tried": 154,
+    "successful": 66
   },
   "ai": {
     "enabled": true,
-    "anomalies": 441
+    "anomalies": 128,
+    "retrains": 18,
+    "history_size": 15050,
+    "protocol_trends": {
+      "VLESS": {
+        "success_rate": 0.363,
+        "trend": 0.049,
+        "total": 16125
+      },
+      "Trojan": {
+        "success_rate": 0.718,
+        "trend": 0.17,
+        "total": 188
+      },
+      "": {
+        "success_rate": 0.0,
+        "trend": 0.0,
+        "total": 1027
+      },
+      "SS": {
+        "success_rate": 0.417,
+        "trend": -0.5,
+        "total": 1310
+      }
+    },
+    "category_effectiveness": {
+      "google": {
+        "success_rate": 0.77,
+        "weight": 1.5,
+        "avg_time_ms": 1124.7
+      },
+      "youtube": {
+        "success_rate": 0.771,
+        "weight": 1.5,
+        "avg_time_ms": 1315.0
+      },
+      "telegram": {
+        "success_rate": 0.989,
+        "weight": 0.5,
+        "avg_time_ms": 850.8
+      },
+      "vk": {
+        "success_rate": 0.975,
+        "weight": 0.5,
+        "avg_time_ms": 1286.5
+      },
+      "instagram": {
+        "success_rate": 0.905,
+        "weight": 0.5,
+        "avg_time_ms": 2315.3
+      },
+      "twitter": {
+        "success_rate": 0.941,
+        "weight": 0.5,
+        "avg_time_ms": 2224.1
+      },
+      "tiktok": {
+        "success_rate": 0.975,
+        "weight": 0.5,
+        "avg_time_ms": 3143.5
+      }
+    }
   },
-  "processing_time": 5304.605236053467
+  "processing_time": 974.8836481571198
 }
