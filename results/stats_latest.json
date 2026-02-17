@@ -1,90 +1,90 @@
 {
-  "timestamp": "2026-02-17T03:05:24.945867",
+  "timestamp": "2026-02-17T07:34:39.145387",
   "region": "ALL",
-  "total_checked": 3711,
-  "total_working": 1309,
+  "total_checked": 4599,
+  "total_working": 1394,
   "quick_check": {
-    "passed": 1429,
-    "failed": 2054
+    "passed": 1613,
+    "failed": 2748
   },
   "by_quality": {
-    "elite": 171,
-    "premium": 779,
-    "good": 359
+    "elite": 29,
+    "premium": 964,
+    "good": 401
   },
   "by_protocol": {
-    "VLESS": 1179,
-    "Trojan": 25,
-    "SS": 105
+    "VLESS": 1287,
+    "Trojan": 15,
+    "SS": 92
   },
   "mutations": {
-    "tried": 154,
-    "successful": 66
+    "tried": 189,
+    "successful": 37
   },
   "ai": {
     "enabled": true,
-    "anomalies": 128,
-    "retrains": 18,
-    "history_size": 15050,
+    "anomalies": 353,
+    "retrains": 22,
+    "history_size": 15072,
     "protocol_trends": {
       "VLESS": {
-        "success_rate": 0.363,
-        "trend": 0.049,
-        "total": 16125
+        "success_rate": 0.352,
+        "trend": 0.031,
+        "total": 17141
       },
       "Trojan": {
-        "success_rate": 0.718,
-        "trend": 0.17,
-        "total": 188
+        "success_rate": 0.686,
+        "trend": 0.465,
+        "total": 140
       },
       "": {
         "success_rate": 0.0,
         "trend": 0.0,
-        "total": 1027
+        "total": 923
       },
       "SS": {
-        "success_rate": 0.417,
-        "trend": -0.5,
-        "total": 1310
+        "success_rate": 0.399,
+        "trend": 0.006,
+        "total": 1268
       }
     },
     "category_effectiveness": {
-      "google": {
-        "success_rate": 0.77,
-        "weight": 1.5,
-        "avg_time_ms": 1124.7
-      },
-      "youtube": {
-        "success_rate": 0.771,
-        "weight": 1.5,
-        "avg_time_ms": 1315.0
-      },
       "telegram": {
-        "success_rate": 0.989,
+        "success_rate": 0.973,
         "weight": 0.5,
-        "avg_time_ms": 850.8
+        "avg_time_ms": 1123.4
+      },
+      "google": {
+        "success_rate": 0.792,
+        "weight": 1.5,
+        "avg_time_ms": 2923.8
       },
       "vk": {
-        "success_rate": 0.975,
+        "success_rate": 0.949,
         "weight": 0.5,
-        "avg_time_ms": 1286.5
+        "avg_time_ms": 3189.4
       },
       "instagram": {
-        "success_rate": 0.905,
-        "weight": 0.5,
-        "avg_time_ms": 2315.3
+        "success_rate": 0.881,
+        "weight": 1.5,
+        "avg_time_ms": 2029.6
+      },
+      "youtube": {
+        "success_rate": 0.805,
+        "weight": 1.5,
+        "avg_time_ms": 3089.0
       },
       "twitter": {
-        "success_rate": 0.941,
+        "success_rate": 0.911,
         "weight": 0.5,
-        "avg_time_ms": 2224.1
+        "avg_time_ms": 3208.8
       },
       "tiktok": {
-        "success_rate": 0.975,
+        "success_rate": 0.906,
         "weight": 0.5,
-        "avg_time_ms": 3143.5
+        "avg_time_ms": 2581.5
       }
     }
   },
-  "processing_time": 974.8836481571198
+  "processing_time": 1501.7870962619781
 }
