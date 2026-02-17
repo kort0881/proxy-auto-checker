@@ -1981,7 +1981,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
                 comment = (
                     f"RF{r.rf_score:.1f} {r.quality.value.upper()} "
                     f"{r.latency:.0f}ms {r.protocol} {r.transport_used} "
-                    f"crit{r.critical_passed} {tg} {MY_CHANNEL}"
+                    f"crit{r.critical_categories} {tg} {MY_CHANNEL}"
                 )
                 f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
         
