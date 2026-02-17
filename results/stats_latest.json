@@ -1,90 +1,212 @@
 {
-  "timestamp": "2026-02-17T07:34:39.145387",
+  "timestamp": "2026-02-17T17:30:31.428961",
   "region": "ALL",
-  "total_checked": 4599,
-  "total_working": 1394,
+  "route_tag": "default",
+  "total_checked": 4550,
+  "total_working": 123,
+  "rf_ready": 89,
+  "rf_ready_percent": 72.4,
   "quick_check": {
-    "passed": 1613,
-    "failed": 2748
+    "passed": 144,
+    "failed": 269
   },
   "by_quality": {
-    "elite": 29,
-    "premium": 964,
-    "good": 401
+    "elite": 52,
+    "premium": 47,
+    "good": 24
   },
   "by_protocol": {
-    "VLESS": 1287,
-    "Trojan": 15,
-    "SS": 92
+    "Trojan": 19,
+    "VLESS": 27,
+    "SS": 77
+  },
+  "by_transport": {
+    "tcp": 123
+  },
+  "by_sni": {
+    "www.google.com": 123
   },
   "mutations": {
-    "tried": 189,
-    "successful": 37
+    "tried": 2581,
+    "successful": 2
   },
   "ai": {
     "enabled": true,
-    "anomalies": 353,
+    "anomalies": 123,
     "retrains": 22,
-    "history_size": 15072,
+    "history_size": 15140,
     "protocol_trends": {
       "VLESS": {
-        "success_rate": 0.352,
-        "trend": 0.031,
-        "total": 17141
-      },
-      "Trojan": {
-        "success_rate": 0.686,
-        "trend": 0.465,
-        "total": 140
+        "success_rate": 0.261,
+        "rf_rate": 0.004,
+        "trend": -0.192,
+        "total": 17260
       },
       "": {
         "success_rate": 0.0,
+        "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 923
+        "total": 904
       },
       "SS": {
-        "success_rate": 0.399,
-        "trend": 0.006,
-        "total": 1268
+        "success_rate": 0.384,
+        "rf_rate": 0.138,
+        "trend": -0.558,
+        "total": 1261
+      },
+      "Trojan": {
+        "success_rate": 0.713,
+        "rf_rate": 0.061,
+        "trend": -0.106,
+        "total": 115
       }
     },
     "category_effectiveness": {
       "telegram": {
-        "success_rate": 0.973,
-        "weight": 0.5,
-        "avg_time_ms": 1123.4
+        "success_rate": 0.978,
+        "weight": 1.0,
+        "avg_time_ms": 2759.5,
+        "priority": "critical"
       },
       "google": {
-        "success_rate": 0.792,
-        "weight": 1.5,
-        "avg_time_ms": 2923.8
+        "success_rate": 0.809,
+        "weight": 2.25,
+        "avg_time_ms": 3083.8,
+        "priority": "important"
       },
       "vk": {
-        "success_rate": 0.949,
+        "success_rate": 0.96,
         "weight": 0.5,
-        "avg_time_ms": 3189.4
+        "avg_time_ms": 0.0,
+        "priority": "optional"
       },
       "instagram": {
-        "success_rate": 0.881,
-        "weight": 1.5,
-        "avg_time_ms": 2029.6
+        "success_rate": 0.897,
+        "weight": 2.25,
+        "avg_time_ms": 3581.6,
+        "priority": "important"
       },
       "youtube": {
-        "success_rate": 0.805,
-        "weight": 1.5,
-        "avg_time_ms": 3089.0
+        "success_rate": 0.809,
+        "weight": 3.0,
+        "avg_time_ms": 4854.3,
+        "priority": "critical"
       },
       "twitter": {
-        "success_rate": 0.911,
-        "weight": 0.5,
-        "avg_time_ms": 3208.8
+        "success_rate": 0.921,
+        "weight": 0.75,
+        "avg_time_ms": 3773.7,
+        "priority": "important"
       },
       "tiktok": {
-        "success_rate": 0.906,
+        "success_rate": 0.925,
         "weight": 0.5,
-        "avg_time_ms": 2581.5
+        "avg_time_ms": 0.0,
+        "priority": "optional"
+      }
+    },
+    "sni_performance": {
+      "www.google.com": {
+        "success_rate": 0.028,
+        "avg_latency": 775.0,
+        "total": 4360
+      }
+    },
+    "transport_performance": {
+      "tcp": {
+        "success_rate": 0.028,
+        "avg_latency": 775.0,
+        "total": 4360
       }
     }
   },
-  "processing_time": 1501.7870962619781
+  "dpi": {
+    "total_suspects": 80,
+    "high_confidence": [
+      "158.160.105.121:8443",
+      "51.250.0.147:443",
+      "5.34.179.145:3443",
+      "95.163.211.13:443",
+      "130.193.59.133:8443",
+      "89.208.230.173:443",
+      "email.swiftraci.org:443",
+      "176.123.164.110:8443",
+      "217.13.104.148:443",
+      "37.139.33.57:51101",
+      "90.156.217.130:8443",
+      "84.201.128.76:443",
+      "81.200.151.14:443",
+      "79.137.175.44:8443",
+      "79.137.175.59:443",
+      "158.160.105.121:51102",
+      "84.252.143.25:443",
+      "79.137.175.59:8443",
+      "217.16.27.217:443",
+      "51.250.12.100:443",
+      "87.239.106.153:8443",
+      "185.5.38.111:55988",
+      "185.130.115.55:443",
+      "185.39.206.226:443",
+      "217.12.219.53:443",
+      "144.31.178.168:8443",
+      "212.233.73.212:8443",
+      "79.137.175.56:51102",
+      "84.23.52.70:8443",
+      "51.250.86.102:443",
+      "51.250.4.119:443",
+      "89.169.128.105:8443",
+      "51.250.26.75:443",
+      "144.31.2.86:443",
+      "51.250.65.209:443",
+      "146.185.240.23:443",
+      "217.13.104.149:443",
+      "89.169.162.214:443",
+      "158.160.223.36:443",
+      "fn.takovpn.ru:443",
+      "81.200.151.79:443",
+      "178.154.253.80:8443",
+      "84.23.52.70:443",
+      "158.160.221.132:8443",
+      "37.139.33.15:443",
+      "158.160.105.121:443",
+      "146.185.240.23:8443",
+      "37.139.33.15:8443",
+      "95.163.210.173:443",
+      "37.139.33.57:443",
+      "217.12.219.51:443",
+      "144.31.100.120:443",
+      "37.139.33.57:8443",
+      "217.13.104.154:443",
+      "89.169.162.214:8443",
+      "87.239.110.251:443",
+      "176.109.109.58:51101",
+      "89.169.128.105:443",
+      "212.111.84.82:8443",
+      "130.193.59.133:443",
+      "37.139.34.145:8443",
+      "51.250.87.167:443",
+      "84.252.130.60:443",
+      "176.109.109.58:8443",
+      "51.250.83.255:443",
+      "87.239.110.251:8443",
+      "84.252.136.245:8443",
+      "79.137.175.44:443",
+      "osn.takovpn.ru:443",
+      "144.31.178.150:8443",
+      "84.252.143.25:8443",
+      "37.139.34.145:443",
+      "84.252.136.245:443",
+      "109.120.188.166:443",
+      "217.13.104.134:443",
+      "158.160.223.36:8443",
+      "178.154.253.80:443",
+      "87.239.106.153:443",
+      "130.193.59.133:51101",
+      "158.160.221.132:51102"
+    ],
+    "medium_confidence": [],
+    "false_positives": [],
+    "monitored_endpoints": 1292
+  },
+  "processing_time": 2213.1672790050507
 }
