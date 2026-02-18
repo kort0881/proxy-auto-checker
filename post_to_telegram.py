@@ -64,7 +64,7 @@ def load_subscriptions():
 
 
 def format_subscriptions_for_telegram(subscriptions_text):
-    """Форматировать подписки для Telegram (HTML-текст списка)."""
+    """Только заголовки, без самих ссылок."""
     if not subscriptions_text:
         return ""
 
@@ -77,10 +77,9 @@ def format_subscriptions_for_telegram(subscriptions_text):
             continue
 
         if line.startswith("==="):
+            # Оставляем только разделы, как: === RUSSIA ===, === EUROPE ===
             formatted_lines.append(f"\n<b>{line}</b>")
-        elif line.startswith("http"):
-            filename = line.split("/")[-1]
-            formatted_lines.append(f"📥 <a href='{line}'>{filename}</a>")
+        # Всё, что начинается с http, просто пропускаем
 
     return "\n".join(formatted_lines)
 
