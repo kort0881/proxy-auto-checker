@@ -1,8 +1,6 @@
 name: AI Proxy Checker
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       region:
@@ -89,6 +87,8 @@ jobs:
         cat > README.md <<EOF
         # 🔥 AI Proxy Collection
         
+        ![гифка.gif](гифка.gif)
+        
         ![Total](https://img.shields.io/badge/Total-${TOTAL}-brightgreen)
         ![Elite](https://img.shields.io/badge/Elite-${ELITE}-gold)
         ![Premium](https://img.shields.io/badge/Premium-${PREMIUM}-blue)
@@ -153,5 +153,3 @@ jobs:
           git pull --rebase origin main
           sleep $((i * 5))
         done
-
-
