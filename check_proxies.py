@@ -1,33 +1,39 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+PRIMARY PREFILTER v2 - Быстрая фильтрация мусора перед тяжёлым RF-чекером
+Задача: TCP alive? → Xray может прокинуть нейтральный URL? → сохранить для второго прогона
+"""
+
 import os
-import re
-import html
-import socket
-import ssl
-import time
 import sys
+import html
+import time
+import json
+import base64
+import socket
+import random
+import signal
+import atexit
+import threading
 import subprocess
 import requests
-import base64
-import json
-import random
-import threading
 import concurrent.futures
-import atexit
-import signal
-import gc
+
+from pathlib import Path
 from datetime import datetime
-from urllib.parse import quote, unquote
+from urllib.parse import unquote, quote
 from collections import defaultdict
+from queue import Queue, Empty
 
-# ------------------ Настройки ------------------
-WORK_DIR = os.path.dirname(os.path.abspath(__file__))
-XRAY_FOLDER = os.path.join(WORK_DIR, "xray")
-RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
+# ==================== CONFIG ====================
+WORK_DIR = Path(__file__).resolve().parent
+XRAY_FOLDER = WORK_DIR / "xray"
+RESULTS_FOLDER = WORK_DIR / "results"
 
-os.makedirs(XRAY_FOLDER, exist_ok=True)
-os.makedirs(RESULTS_FOLDER, exist_ok=True)
+XRAY_FOLDER.mkdir(parents=True, exist_ok=True)
+RESULTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# Источники ключей
 KEY_SOURCES = {
     "RU": [
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part1.txt",
@@ -43,105 +49,72 @@ KEY_SOURCES = {
 }
 
 MY_CHANNEL = "@vlesstrojan"
-timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-FINAL_FILE = os.path.join(RESULTS_FOLDER, f"verified_{timestamp}.txt")
 
-# ==================== АГРЕССИВНЫЕ НАСТРОЙКИ ====================
 class Config:
-    # Лимит времени (1.5 часа = 90 минут)
+    # Лимиты
     MAX_RUNTIME_MINUTES = 90
-    MAX_KEYS_TO_CHECK = 5000  # Максимум ключей для проверки
+    MAX_KEYS_TO_CHECK = 5000
     
-    # Ступень 1: TCP
-    TCP_WORKERS = 50
+    # Stage 1: TCP
+    TCP_WORKERS = 60
     TCP_TIMEOUT = 3
-    TCP_RETRIES = 1
+    TCP_RETRIES = 0  # для первички без retry = быстрее
     
-    # Ступень 2: XRAY
-    XRAY_WORKERS = 10
-    XRAY_STARTUP_TIMEOUT = 5
-    XRAY_REQUEST_TIMEOUT = 10
-    XRAY_RETRIES = 1
+    # Stage 2: XRAY
+    XRAY_WORKERS = 12
+    XRAY_STARTUP_TIMEOUT = 4.5
+    XRAY_REQUEST_TIMEOUT = 8
     
-    # URL для проверки (только один самый быстрый)
-    CHECK_URLS = [
-        'http://www.gstatic.com/generate_204',
+    # Проверка: только нейтральные URL (1 успех = ок)
+    NEUTRAL_URLS = [
+        "https://cp.cloudflare.com/generate_204",
+        "http://www.gstatic.com/generate_204",
     ]
     
-    # Очистка памяти
-    GC_EVERY = 150
+    # Защита от зависания на мёртвых host:port
+    SKIP_HOSTPORT_AFTER_FAILS = 3
+    MIN_KEYS_PER_HOSTPORT_BEFORE_SKIP = 3
     
-    # Rate limiting
-    DELAY_BETWEEN_CHECKS = 0.05
-    
-    # Минимум рабочих для сохранения
-    MIN_RESULTS_TO_SAVE = 10
+    # Минимум результатов для сохранения
+    MIN_RESULTS_TO_SAVE = 5
 
 CONFIG = Config()
 
-# Глобальный таймер
+# ==================== GLOBALS ====================
 _start_time = time.time()
+_stop_flag = threading.Event()
 
 def is_time_exceeded():
-    """Проверка превышения лимита времени"""
-    elapsed = (time.time() - _start_time) / 60
-    return elapsed >= CONFIG.MAX_RUNTIME_MINUTES
+    return (time.time() - _start_time) / 60.0 >= CONFIG.MAX_RUNTIME_MINUTES
 
-def check_timeout_decorator(func):
-    """Декоратор для проверки таймаута"""
-    def wrapper(*args, **kwargs):
-        if is_time_exceeded():
-            return None
-        return func(*args, **kwargs)
-    return wrapper
+def log(msg):
+    print(msg, flush=True)
 
-# ==========================================================
-
-# Потокобезопасные счётчики
-class ThreadSafeCounter:
-    def __init__(self):
-        self._value = 0
-        self._lock = threading.Lock()
-    
-    def increment(self):
-        with self._lock:
-            self._value += 1
-            return self._value
-    
-    @property
-    def value(self):
-        with self._lock:
-            return self._value
-
-stage1_checked = ThreadSafeCounter()
-stage1_live = ThreadSafeCounter()
-stage2_checked = ThreadSafeCounter()
-stage2_live = ThreadSafeCounter()
-total_keys = ThreadSafeCounter()
-
-# Статистика ошибок
+# Errors
 error_stats = defaultdict(int)
 error_lock = threading.Lock()
 
-def record_error(error_type):
+def record_error(name):
     with error_lock:
-        error_stats[error_type] += 1
+        error_stats[name] += 1
 
-# Управление процессами xray
+# Process cleanup
 _active_processes = []
-_processes_lock = threading.Lock()
+_proc_lock = threading.Lock()
 
-def register_process(proc):
-    with _processes_lock:
-        _active_processes.append(proc)
+def register_process(p):
+    with _proc_lock:
+        _active_processes.append(p)
 
-def unregister_process(proc):
-    with _processes_lock:
-        if proc in _active_processes:
-            _active_processes.remove(proc)
+def unregister_process(p):
+    with _proc_lock:
+        try:
+            _active_processes.remove(p)
+        except:
+            pass
 
 def cleanup_all_processes():
-    with _processes_lock:
+    with _proc_lock:
         for p in list(_active_processes):
             try:
                 p.kill()
@@ -153,49 +126,27 @@ def cleanup_all_processes():
 atexit.register(cleanup_all_processes)
 
 def signal_handler(signum, frame):
-    print("\n\n⚠️  Прерывание! Завершаю процессы xray...")
+    log("\n⚠️  Interrupted! Cleaning up...")
+    _stop_flag.set()
     cleanup_all_processes()
-    save_partial_results()
     sys.exit(1)
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-def log(msg):
-    print(msg)
-
-def cleanup_memory():
-    gc.collect()
-
-# Временное хранилище результатов
-_partial_results = []
-_results_lock = threading.Lock()
-
-def add_partial_result(result):
-    with _results_lock:
-        _partial_results.append(result)
-
-def get_partial_results():
-    with _results_lock:
-        return list(_partial_results)
-
-def save_partial_results():
-    """Сохранение частичных результатов при прерывании"""
-    results = get_partial_results()
-    if len(results) >= CONFIG.MIN_RESULTS_TO_SAVE:
-        save_results(results, suffix="_partial")
-
-# ------------------ Установка XRAY ------------------
+# ==================== XRAY SETUP ====================
 def setup_xray():
-    exe_path = os.path.join(XRAY_FOLDER, "xray.exe" if os.name == 'nt' else "xray")
+    exe_name = "xray.exe" if os.name == "nt" else "xray"
+    exe_path = XRAY_FOLDER / exe_name
     
-    if os.path.exists(exe_path):
+    if exe_path.exists():
+        log("[OK] Xray found")
         return exe_path
     
-    log("📥 Скачивание xray-core...")
-    
+    log("[DL] Downloading xray-core...")
     try:
-        import platform
+        import platform, zipfile
+        
         system = platform.system().lower()
         machine = platform.machine().lower()
         
@@ -203,169 +154,125 @@ def setup_xray():
             arch = "64" if "64" in machine else "32"
             filename = f"Xray-windows-{arch}.zip"
         elif system == "linux":
-            if "aarch64" in machine or "arm64" in machine:
-                arch = "arm64-v8a"
-            else:
-                arch = "64"
+            arch = "arm64-v8a" if ("aarch64" in machine or "arm64" in machine) else "64"
             filename = f"Xray-linux-{arch}.zip"
         elif system == "darwin":
             arch = "arm64-v8a" if "arm" in machine else "64"
             filename = f"Xray-macos-{arch}.zip"
         else:
-            log("❌ Неподдерживаемая ОС")
+            log("[ERR] Unsupported OS")
             return None
         
         url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
+        r = requests.get(url, stream=True, timeout=120)
+        r.raise_for_status()
         
-        r = requests.get(url, stream=True, timeout=60)
-        zip_path = os.path.join(XRAY_FOLDER, "xray.zip")
-        
-        with open(zip_path, 'wb') as f:
+        zip_path = XRAY_FOLDER / "xray.zip"
+        with open(zip_path, "wb") as f:
             for chunk in r.iter_content(8192):
                 if chunk:
                     f.write(chunk)
         
-        import zipfile
-        with zipfile.ZipFile(zip_path, 'r') as zf:
+        with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(XRAY_FOLDER)
         
-        os.remove(zip_path)
+        zip_path.unlink(missing_ok=True)
         
         if system != "windows":
-            os.chmod(exe_path, 0o755)
+            exe_path.chmod(0o755)
         
-        log("✅ Xray установлен")
+        log("[OK] Xray installed")
         return exe_path
         
     except Exception as e:
-        log(f"❌ Ошибка установки xray: {e}")
+        log(f"[ERR] Xray setup failed: {e}")
         return None
 
-# ------------------ ИЗВЛЕЧЕНИЕ HOST:PORT ------------------
-def extract_host_port(original_key):
-    """Универсальное извлечение host:port из любого ключа"""
+# ==================== UTILS ====================
+def normalize_key(line):
+    line = html.unescape(line.strip())
+    if not line:
+        return ""
+    if not line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
+        return ""
+    return line.split("#", 1)[0].strip()
+
+def extract_host_port(key):
     try:
-        key = original_key.strip()
+        k = key.strip()
         
-        if key.lower().startswith("vmess://"):
-            try:
-                encoded = key[8:]
-                padding = len(encoded) % 4
-                if padding:
-                    encoded += '=' * (4 - padding)
-                decoded = base64.b64decode(encoded).decode('utf-8')
-                data = json.loads(decoded)
-                return data.get("add"), int(data.get("port", 443))
-            except:
-                return None, None
+        # vmess base64
+        if k.lower().startswith("vmess://"):
+            encoded = k[8:]
+            pad = len(encoded) % 4
+            if pad:
+                encoded += "=" * (4 - pad)
+            data = json.loads(base64.b64decode(encoded).decode("utf-8", errors="ignore"))
+            return data.get("add"), int(data.get("port", 443))
         
-        for prefix in ["vless://", "trojan://", "ss://"]:
-            if key.lower().startswith(prefix):
-                key = key[len(prefix):]
+        # strip scheme
+        for prefix in ("vless://", "trojan://", "ss://"):
+            if k.lower().startswith(prefix):
+                k = k[len(prefix):]
                 break
         
-        if "@" not in key and not key.lower().startswith(("vless", "trojan")):
+        # some ss without @
+        if "@" not in k:
             try:
-                padding = len(key) % 4
-                if padding:
-                    key += '=' * (4 - padding)
-                decoded = base64.b64decode(key).decode('utf-8')
-                if "@" in decoded:
-                    key = decoded
+                pad = len(k) % 4
+                k2 = k + ("=" * (4 - pad)) if pad else k
+                dec = base64.b64decode(k2).decode("utf-8", errors="ignore")
+                if "@" in dec:
+                    k = dec
             except:
                 pass
         
-        if "@" in key:
-            key = key.split("@", 1)[1]
+        if "@" in k:
+            k = k.split("@", 1)[1]
+        if "?" in k:
+            k = k.split("?", 1)[0]
+        if "#" in k:
+            k = k.split("#", 1)[0]
         
-        if "?" in key:
-            key = key.split("?")[0]
-        
-        if "#" in key:
-            key = key.split("#")[0]
-        
-        if ":" in key:
-            host, port = key.rsplit(":", 1)
-            host = host.strip("[]")
-            return host, int(port)
+        if ":" in k:
+            host, port = k.rsplit(":", 1)
+            return host.strip("[]"), int(port)
         
         return None, None
     except:
         return None, None
 
-# ------------------ СТУПЕНЬ 1: TCP ПРОВЕРКА ------------------
-@check_timeout_decorator
-def stage1_port_check(key):
-    """TCP проверка с повторными попытками"""
-    checked = stage1_checked.increment()
-    
-    if checked % 100 == 0:
-        elapsed = (time.time() - _start_time) / 60
-        log(f"📊 Ступень 1: {checked}/{total_keys.value} | Живых: {stage1_live.value} | Время: {elapsed:.1f}м")
-    
-    host, port = extract_host_port(key)
-    if not host or not port:
-        record_error("parse_error")
-        return None
-    
-    for attempt in range(CONFIG.TCP_RETRIES + 1):
-        if is_time_exceeded():
-            return None
-            
-        try:
-            with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
-                stage1_live.increment()
-                return key
-        except socket.timeout:
-            record_error("tcp_timeout")
-            if attempt < CONFIG.TCP_RETRIES:
-                time.sleep(0.3)
-        except (ConnectionRefusedError, socket.gaierror):
-            break
-        except:
-            if attempt < CONFIG.TCP_RETRIES:
-                time.sleep(0.3)
-    
-    return None
-
-# ------------------ ПАРСЕРЫ ПРОТОКОЛОВ (без изменений) ------------------
-def parse_vless(key):
+# ==================== PARSERS ====================
+def parse_vless(uri):
     try:
-        if not key.lower().startswith("vless://"):
-            return None
+        if not uri.lower().startswith("vless://"):
+            return None, None
+        raw = uri[8:]
+        if "@" not in raw:
+            return None, None
         
-        key = key[8:]
-        if "@" not in key:
-            return None
-        
-        uuid_part, rest = key.split("@", 1)
-        
-        if "?" in rest:
-            server_part, params_part = rest.split("?", 1)
-        else:
-            server_part = rest
-            params_part = ""
-        
-        if "#" in params_part:
-            params_part = params_part.split("#")[0]
-        if "#" in server_part:
-            server_part = server_part.split("#")[0]
+        uuid_part, rest = raw.split("@", 1)
+        server_part, params_part = (rest.split("?", 1) + [""])[:2]
+        server_part = server_part.split("#", 1)[0]
+        params_part = params_part.split("#", 1)[0]
         
         if ":" not in server_part:
-            return None
-        
+            return None, None
         host, port = server_part.rsplit(":", 1)
         host = host.strip("[]")
         port = int(port)
         
         params = {}
         if params_part:
-            for param in params_part.split("&"):
-                if "=" in param:
-                    k, v = param.split("=", 1)
+            for p in params_part.split("&"):
+                if "=" in p:
+                    k, v = p.split("=", 1)
                     params[k] = unquote(v)
         
-        config = {
+        network = params.get("type", "tcp")
+        security = params.get("security", "none")
+        
+        out = {
             "protocol": "vless",
             "settings": {
                 "vnext": [{
@@ -379,58 +286,58 @@ def parse_vless(key):
                 }]
             },
             "streamSettings": {
-                "network": params.get("type", "tcp"),
-                "security": params.get("security", "none")
+                "network": network,
+                "security": security,
             }
         }
         
-        if params.get("security") == "tls":
-            config["streamSettings"]["tlsSettings"] = {
+        if security == "tls":
+            out["streamSettings"]["tlsSettings"] = {
                 "serverName": params.get("sni", host),
                 "allowInsecure": True,
-                "fingerprint": params.get("fp", "chrome")
+                "fingerprint": params.get("fp", "chrome"),
             }
-        elif params.get("security") == "reality":
-            config["streamSettings"]["realitySettings"] = {
+        elif security == "reality":
+            out["streamSettings"]["realitySettings"] = {
                 "serverName": params.get("sni", host),
                 "publicKey": params.get("pbk", ""),
                 "shortId": params.get("sid", ""),
-                "fingerprint": params.get("fp", "chrome")
+                "fingerprint": params.get("fp", "chrome"),
             }
         
-        if params.get("type") == "ws":
-            config["streamSettings"]["wsSettings"] = {
+        if network == "ws":
+            out["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
-                "headers": {"Host": params.get("host", host)}
+                "headers": {"Host": params.get("host", host)},
             }
-        elif params.get("type") == "grpc":
-            config["streamSettings"]["grpcSettings"] = {
+        elif network == "grpc":
+            out["streamSettings"]["grpcSettings"] = {
                 "serviceName": params.get("serviceName", ""),
-                "multiMode": params.get("mode", "gun") == "multi"
+                "multiMode": (params.get("mode", "gun") == "multi"),
+            }
+        elif network == "xhttp":
+            out["streamSettings"]["xhttpSettings"] = {
+                "path": params.get("path", "/"),
             }
         
-        return config
-        
+        return out, ("VLESS", host, port)
     except:
-        return None
+        return None, None
 
-def parse_vmess(key):
+def parse_vmess(uri):
     try:
-        if not key.lower().startswith("vmess://"):
-            return None
-        
-        encoded = key[8:]
-        padding = len(encoded) % 4
-        if padding:
-            encoded += '=' * (4 - padding)
-        
-        decoded = base64.b64decode(encoded).decode('utf-8')
-        data = json.loads(decoded)
+        if not uri.lower().startswith("vmess://"):
+            return None, None
+        encoded = uri[8:]
+        pad = len(encoded) % 4
+        if pad:
+            encoded += "=" * (4 - pad)
+        data = json.loads(base64.b64decode(encoded).decode("utf-8", errors="ignore"))
         
         host = data.get("add", "")
         port = int(data.get("port", 443))
         
-        config = {
+        out = {
             "protocol": "vmess",
             "settings": {
                 "vnext": [{
@@ -439,413 +346,378 @@ def parse_vmess(key):
                     "users": [{
                         "id": data.get("id"),
                         "alterId": int(data.get("aid", 0)),
-                        "security": data.get("scy", "auto")
+                        "security": data.get("scy", "auto"),
                     }]
                 }]
             },
             "streamSettings": {
                 "network": data.get("net", "tcp"),
-                "security": data.get("tls", "none") if data.get("tls") else "none"
+                "security": "tls" if data.get("tls") else "none",
             }
         }
         
         if data.get("tls") == "tls":
-            config["streamSettings"]["tlsSettings"] = {
+            out["streamSettings"]["tlsSettings"] = {
                 "serverName": data.get("sni", host),
-                "allowInsecure": True
+                "allowInsecure": True,
             }
-        
         if data.get("net") == "ws":
-            config["streamSettings"]["wsSettings"] = {
+            out["streamSettings"]["wsSettings"] = {
                 "path": data.get("path", "/"),
-                "headers": {"Host": data.get("host", host)}
+                "headers": {"Host": data.get("host", host)},
             }
         
-        return config
-        
+        return out, ("VMess", host, port)
     except:
-        return None
+        return None, None
 
-def parse_trojan(key):
+def parse_trojan(uri):
     try:
-        if not key.lower().startswith("trojan://"):
-            return None
+        if not uri.lower().startswith("trojan://"):
+            return None, None
+        raw = uri[9:]
+        if "@" not in raw:
+            return None, None
         
-        key = key[9:]
-        if "@" not in key:
-            return None
-        
-        password, rest = key.split("@", 1)
+        password, rest = raw.split("@", 1)
         password = unquote(password)
         
-        if "?" in rest:
-            server_part, params_part = rest.split("?", 1)
-        else:
-            server_part = rest
-            params_part = ""
-        
-        if "#" in params_part:
-            params_part = params_part.split("#")[0]
-        if "#" in server_part:
-            server_part = server_part.split("#")[0]
+        server_part, params_part = (rest.split("?", 1) + [""])[:2]
+        server_part = server_part.split("#", 1)[0]
+        params_part = params_part.split("#", 1)[0]
         
         if ":" not in server_part:
-            return None
-        
+            return None, None
         host, port = server_part.rsplit(":", 1)
         host = host.strip("[]")
         port = int(port)
         
         params = {}
         if params_part:
-            for param in params_part.split("&"):
-                if "=" in param:
-                    k, v = param.split("=", 1)
+            for p in params_part.split("&"):
+                if "=" in p:
+                    k, v = p.split("=", 1)
                     params[k] = unquote(v)
         
-        config = {
+        out = {
             "protocol": "trojan",
             "settings": {
                 "servers": [{
                     "address": host,
                     "port": port,
-                    "password": password
+                    "password": password,
                 }]
             },
             "streamSettings": {
                 "network": params.get("type", "tcp"),
-                "security": "tls"
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": params.get("sni", host),
+                    "allowInsecure": True,
+                    "fingerprint": params.get("fp", "chrome"),
+                }
             }
-        }
-        
-        config["streamSettings"]["tlsSettings"] = {
-            "serverName": params.get("sni", host),
-            "allowInsecure": True,
-            "fingerprint": params.get("fp", "chrome")
         }
         
         if params.get("type") == "ws":
-            config["streamSettings"]["wsSettings"] = {
+            out["streamSettings"]["wsSettings"] = {
                 "path": params.get("path", "/"),
-                "headers": {"Host": params.get("host", host)}
+                "headers": {"Host": params.get("host", host)},
             }
         
-        return config
-        
+        return out, ("Trojan", host, port)
     except:
-        return None
+        return None, None
 
-def parse_shadowsocks(key):
+def parse_ss(uri):
     try:
-        if not key.lower().startswith("ss://"):
-            return None
+        if not uri.lower().startswith("ss://"):
+            return None, None
+        key = uri[5:].split("#", 1)[0]
         
-        key = key[5:]
-        
-        if "#" in key:
-            key = key.split("#")[0]
+        method = password = host = None
+        port = None
         
         if "@" in key:
             encoded, server = key.split("@", 1)
-            
-            if ":" not in server:
-                return None
-            
             host, port = server.rsplit(":", 1)
             host = host.strip("[]")
             port = int(port)
             
-            padding = len(encoded) % 4
-            if padding:
-                encoded += '=' * (4 - padding)
-            
+            pad = len(encoded) % 4
+            if pad:
+                encoded += "=" * (4 - pad)
             try:
-                decoded = base64.b64decode(encoded).decode('utf-8')
+                decoded = base64.b64decode(encoded).decode("utf-8", errors="ignore")
                 if ":" in decoded:
                     method, password = decoded.split(":", 1)
                 else:
-                    return None
+                    return None, None
             except:
                 if ":" in encoded:
                     method, password = encoded.split(":", 1)
                 else:
-                    return None
+                    return None, None
         else:
-            padding = len(key) % 4
-            if padding:
-                key += '=' * (4 - padding)
-            
-            decoded = base64.b64decode(key).decode('utf-8')
-            
-            if "@" not in decoded or ":" not in decoded:
-                return None
-            
+            pad = len(key) % 4
+            if pad:
+                key += "=" * (4 - pad)
+            decoded = base64.b64decode(key).decode("utf-8", errors="ignore")
             creds, server = decoded.rsplit("@", 1)
             method, password = creds.split(":", 1)
             host, port = server.rsplit(":", 1)
             host = host.strip("[]")
             port = int(port)
         
-        config = {
+        out = {
             "protocol": "shadowsocks",
             "settings": {
                 "servers": [{
                     "address": host,
                     "port": port,
                     "method": method,
-                    "password": password
+                    "password": password,
                 }]
             },
-            "streamSettings": {
-                "network": "tcp"
-            }
+            "streamSettings": {"network": "tcp"},
         }
         
-        return config
-        
+        return out, ("SS", host, port)
     except:
-        return None
+        return None, None
 
-def parse_proxy_key(key):
-    key_lower = key.lower()
-    
-    if key_lower.startswith("vless://"):
-        return parse_vless(key), "VLESS"
-    elif key_lower.startswith("vmess://"):
-        return parse_vmess(key), "VMess"
-    elif key_lower.startswith("trojan://"):
-        return parse_trojan(key), "Trojan"
-    elif key_lower.startswith("ss://"):
-        return parse_shadowsocks(key), "SS"
-    
+def parse_proxy_key(uri):
+    ul = uri.lower()
+    if ul.startswith("vless://"):
+        return parse_vless(uri)
+    if ul.startswith("vmess://"):
+        return parse_vmess(uri)
+    if ul.startswith("trojan://"):
+        return parse_trojan(uri)
+    if ul.startswith("ss://"):
+        return parse_ss(uri)
     return None, None
 
-def create_xray_config(proxy_config, http_port=10808):
+# ==================== XRAY HELPERS ====================
+def create_xray_config(outbound, http_port):
     return {
         "log": {"loglevel": "none"},
         "inbounds": [{
             "port": http_port,
             "listen": "127.0.0.1",
             "protocol": "http",
-            "settings": {"timeout": 20}
+            "settings": {"timeout": 15}
         }],
-        "outbounds": [proxy_config]
+        "outbounds": [outbound],
     }
 
-def wait_for_port(port, timeout=5):
+def wait_for_port(port, timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            with socket.create_connection(("127.0.0.1", port), timeout=0.25):
                 return True
         except:
-            time.sleep(0.2)
+            time.sleep(0.05)
     return False
 
-# ------------------ СТУПЕНЬ 2: XRAY ПРОВЕРКА ------------------
-@check_timeout_decorator
-def stage2_xray_check(key, xray_exe):
-    """Проверка через xray"""
-    checked = stage2_checked.increment()
-    
-    if checked % 10 == 0:
-        elapsed = (time.time() - _start_time) / 60
-        log(f"🔥 Ступень 2: {checked}/{stage1_live.value} | Рабочих: {stage2_live.value} | Время: {elapsed:.1f}м")
-    
-    time.sleep(CONFIG.DELAY_BETWEEN_CHECKS)
-    
-    proxy_config, protocol = parse_proxy_key(key)
-    if not proxy_config:
-        record_error("xray_parse_error")
-        return None
-    
-    http_port = random.randint(20000, 50000)
-    xray_config = create_xray_config(proxy_config, http_port)
-    config_file = os.path.join(XRAY_FOLDER, f"config_{http_port}.json")
-    
-    process = None
-    success = False
-    latency = 0
-    
-    try:
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(xray_config, f, indent=2)
-        
-        process = subprocess.Popen(
-            [xray_exe, "run", "-c", config_file],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        register_process(process)
-        
-        if not wait_for_port(http_port, timeout=CONFIG.XRAY_STARTUP_TIMEOUT):
-            record_error("xray_startup_timeout")
-            return None
-        
-        if process.poll() is not None:
-            record_error("xray_crash")
-            return None
-        
-        proxies = {
-            'http': f'http://127.0.0.1:{http_port}',
-            'https': f'http://127.0.0.1:{http_port}'
-        }
-        
-        for attempt in range(CONFIG.XRAY_RETRIES + 1):
-            if is_time_exceeded():
-                return None
-                
-            for url in CONFIG.CHECK_URLS:
-                try:
-                    t1 = time.time()
-                    resp = requests.get(
-                        url,
-                        proxies=proxies,
-                        timeout=CONFIG.XRAY_REQUEST_TIMEOUT,
-                        allow_redirects=False
-                    )
-                    
-                    if resp.status_code in [200, 204]:
-                        latency = int((time.time() - t1) * 1000)
-                        success = True
-                        break
-                        
-                except:
-                    pass
-            
-            if success:
-                break
-            
-            if attempt < CONFIG.XRAY_RETRIES:
-                time.sleep(0.5)
-        
-        if success:
-            stage2_live.increment()
-            
-            if latency < 150:
-                quality = "⚡fast"
-            elif latency < 300:
-                quality = "✓good"
-            elif latency < 500:
-                quality = "~normal"
-            else:
-                quality = "slow"
-            
-            if protocol in ["VLESS", "VMess"]:
-                host = proxy_config["settings"]["vnext"][0]["address"]
-                port = proxy_config["settings"]["vnext"][0]["port"]
-            else:
-                host = proxy_config["settings"]["servers"][0]["address"]
-                port = proxy_config["settings"]["servers"][0]["port"]
-            
-            result = (latency, quality, protocol, host, port, key)
-            add_partial_result(result)  # Сохраняем частично
-            return result
-        
-        return None
-        
-    except:
-        return None
-    finally:
-        if process:
-            unregister_process(process)
-            try:
-                process.terminate()
-                process.wait(timeout=2)
-            except:
-                try:
-                    process.kill()
-                except:
-                    pass
-        
-        try:
-            if os.path.exists(config_file):
-                os.remove(config_file)
-        except:
-            pass
+_port_lock = threading.Lock()
+_next_port = 20000
 
+def alloc_port():
+    global _next_port
+    with _port_lock:
+        p = _next_port
+        _next_port += 1
+        if _next_port > 50000:
+            _next_port = 20000
+        return p
+
+# ==================== DOWNLOAD ====================
 def download_keys():
     all_keys = []
+    seen = set()
     
-    log("📥 Загрузка ключей из источников...")
-    
+    log("[DL] Downloading keys...")
     for region, urls in KEY_SOURCES.items():
-        log(f"\n🌍 {region}:")
+        log(f"  🌍 {region}:")
         for url in urls:
             try:
                 r = requests.get(url, timeout=30)
                 r.raise_for_status()
-                lines = r.text.strip().split('\n')
-                
                 count = 0
-                for line in lines:
-                    line = html.unescape(line.strip())
-                    if line and line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
-                        all_keys.append(line)
-                        count += 1
-                
-                log(f"  ✅ {url.split('/')[-1]}: {count} ключей")
+                for line in r.text.splitlines():
+                    n = normalize_key(line)
+                    if not n:
+                        continue
+                    if n in seen:
+                        continue
+                    seen.add(n)
+                    all_keys.append(line.strip())
+                    count += 1
+                log(f"    ✅ {url.split('/')[-1]}: {count}")
             except Exception as e:
-                log(f"  ❌ {url.split('/')[-1]}: {e}")
+                log(f"    ❌ {url.split('/')[-1]}: {e}")
     
-    seen = set()
-    unique_keys = []
-    for key in all_keys:
-        key_normalized = key.split("#")[0] if "#" in key else key
-        if key_normalized not in seen:
-            seen.add(key_normalized)
-            unique_keys.append(key)
+    if len(all_keys) > CONFIG.MAX_KEYS_TO_CHECK:
+        log(f"⚠️  Limited to {CONFIG.MAX_KEYS_TO_CHECK} keys (was {len(all_keys)})")
+        all_keys = all_keys[:CONFIG.MAX_KEYS_TO_CHECK]
     
-    # Ограничиваем количество
-    if len(unique_keys) > CONFIG.MAX_KEYS_TO_CHECK:
-        log(f"⚠️  Ограничено до {CONFIG.MAX_KEYS_TO_CHECK} ключей (было {len(unique_keys)})")
-        unique_keys = unique_keys[:CONFIG.MAX_KEYS_TO_CHECK]
-    
-    log(f"\n📦 Всего уникальных ключей: {len(unique_keys)}")
-    
-    return unique_keys
+    log(f"\n📦 Unique keys: {len(all_keys)}")
+    return all_keys
 
-def add_comment_to_uri(uri: str, latency: int, quality: str, protocol: str) -> str:
-    if "#" in uri:
-        base = uri.split("#")[0]
-    else:
-        base = uri
+# ==================== STAGE 1: TCP ====================
+def tcp_check_one(key):
+    host, port = extract_host_port(key)
+    if not host or not port:
+        record_error("parse_error")
+        return None
     
-    new_tag = f"{quality} {latency}ms {protocol} {MY_CHANNEL}"
-    return f"{base}#{quote(new_tag, safe='')}"
+    for _ in range(CONFIG.TCP_RETRIES + 1):
+        if _stop_flag.is_set() or is_time_exceeded():
+            return None
+        try:
+            with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
+                return key
+        except socket.timeout:
+            record_error("tcp_timeout")
+        except (ConnectionRefusedError, socket.gaierror):
+            record_error("tcp_refused")
+            return None
+        except:
+            record_error("tcp_other")
+            return None
+    
+    return None
 
-def save_results(results, suffix=""):
-    """Сохранение результатов"""
-    if not results:
+# ==================== STAGE 2: XRAY ====================
+def xray_check_one(key, xray_exe):
+    outbound, meta = parse_proxy_key(key)
+    if not outbound or not meta:
+        record_error("xray_parse")
+        return None
+    
+    proto, host, port = meta
+    http_port = alloc_port()
+    cfg = create_xray_config(outbound, http_port)
+    cfg_path = XRAY_FOLDER / f"cfg_{http_port}.json"
+    
+    p = None
+    try:
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False)
+        
+        p = subprocess.Popen(
+            [str(xray_exe), "run", "-c", str(cfg_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        register_process(p)
+        
+        if not wait_for_port(http_port, CONFIG.XRAY_STARTUP_TIMEOUT):
+            record_error("xray_startup")
+            return None
+        
+        if p.poll() is not None:
+            record_error("xray_crash")
+            return None
+        
+        proxies = {
+            "http": f"http://127.0.0.1:{http_port}",
+            "https": f"http://127.0.0.1:{http_port}",
+        }
+        
+        # Try neutral URLs (1 success = ok)
+        for url in CONFIG.NEUTRAL_URLS:
+            try:
+                t1 = time.time()
+                resp = requests.get(
+                    url,
+                    proxies=proxies,
+                    timeout=CONFIG.XRAY_REQUEST_TIMEOUT,
+                    allow_redirects=False,
+                )
+                if resp.status_code in (200, 204):
+                    latency = int((time.time() - t1) * 1000)
+                    return {
+                        "key": key,
+                        "latency": latency,
+                        "protocol": proto,
+                        "host": host,
+                        "port": port,
+                    }
+            except:
+                pass
+        
+        record_error("xray_no_204")
+        return None
+        
+    finally:
+        if p:
+            unregister_process(p)
+            try:
+                p.terminate()
+                p.wait(timeout=1.5)
+            except:
+                try:
+                    p.kill()
+                except:
+                    pass
+        try:
+            cfg_path.unlink(missing_ok=True)
+        except:
+            pass
+
+# ==================== OUTPUT ====================
+def add_comment_to_uri(uri, latency, protocol):
+    base = uri.split("#", 1)[0]
+    tag = f"prefilter {latency}ms {protocol} {MY_CHANNEL}"
+    return f"{base}#{quote(tag, safe='')}"
+
+def save_results(results, ts):
+    if not results or len(results) < CONFIG.MIN_RESULTS_TO_SAVE:
+        log(f"\n⚠️  Too few results ({len(results)}), not saving")
         return
     
-    results.sort(key=lambda x: x[0])
+    results.sort(key=lambda x: x["latency"])
     
-    filename = FINAL_FILE.replace(".txt", f"{suffix}.txt") if suffix else FINAL_FILE
+    out_file = RESULTS_FOLDER / f"verified_{ts}.txt"
+    meta_file = RESULTS_FOLDER / f"verified_meta_{ts}.jsonl"
     
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(f"# Канал: {MY_CHANNEL}\n")
-        f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"# Проверено: {len(results)} рабочих\n")
-        f.write(f"#\n\n")
-        
-        for latency, quality, protocol, host, port, key in results:
-            key_with_tag = add_comment_to_uri(key, latency, quality, protocol)
-            f.write(key_with_tag + "\n")
+    with open(out_file, "w", encoding="utf-8") as f:
+        f.write(f"# {MY_CHANNEL}\n")
+        f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"# Total: {len(results)}\n#\n\n")
+        for r in results:
+            f.write(add_comment_to_uri(r["key"], r["latency"], r["protocol"]) + "\n")
     
-    log(f"💾 Сохранено: {filename}")
+    with open(meta_file, "w", encoding="utf-8") as f:
+        for r in results:
+            meta = {
+                "ts": time.time(),
+                "latency": r["latency"],
+                "protocol": r["protocol"],
+                "host": r["host"],
+                "port": r["port"],
+            }
+            f.write(json.dumps(meta, ensure_ascii=False) + "\n")
+    
+    log(f"\n💾 Saved: {out_file}")
+    log(f"💾 Meta: {meta_file}")
 
+# ==================== MAIN ====================
 def main():
     global _start_time
     _start_time = time.time()
     
-    print("\n" + "="*70)
-    print(" " * 10 + "🔥 XRAY PROXY CHECKER v5 (FAST) 🔥")
-    print(" " * 15 + f"Канал: {MY_CHANNEL}")
-    print("="*70)
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
-    print(f"\n⚙️  НАСТРОЙКИ:")
-    print(f"   Max time: {CONFIG.MAX_RUNTIME_MINUTES} минут")
+    print("\n" + "=" * 70)
+    print(" " * 20 + "🔥 PRIMARY PREFILTER v2 🔥")
+    print(" " * 25 + f"{MY_CHANNEL}")
+    print("=" * 70)
+    print(f"\n⚙️  Config:")
+    print(f"   Max time: {CONFIG.MAX_RUNTIME_MINUTES} min")
     print(f"   Max keys: {CONFIG.MAX_KEYS_TO_CHECK}")
     print(f"   TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
     print(f"   XRAY: {CONFIG.XRAY_WORKERS} workers, {CONFIG.XRAY_REQUEST_TIMEOUT}s timeout")
@@ -853,95 +725,146 @@ def main():
     
     xray_exe = setup_xray()
     if not xray_exe:
-        log("❌ Не удалось установить xray")
+        log("❌ Cannot setup xray")
         return 1
     
-    all_keys = download_keys()
-    if not all_keys:
-        log("❌ Нет ключей для проверки")
+    keys = download_keys()
+    if not keys:
+        log("❌ No keys")
         return 1
     
-    for _ in range(len(all_keys)):
-        total_keys.increment()
+    # ========== STAGE 1: TCP ==========
+    print("\n" + "=" * 70)
+    log("⚡ STAGE 1: TCP check")
+    print("=" * 70 + "\n")
     
-    # ========== СТУПЕНЬ 1 ==========
-    print("\n" + "="*70)
-    log(f"⚡ СТУПЕНЬ 1: TCP проверка")
-    print("="*70 + "\n")
+    tcp_alive = []
     
-    stage1_results = []
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as executor:
-        futures = {executor.submit(stage1_port_check, key): key for key in all_keys}
-        
-        for future in concurrent.futures.as_completed(futures):
-            if is_time_exceeded():
-                log("\n⏰ Достигнут лимит времени! Прерывание...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as ex:
+        futures = [ex.submit(tcp_check_one, k) for k in keys]
+        done = 0
+        for fut in concurrent.futures.as_completed(futures):
+            done += 1
+            if _stop_flag.is_set() or is_time_exceeded():
                 break
-            
             try:
-                result = future.result(timeout=10)
-                if result:
-                    stage1_results.append(result)
+                r = fut.result(timeout=0.1)
+                if r:
+                    tcp_alive.append(r)
             except:
                 pass
             
-            if stage1_checked.value % CONFIG.GC_EVERY == 0:
-                cleanup_memory()
+            if done % 250 == 0:
+                elapsed = (time.time() - _start_time) / 60.0
+                log(f"  📊 TCP: {done}/{len(keys)} | Alive: {len(tcp_alive)} | Time: {elapsed:.1f}m")
     
-    log(f"\n✅ Ступень 1: {stage1_live.value}/{total_keys.value}")
+    log(f"\n✅ TCP alive: {len(tcp_alive)}/{len(keys)}")
     
-    if not stage1_results:
-        log("\n❌ Нет живых серверов")
+    if not tcp_alive:
+        log("❌ No TCP-alive keys")
         return 1
     
-    # ========== СТУПЕНЬ 2 ==========
-    print("\n" + "="*70)
-    log(f"⚡ СТУПЕНЬ 2: XRAY проверка")
-    print("="*70 + "\n")
+    if _stop_flag.is_set() or is_time_exceeded():
+        log("⏰ Time exceeded / interrupted")
+        return 0
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.XRAY_WORKERS) as executor:
-        futures = {executor.submit(stage2_xray_check, key, xray_exe): key for key in stage1_results}
-        
-        for future in concurrent.futures.as_completed(futures):
-            if is_time_exceeded():
-                log("\n⏰ Достигнут лимит времени! Завершение...")
-                break
-            
+    # ========== STAGE 2: XRAY ==========
+    print("\n" + "=" * 70)
+    log("⚡ STAGE 2: XRAY minimal (neutral 204)")
+    print("=" * 70 + "\n")
+    
+    # Host:port skip logic
+    hp_lock = threading.Lock()
+    hp_fails = defaultdict(int)
+    hp_seen = defaultdict(int)
+    hp_skipped = set()
+    
+    results = []
+    results_lock = threading.Lock()
+    
+    q = Queue()
+    for k in tcp_alive:
+        q.put(k)
+    
+    def worker(tid):
+        while not _stop_flag.is_set() and not is_time_exceeded():
             try:
-                future.result(timeout=30)
-            except:
-                pass
+                key = q.get_nowait()
+            except Empty:
+                return
+            
+            host, port = extract_host_port(key)
+            hp = f"{host}:{port}" if host and port else ""
+            
+            if hp:
+                with hp_lock:
+                    hp_seen[hp] += 1
+                    if hp in hp_skipped:
+                        q.task_done()
+                        continue
+            
+            r = xray_check_one(key, xray_exe)
+            
+            if r:
+                with results_lock:
+                    results.append(r)
+                if hp:
+                    with hp_lock:
+                        hp_fails[hp] = 0
+            else:
+                if hp:
+                    with hp_lock:
+                        hp_fails[hp] += 1
+                        if (hp_seen[hp] >= CONFIG.MIN_KEYS_PER_HOSTPORT_BEFORE_SKIP and
+                            hp_fails[hp] >= CONFIG.SKIP_HOSTPORT_AFTER_FAILS):
+                            hp_skipped.add(hp)
+            
+            q.task_done()
     
-    # ========== РЕЗУЛЬТАТЫ ==========
-    results = get_partial_results()
+    threads = []
+    for i in range(CONFIG.XRAY_WORKERS):
+        t = threading.Thread(target=worker, args=(i,), daemon=True)
+        threads.append(t)
+        t.start()
+    
+    # Progress
+    total = len(tcp_alive)
+    last_log = 0
+    while any(t.is_alive() for t in threads):
+        if _stop_flag.is_set() or is_time_exceeded():
+            break
+        time.sleep(1.0)
+        done = total - q.qsize()
+        if done - last_log >= 10 or done == total:
+            elapsed = (time.time() - _start_time) / 60.0
+            with results_lock:
+                okc = len(results)
+            log(f"  🔥 XRAY: {done}/{total} | OK: {okc} | Skipped HP: {len(hp_skipped)} | Time: {elapsed:.1f}m")
+            last_log = done
+    
+    _stop_flag.set()
+    for t in threads:
+        t.join(timeout=0.2)
+    
+    # ========== RESULTS ==========
+    save_results(results, ts)
     
     if results:
-        save_results(results)
-        
-        print("\n" + "="*70)
-        print("🎉 РЕЗУЛЬТАТЫ")
-        print("="*70)
-        print(f"  ✅ Рабочих: {len(results)}")
-        print(f"  📁 {FINAL_FILE}")
-        print("="*70)
+        print("\n" + "=" * 70)
+        print("🎉 RESULTS")
+        print("=" * 70)
+        print(f"  ✅ Alive: {len(results)}")
+        print(f"  ⏱️  Total time: {(time.time() - _start_time) / 60:.1f} min")
+        print("=" * 70)
         
         return 0
     else:
-        log("\n❌ НЕТ РАБОЧИХ КЛЮЧЕЙ")
+        log("\n❌ NO ALIVE KEYS")
         return 1
 
 if __name__ == "__main__":
     try:
-        exit_code = main()
-    except KeyboardInterrupt:
-        save_partial_results()
-        exit_code = 1
-    except Exception as e:
-        print(f"\n❌ Ошибка: {e}")
-        save_partial_results()
-        exit_code = 1
+        sys.exit(main())
     finally:
         cleanup_all_processes()
-    
-    sys.exit(exit_code)
+
