@@ -28,7 +28,7 @@ import gc
 import argparse
 import logging
 from datetime import datetime
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
@@ -62,6 +62,28 @@ DPI_STATS_FILE = RESULTS_FOLDER / "dpi_stats.json"
 for d in [XRAY_FOLDER, RESULTS_FOLDER, PREMIUM_FOLDER, RF_FOLDER]:
     d.mkdir(parents=True, exist_ok=True)
 
+
+# ==================== UNIVERSAL SOURCE READER ====================
+def read_source_text(url: str) -> str:
+    """Universal source reader: http/https/file:// or local path"""
+    if url.startswith("file://"):
+        p = Path(urlparse(url).path)
+        return p.read_text(encoding="utf-8", errors="ignore")
+    p = Path(url)
+    if p.exists():
+        return p.read_text(encoding="utf-8", errors="ignore")
+    # Обычный HTTP/HTTPS с retry
+    for attempt in range(3):
+        try:
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            return r.text
+        except Exception:
+            if attempt == 2:
+                raise
+            time.sleep(2)
+
+
 # ==================== SOURCES ====================
 KEY_SOURCES = {
     "RU": [
@@ -74,6 +96,14 @@ KEY_SOURCES = {
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part1.txt",
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part2.txt",
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
+    ],
+    "Prefiltered": [
+        # Замени на реальный путь к файлу после первичной проверки.
+        # Поддерживаются форматы:
+        #   "results/verified_2026-02-18_12-00-00.txt"   — относительный путь
+        #   "/home/user/vpn/results/verified_latest.txt" — абсолютный путь
+        #   "file:///home/user/vpn/results/verified.txt" — file:// URI
+        "results/verified_latest.txt"
     ]
 }
 
@@ -1471,39 +1501,31 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
         log(f"  Region: {region}")
         for url in urls:
             try:
-                for attempt in range(3):
-                    try:
-                        r = requests.get(url, timeout=30)
-                        r.raise_for_status()
-                        break
-                    except:
-                        if attempt == 2:
-                            raise
-                        time.sleep(2)
-
-                content = r.text.strip()
-                if 'base64' in url:
-                    try:
-                        content = base64.b64decode(content).decode('utf-8')
-                    except:
-                        pass
-
-                count = 0
-                for line in content.split('\n'):
-                    line = html.unescape(line.strip())
-                    if not line or not line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
-                        continue
-                    normalized = line.split("#")[0].strip()
-                    if normalized in seen:
-                        duplicates += 1
-                        continue
-                    seen.add(normalized)
-                    all_keys.append(line)
-                    count += 1
-                stats.total_downloaded += count
-                log(f"    {url.split('/')[-1]}: {count}")
+                content = read_source_text(url).strip()
             except Exception as e:
                 log(f"    FAIL {url.split('/')[-1]}: {e}")
+                continue
+
+            if 'base64' in url:
+                try:
+                    content = base64.b64decode(content).decode('utf-8')
+                except:
+                    pass
+
+            count = 0
+            for line in content.split('\n'):
+                line = html.unescape(line.strip())
+                if not line or not line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
+                    continue
+                normalized = line.split("#")[0].strip()
+                if normalized in seen:
+                    duplicates += 1
+                    continue
+                seen.add(normalized)
+                all_keys.append(line)
+                count += 1
+            stats.total_downloaded += count
+            log(f"    {url.split('/')[-1]}: {count}")
 
     stats.duplicates = duplicates
     stats.unique = len(all_keys)
@@ -2153,7 +2175,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         description="AI Proxy Checker v5.0 RF-READY"
     )
-    parser.add_argument('--region', choices=['ALL', 'RU', 'EU'], default='ALL')
+    parser.add_argument('--region', choices=['ALL', 'RU', 'EU', 'Prefiltered'], default='ALL')
     parser.add_argument('--workers', type=int, default=CONFIG.XRAY_WORKERS)
     parser.add_argument('--tcp-workers', type=int, default=CONFIG.TCP_WORKERS)
     parser.add_argument('--no-ai', action='store_true')
