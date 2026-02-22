@@ -1,165 +1,159 @@
 {
-  "timestamp": "2026-02-21T18:44:18.249703",
+  "timestamp": "2026-02-22T01:23:42.094080",
   "region": "ALL",
   "route_tag": "default",
-  "total_checked": 4110,
-  "total_working": 165,
-  "rf_ready": 140,
-  "rf_ready_percent": 84.8,
+  "total_checked": 3922,
+  "total_working": 189,
+  "rf_ready": 184,
+  "rf_ready_percent": 97.4,
   "quick_check": {
-    "passed": 194,
-    "failed": 245
+    "passed": 191,
+    "failed": 270
   },
   "by_quality": {
-    "elite": 92,
-    "premium": 53,
-    "good": 20
+    "elite": 141,
+    "premium": 43,
+    "good": 5
   },
   "by_protocol": {
-    "SS": 95,
-    "VLESS": 54,
-    "Trojan": 16
+    "VLESS": 61,
+    "SS": 115,
+    "Trojan": 13
   },
   "by_transport": {
-    "tcp": 165
+    "tcp": 189
   },
   "by_sni": {
-    "www.google.com": 165
+    "www.google.com": 189
   },
   "mutations": {
-    "tried": 1392,
-    "successful": 2
+    "tried": 1342,
+    "successful": 3
   },
   "ai": {
     "enabled": true,
-    "anomalies": 165,
-    "retrains": 20,
-    "history_size": 15091,
+    "anomalies": 189,
+    "retrains": 19,
+    "history_size": 15121,
     "protocol_trends": {
-      "SS": {
-        "success_rate": 0.402,
-        "rf_rate": 0.88,
-        "trend": -0.477,
-        "total": 1311
+      "VLESS": {
+        "success_rate": 0.012,
+        "rf_rate": 0.922,
+        "trend": 0.352,
+        "total": 16371
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1298
-      },
-      "VLESS": {
-        "success_rate": 0.013,
-        "rf_rate": 0.902,
-        "trend": -0.728,
-        "total": 16262
+        "total": 1262
       },
       "Trojan": {
-        "success_rate": 0.741,
-        "rf_rate": 0.577,
-        "trend": -0.688,
-        "total": 220
+        "success_rate": 0.514,
+        "rf_rate": 0.768,
+        "trend": 0.154,
+        "total": 109
+      },
+      "SS": {
+        "success_rate": 0.365,
+        "rf_rate": 0.898,
+        "trend": -0.198,
+        "total": 1179
       }
     },
     "category_effectiveness": {
       "telegram": {
-        "success_rate": 0.961,
+        "success_rate": 0.982,
         "weight": 1.0,
-        "avg_time_ms": 1668.8,
+        "avg_time_ms": 2283.6,
         "priority": "critical"
       },
-      "instagram": {
-        "success_rate": 0.931,
-        "weight": 0.75,
-        "avg_time_ms": 2453.9,
-        "priority": "important"
-      },
       "google": {
-        "success_rate": 0.943,
+        "success_rate": 0.947,
         "weight": 0.75,
-        "avg_time_ms": 3760.1,
+        "avg_time_ms": 1933.7,
         "priority": "important"
       },
       "youtube": {
-        "success_rate": 0.887,
+        "success_rate": 0.895,
         "weight": 3.0,
-        "avg_time_ms": 3291.9,
+        "avg_time_ms": 1427.5,
         "priority": "critical"
       },
-      "twitter": {
-        "success_rate": 0.952,
+      "instagram": {
+        "success_rate": 0.966,
         "weight": 0.75,
-        "avg_time_ms": 3927.9,
+        "avg_time_ms": 2128.5,
+        "priority": "important"
+      },
+      "twitter": {
+        "success_rate": 0.973,
+        "weight": 0.75,
+        "avg_time_ms": 2779.9,
         "priority": "important"
       }
     },
     "sni_performance": {
       "www.google.com": {
-        "success_rate": 0.05,
-        "avg_latency": 2059.4,
-        "total": 17793
+        "success_rate": 0.038,
+        "avg_latency": 1211.8,
+        "total": 17659
       }
     },
     "transport_performance": {
       "tcp": {
-        "success_rate": 0.05,
-        "avg_latency": 2059.4,
-        "total": 17793
+        "success_rate": 0.038,
+        "avg_latency": 1211.8,
+        "total": 17659
       }
     }
   },
   "dpi": {
-    "total_suspects": 45,
+    "total_suspects": 39,
     "high_confidence": [
-      "84.252.130.60:443",
-      "osn.takovpn.ru:443",
-      "185.86.147.61:8443",
-      "37.139.34.19:5443",
-      "158.160.188.11:443",
-      "5.34.178.97:3443",
-      "194.26.141.68:443",
-      "109.120.191.46:443",
-      "5.34.179.145:3443",
-      "51.250.65.209:443",
-      "51.250.117.173:5443",
-      "download.lastilhame.monster:443",
-      "87.239.111.144:443",
-      "37.139.35.156:5443",
-      "51.250.75.178:443",
-      "84.201.184.6:1443",
-      "87.239.111.109:5443",
-      "217.12.219.51:443",
-      "212.233.95.129:4443",
-      "51.250.117.173:4443",
-      "84.201.184.6:443",
-      "217.16.27.217:443",
-      "217.12.219.53:443",
-      "185.86.147.55:8443",
-      "51.250.4.119:443",
-      "84.201.187.140:3443",
-      "5.188.143.219:8443",
       "144.31.100.120:443",
-      "51.250.75.178:4443",
+      "5.34.178.97:3443",
       "51.250.83.255:443",
-      "185.86.145.201:4443",
-      "51.250.86.102:443",
-      "185.86.147.96:5443",
+      "37.139.34.19:5443",
+      "51.250.0.147:443",
+      "109.120.191.46:443",
       "51.250.86.254:443",
       "90.156.215.36:5443",
-      "78.40.196.101:443",
-      "79.174.92.90:5443",
-      "185.71.67.130:443",
-      "45.129.199.174:443",
+      "5.34.179.145:3443",
+      "185.86.147.96:5443",
+      "194.26.141.68:443",
+      "51.250.117.173:4443",
       "51.250.87.167:443",
-      "51.250.0.147:443",
+      "51.250.75.178:443",
       "109.120.190.40:8443",
-      "109.120.182.246:3443",
       "51.250.117.173:443",
-      "185.86.147.28:3443"
+      "45.129.199.174:443",
+      "84.252.130.60:443",
+      "84.201.184.6:1443",
+      "78.40.196.101:443",
+      "84.201.187.140:3443",
+      "37.139.35.156:5443",
+      "87.239.111.144:443",
+      "217.16.27.217:443",
+      "158.160.188.11:443",
+      "185.86.145.201:4443",
+      "51.250.86.102:443",
+      "212.233.92.3:5443",
+      "212.233.95.129:4443",
+      "185.86.147.28:3443",
+      "51.250.75.178:4443",
+      "51.250.4.119:443",
+      "84.201.184.6:443",
+      "185.86.147.55:8443",
+      "5.188.143.219:8443",
+      "51.250.117.173:5443",
+      "51.250.65.209:443",
+      "osn.takovpn.ru:443",
+      "185.71.67.130:443"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1008
+    "monitored_endpoints": 987
   },
-  "processing_time": 1635.682631969452
+  "processing_time": 1451.1499018669128
 }
