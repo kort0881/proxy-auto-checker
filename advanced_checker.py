@@ -8,6 +8,7 @@ AI Proxy Checker v5.0 RF-READY
 - DPI-детекция по паттернам
 - RF-метка качества
 - Гибкая работа с SNI
+- Определение региона RU/EU
 """
 
 import os
@@ -1968,19 +1969,21 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             f.write(f"# Keys: {len(items)}\n\n")
 
             for r in items:
-                tg = "TG+" if r.telegram else ""
-                mut = f"|{r.mutation_used}" if r.mutation_used else ""
-                ai = f"|{r.ai_verdict}" if r.ai_verdict else ""
-                score_tag = f"|ai{r.ai_score:.1f}" if r.ai_score > 0 else ""
-                rf = f"|RF{r.rf_score:.1f}" if r.rf_ready else ""
-                dpi = "|DPI?" if r.dpi_suspect else ""
-                comment = (
-                    f"[{r.latency:.0f}ms|j{r.jitter:.0f}|"
-                    f"rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|"
-                    f"{r.categories}cat|crit{r.critical_categories}|{tg}"
-                    f"{r.protocol}|{r.transport_used}|sni:{r.sni_used[:15]}"
-                    f"{mut}{ai}{score_tag}{rf}{dpi}|{MY_CHANNEL}]"
-                )
+                tg = " TG" if r.telegram else ""
+                
+                # Определяем регион по хосту (простейший способ)
+                is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                region = "RU" if is_ru else "EU"
+                
+                mut = f" {r.mutation_used}" if r.mutation_used else ""
+                ai = f" {r.ai_verdict}" if r.ai_verdict else ""
+                score_tag = f" ai{r.ai_score:.1f}" if r.ai_score > 0 else ""
+                rf = f" RF{r.rf_score:.1f}" if r.rf_ready else ""
+                dpi = " DPI?" if r.dpi_suspect else ""
+                
+                # Добавляем {region} в начало метки
+                comment = f"[{r.latency:.0f}ms|{region}|j{r.jitter:.0f}|rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|{r.categories}cat|crit{r.critical_categories}{tg}|{r.protocol}|{r.transport_used}|sni:{r.sni_used}{mut}{ai}{score_tag}{rf}{dpi}{MY_CHANNEL}]"
+                
                 base_key = r.key.split('#')[0]
                 f.write(f"{base_key}#{quote(comment)}\n")
 
@@ -2000,8 +2003,10 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             
             for r in rf_ready_results:
                 tg = "TG+" if r.telegram else ""
+                is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                region = "RU" if is_ru else "EU"
                 comment = (
-                    f"RF{r.rf_score:.1f} {r.quality.value.upper()} "
+                    f"RF{r.rf_score:.1f} {region} {r.quality.value.upper()} "
                     f"{r.latency:.0f}ms {r.protocol} {r.transport_used} "
                     f"crit{r.critical_categories} {tg} {MY_CHANNEL}"
                 )
@@ -2022,7 +2027,9 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         f.write(f"# RF-Ready: {len(rf_ready_results)}\n\n")
         for r in all_results:
             rf_tag = " RF" if r.rf_ready else ""
-            comment = f"{r.quality.value.upper()}{rf_tag} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
+            is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+            region = "RU" if is_ru else "EU"
+            comment = f"{region} {r.quality.value.upper()}{rf_tag} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
             f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
 
     log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
