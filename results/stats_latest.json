@@ -1,164 +1,157 @@
 {
-  "timestamp": "2026-02-23T07:13:37.000078",
+  "timestamp": "2026-02-23T12:56:37.904070",
   "region": "EU",
   "route_tag": "default",
-  "total_checked": 3673,
-  "total_working": 145,
-  "rf_ready": 126,
-  "rf_ready_percent": 86.9,
+  "total_checked": 3385,
+  "total_working": 138,
+  "rf_ready": 115,
+  "rf_ready_percent": 83.3,
   "quick_check": {
-    "passed": 165,
-    "failed": 270
+    "passed": 163,
+    "failed": 215
   },
   "by_quality": {
-    "elite": 83,
-    "premium": 45,
-    "good": 17
+    "elite": 84,
+    "premium": 33,
+    "good": 21
   },
   "by_protocol": {
     "SS": 107,
-    "VLESS": 18,
-    "Trojan": 20
+    "VLESS": 19,
+    "Trojan": 12
   },
   "by_transport": {
-    "tcp": 145
+    "tcp": 138
   },
   "by_sni": {
-    "www.google.com": 145
+    "www.google.com": 138
   },
   "mutations": {
-    "tried": 1137,
-    "successful": 0
+    "tried": 1029,
+    "successful": 4
   },
   "ai": {
     "enabled": true,
-    "anomalies": 142,
-    "retrains": 18,
-    "history_size": 15063,
+    "anomalies": 134,
+    "retrains": 16,
+    "history_size": 15176,
     "protocol_trends": {
       "VLESS": {
         "success_rate": 0.005,
-        "rf_rate": 0.854,
-        "trend": 0.347,
-        "total": 16233
+        "rf_rate": 0.921,
+        "trend": 0.453,
+        "total": 15916
       },
       "Trojan": {
-        "success_rate": 0.554,
-        "rf_rate": 0.806,
-        "trend": 0.561,
-        "total": 112
+        "success_rate": 0.573,
+        "rf_rate": 0.836,
+        "trend": 0.615,
+        "total": 117
       },
       "SS": {
-        "success_rate": 0.398,
-        "rf_rate": 0.875,
-        "trend": -0.84,
-        "total": 1300
+        "success_rate": 0.402,
+        "rf_rate": 0.868,
+        "trend": -2.922,
+        "total": 1267
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1018
+        "total": 1076
       }
     },
     "category_effectiveness": {
       "youtube": {
-        "success_rate": 0.926,
+        "success_rate": 0.927,
         "weight": 1.0,
-        "avg_time_ms": 3702.6,
+        "avg_time_ms": 5340.7,
         "priority": "critical"
-      },
-      "telegram": {
-        "success_rate": 0.965,
-        "weight": 1.0,
-        "avg_time_ms": 1758.7,
-        "priority": "critical"
-      },
-      "instagram": {
-        "success_rate": 0.94,
-        "weight": 0.75,
-        "avg_time_ms": 5716.7,
-        "priority": "important"
       },
       "google": {
-        "success_rate": 0.907,
-        "weight": 0.75,
-        "avg_time_ms": 3987.0,
+        "success_rate": 0.896,
+        "weight": 2.25,
+        "avg_time_ms": 5292.8,
         "priority": "important"
       },
-      "twitter": {
-        "success_rate": 0.942,
+      "instagram": {
+        "success_rate": 0.925,
         "weight": 0.75,
-        "avg_time_ms": 5691.8,
+        "avg_time_ms": 5778.4,
+        "priority": "important"
+      },
+      "telegram": {
+        "success_rate": 0.974,
+        "weight": 1.0,
+        "avg_time_ms": 2476.2,
+        "priority": "critical"
+      },
+      "twitter": {
+        "success_rate": 0.929,
+        "weight": 0.75,
+        "avg_time_ms": 4454.5,
         "priority": "important"
       }
     },
     "sni_performance": {
       "www.google.com": {
         "success_rate": 0.038,
-        "avg_latency": 1587.3,
-        "total": 17645
+        "avg_latency": 2265.5,
+        "total": 17300
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.038,
-        "avg_latency": 1587.3,
-        "total": 17645
+        "avg_latency": 2265.5,
+        "total": 17300
       }
     }
   },
   "dpi": {
-    "total_suspects": 44,
+    "total_suspects": 37,
     "high_confidence": [
-      "51.250.117.173:5443",
-      "51.250.0.147:443",
-      "37.139.35.156:5443",
-      "87.239.111.144:443",
-      "212.233.92.3:5443",
-      "84.201.184.6:443",
-      "83.166.238.101:443",
-      "51.250.86.254:443",
-      "90.156.215.36:5443",
-      "144.31.100.120:443",
-      "37.139.34.19:5443",
-      "5.34.179.145:3443",
-      "109.120.190.40:5443",
-      "185.86.147.28:3443",
-      "84.201.184.6:1443",
-      "185.241.195.29:5443",
-      "217.16.27.217:443",
-      "62.106.66.56:443",
-      "85.192.35.197:4443",
       "51.250.117.173:4443",
-      "185.86.147.61:8443",
-      "84.201.187.140:4443",
-      "78.159.247.216:3443",
-      "158.160.188.11:443",
-      "194.26.141.68:443",
-      "185.86.147.55:8443",
-      "109.120.191.46:443",
-      "84.252.130.60:443",
-      "5.188.143.219:8443",
-      "51.250.75.178:4443",
-      "185.86.147.96:5443",
-      "185.71.67.130:443",
-      "109.120.190.40:8443",
+      "51.250.117.173:5443",
+      "84.201.184.6:443",
+      "51.250.0.147:443",
+      "37.139.34.19:5443",
       "51.250.75.178:443",
-      "212.233.95.129:4443",
+      "90.156.215.36:5443",
+      "84.201.184.6:1443",
+      "51.250.65.209:443",
+      "download.lastilhame.monster:443",
+      "5.34.179.145:3443",
+      "84.252.130.60:443",
       "109.120.182.246:3443",
-      "osn.takovpn.ru:443",
-      "109.120.190.40:443",
+      "62.106.66.56:443",
+      "109.120.190.40:8443",
       "185.86.145.201:4443",
-      "84.201.187.140:3443",
       "51.250.117.173:443",
+      "85.192.35.197:4443",
+      "78.159.247.216:3443",
+      "84.201.187.140:4443",
+      "51.250.46.121:5443",
+      "185.86.147.28:3443",
+      "185.86.147.96:5443",
+      "185.86.147.61:8443",
+      "194.26.141.68:443",
+      "51.250.86.254:443",
       "51.250.83.255:443",
-      "51.250.87.167:443",
-      "51.250.46.121:5443"
+      "83.166.238.101:443",
+      "37.139.35.156:5443",
+      "217.16.27.217:443",
+      "84.201.187.140:3443",
+      "185.86.147.55:8443",
+      "87.239.111.144:443",
+      "45.129.199.174:443",
+      "212.233.95.129:4443",
+      "158.160.188.11:443",
+      "51.250.75.178:4443"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 770
+    "monitored_endpoints": 737
   },
-  "processing_time": 1401.1294224262238
+  "processing_time": 1415.7266039848328
 }
