@@ -1,137 +1,131 @@
 {
-  "timestamp": "2026-02-26T18:53:24.112829",
+  "timestamp": "2026-02-27T01:13:11.965687",
   "region": "EU",
   "route_tag": "default",
-  "total_checked": 2243,
-  "total_working": 108,
-  "rf_ready": 83,
-  "rf_ready_percent": 76.9,
+  "total_checked": 1972,
+  "total_working": 129,
+  "rf_ready": 124,
+  "rf_ready_percent": 96.1,
   "quick_check": {
-    "passed": 129,
-    "failed": 244
+    "passed": 142,
+    "failed": 215
   },
   "by_quality": {
-    "elite": 49,
-    "premium": 35,
-    "good": 24
+    "elite": 86,
+    "premium": 40,
+    "good": 3
   },
   "by_protocol": {
-    "SS": 78,
-    "VLESS": 13,
-    "Trojan": 17
+    "VLESS": 14,
+    "SS": 95,
+    "Trojan": 20
   },
   "by_transport": {
-    "tcp": 108
+    "tcp": 129
   },
   "by_sni": {
-    "www.google.com": 108
+    "www.google.com": 129
   },
   "mutations": {
-    "tried": 1531,
-    "successful": 1
+    "tried": 1256,
+    "successful": 3
   },
   "ai": {
     "enabled": true,
-    "anomalies": 108,
-    "retrains": 11,
-    "history_size": 15025,
+    "anomalies": 126,
+    "retrains": 9,
+    "history_size": 15171,
     "protocol_trends": {
       "VLESS": {
-        "success_rate": 0.01,
-        "rf_rate": 0.899,
-        "trend": -0.062,
-        "total": 13368
+        "success_rate": 0.008,
+        "rf_rate": 0.874,
+        "trend": 0.011,
+        "total": 13147
+      },
+      "Trojan": {
+        "success_rate": 0.477,
+        "rf_rate": 0.723,
+        "trend": -0.266,
+        "total": 348
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1645
+        "total": 1630
       },
       "SS": {
-        "success_rate": 0.336,
-        "rf_rate": 0.885,
-        "trend": -0.142,
-        "total": 1839
-      },
-      "Trojan": {
-        "success_rate": 0.48,
-        "rf_rate": 0.676,
-        "trend": -0.58,
-        "total": 373
+        "success_rate": 0.34,
+        "rf_rate": 0.89,
+        "trend": -0.047,
+        "total": 1846
       }
     },
     "category_effectiveness": {
       "telegram": {
-        "success_rate": 0.969,
+        "success_rate": 0.982,
         "weight": 1.0,
-        "avg_time_ms": 1759.0,
+        "avg_time_ms": 929.4,
         "priority": "critical"
       },
       "google": {
-        "success_rate": 0.897,
-        "weight": 2.25,
-        "avg_time_ms": 3040.7,
+        "success_rate": 0.908,
+        "weight": 0.75,
+        "avg_time_ms": 2079.7,
         "priority": "important"
       },
       "instagram": {
-        "success_rate": 0.96,
+        "success_rate": 0.974,
         "weight": 0.75,
-        "avg_time_ms": 3773.1,
+        "avg_time_ms": 2614.0,
         "priority": "important"
       },
       "youtube": {
-        "success_rate": 0.897,
-        "weight": 3.0,
-        "avg_time_ms": 2472.0,
+        "success_rate": 0.921,
+        "weight": 1.0,
+        "avg_time_ms": 3267.0,
         "priority": "critical"
       },
       "twitter": {
-        "success_rate": 0.963,
+        "success_rate": 0.965,
         "weight": 0.75,
-        "avg_time_ms": 2989.0,
+        "avg_time_ms": 3546.4,
         "priority": "important"
       }
     },
     "sni_performance": {
       "www.google.com": {
-        "success_rate": 0.059,
-        "avg_latency": 1205.0,
-        "total": 15580
+        "success_rate": 0.058,
+        "avg_latency": 646.4,
+        "total": 15341
       }
     },
     "transport_performance": {
       "tcp": {
-        "success_rate": 0.059,
-        "avg_latency": 1205.0,
-        "total": 15580
+        "success_rate": 0.058,
+        "avg_latency": 646.4,
+        "total": 15341
       }
     }
   },
   "dpi": {
-    "total_suspects": 17,
+    "total_suspects": 11,
     "high_confidence": [
-      "84.23.55.253:443",
-      "83.166.232.26:443",
-      "37.139.33.50:443",
-      "51.250.83.255:443",
-      "212.233.76.155:443",
-      "217.16.27.217:443",
-      "95.163.210.200:443",
-      "176.108.241.219:443",
-      "83.166.254.4:443",
-      "51.250.65.209:443",
-      "109.120.191.46:443",
-      "87.239.107.183:443",
-      "5.188.115.178:443",
-      "87.242.103.115:443",
-      "185.130.113.29:443",
+      "51.250.95.176:443",
       "51.250.4.119:443",
-      "178.154.224.33:443"
+      "51.250.83.255:443",
+      "5.188.115.178:443",
+      "download.lastilhame.monster:443",
+      "109.120.191.46:443",
+      "51.250.87.167:443",
+      "109.120.190.78:443",
+      "84.201.128.76:443",
+      "217.16.27.217:443",
+      "51.250.65.209:443"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1144
+    "monitored_endpoints": 1073
   },
-  "processing_time": 1118.8192760944366
+  "processing_time": 902.3006689548492
 }
