@@ -1,19 +1,20 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-03-01 06:52
+# 2026-03-01 12:41
 # Route: default
-# Keys: 13
+# Keys: 14
 
-vless://27b6068a-e1e6-4675-ab14-87143c690390@144.217.133.97:30238?encryption=none&type=tcp&security=none#%5B194ms%7CEU%7Cj206%7Crc1/1%7C5cat%7Ccrit2%20TG%7CVLESS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai1.0%20RF1.0%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.199:8080#%5B403ms%7CEU%7Cj284%7Crc1/1%7C4cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.9%20RF0.8%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@109.61.39.28:990#%5B653ms%7CEU%7Cj196%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.9%40vlesstrojan%5D
-vless://48508580-438a-47b9-ae74-494f89cc624d@213.176.19.149:443?type=tcp&encryption=none&security=tls&fp=chrome&alpn=h2%2Chttp%2F1.1&sni=ru5.fastlanehosting.ru#%5B686ms%7CEU%7Cj151%7Crc1/1%7C5cat%7Ccrit2%20TG%7CVLESS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.1%20RF0.9%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTphODIwMWJiZDc0MDQyMGJi@213.156.137.142:43659#%5B686ms%7CEU%7Cj251%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.9%40vlesstrojan%5D
-vless://dc243117-757f-45c0-8363-02c7260ce864@213.176.19.149:443?type=tcp&security=tls&encryption=none&sni=ru5.fastlanehosting.ru&alpn=h2%2Chttp/1.1#%5B699ms%7CEU%7Cj189%7Crc1/1%7C5cat%7Ccrit2%20TG%7CVLESS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.1%20RF0.9%40vlesstrojan%5D
-vless://dc243117-757f-45c0-8363-02c7260ce864@213.176.19.149:443?type=tcp&security=tls&encryption=none&fp=chrome&sni=ru5.fastlanehosting.ru&host=Join---i10VPN---Join---i10VPN---Join---i10VPN---Join---i10VPN&alpn=h2,http/1.1#%5B707ms%7CEU%7Cj150%7Crc1/1%7C5cat%7Ccrit2%20TG%7CVLESS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.1%20RF0.9%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpjYzI3YTMwMTJkODFhNDRj@213.156.137.142:43660#%5B773ms%7CEU%7Cj392%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.8%40vlesstrojan%5D
-trojan://BxceQaOe@58.152.53.45:443?type=tcp&security=tls&fp=chrome&allowInsecure=1#%5B820ms%7CEU%7Cj276%7Crc1/1%7C5cat%7Ccrit2%20TG%7CTrojan%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.7%20RF0.8%40vlesstrojan%5D
-trojan://ZblhWr0mqMakCPg.N@212.193.18.144:36158?security=tls&sni=ya.ru&insecure=1&allowInsecure=1&type=tcp&headerType=none#%5B946ms%7CEU%7Cj151%7Crc1/1%7C3cat%7Ccrit2%20TG%7CTrojan%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.4%20RF0.6%40vlesstrojan%5D
-trojan://wp9IsiY82uQhcmgNC1eoBM@80.173.231.254:12420?allowInsecure=1&sni=www.semanticstaplegun.click#%5B1171ms%7CEU%7Cj476%7Crc1/1%7C5cat%7Ccrit2%20TG%7CTrojan%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.3%40vlesstrojan%5D
-trojan://qmBSKnAl6LYi9=z23Rs.Z@37.235.49.209:28099?sni=celestialcorset.crystalhamster.click#%5B1456ms%7CEU%7Cj110%7Crc1/1%7C4cat%7Ccrit2%20TG%7CTrojan%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%40vlesstrojan%5D
-trojan://wp9IsiY82uQhcmgNC1eoBM@80.173.231.254:12420?security=tls&sni=www.semanticstaplegun.click&type=tcp#%5B1588ms%7CEU%7Cj320%7Crc1/1%7C5cat%7Ccrit2%20TG%7CTrojan%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTp5T0RMWFZMejJGV05URmVTU25nM0Zt@136.244.100.113:443#%5B460ms%7CEU%7Cj216%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.6%20RF0.9%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo0YTJyZml4b3BoZGpmZmE4S1ZBNEFh@193.29.139.162:8080#%5B545ms%7CEU%7Cj207%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.6%20RF0.9%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.190:8080#%5B577ms%7CEU%7Cj267%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.5%20RF0.9%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo4NzdjM2IwNjljMzM1ZmZj@163.171.181.49:42934#%5B623ms%7CEU%7Cj159%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.3%20RF0.9%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo4NzdjM2IwNjljMzM1ZmZj@163.171.181.49:42935#%5B651ms%7CEU%7Cj141%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.3%20RF0.9%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpWcEtBQmNPcE5OQTBsNUcyQVZPbXc4@213.109.147.242:62685#%5B738ms%7CEU%7Cj155%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.9%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@193.135.174.135:990#%5B749ms%7CEU%7Cj278%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.0%20RF0.8%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@193.135.174.135:990#%5B759ms%7CEU%7Cj248%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.0%20RF0.8%40vlesstrojan%5D
+trojan://ZblhWr0mqMakCPg.N@212.193.18.144:36158?security=tls&sni=ya.ru&insecure=1&allowInsecure=1&type=tcp&headerType=none#%5B775ms%7CEU%7Cj61%7Crc1/1%7C4cat%7Ccrit1%20TG%7CTrojan%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20ai0.8%20RF0.6%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.214:8080#%5B872ms%7CEU%7Cj399%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.8%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpjYzI3YTMwMTJkODFhNDRj@213.156.137.142:43660#%5B874ms%7CEU%7Cj346%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.8%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@109.61.39.28:990#%5B901ms%7CEU%7Cj262%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%20RF0.8%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTphODIwMWJiZDc0MDQyMGJi@213.156.137.142:43659#%5B1034ms%7CEU%7Cj483%7Crc1/1%7C5cat%7Ccrit2%20TG%7CSS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%40vlesstrojan%5D
+vless://dc243117-757f-45c0-8363-02c7260ce864@213.176.19.149:443?type=tcp&security=tls&encryption=none&sni=ru5.fastlanehosting.ru&alpn=h2%2Chttp/1.1#%5B1225ms%7CEU%7Cj264%7Crc1/1%7C5cat%7Ccrit2%20TG%7CVLESS%7Ctcp%7Csni%3Awww.google.com%20%5BANOMALY%5D%40vlesstrojan%5D
