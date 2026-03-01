@@ -1,157 +1,163 @@
 {
-  "timestamp": "2026-02-28T18:36:49.670537",
+  "timestamp": "2026-03-01T01:24:47.845878",
   "region": "EU",
   "route_tag": "default",
-  "total_checked": 2730,
-  "total_working": 113,
-  "rf_ready": 94,
-  "rf_ready_percent": 83.2,
+  "total_checked": 2639,
+  "total_working": 119,
+  "rf_ready": 118,
+  "rf_ready_percent": 99.2,
   "quick_check": {
-    "passed": 125,
-    "failed": 308
+    "passed": 129,
+    "failed": 250
   },
   "by_quality": {
-    "elite": 75,
-    "premium": 22,
-    "good": 16
+    "elite": 83,
+    "premium": 34,
+    "good": 2
   },
   "by_protocol": {
-    "SS": 82,
-    "Trojan": 26,
-    "VLESS": 5
+    "SS": 97,
+    "Trojan": 18,
+    "VLESS": 4
   },
   "by_transport": {
-    "tcp": 113
+    "tcp": 119
   },
   "by_sni": {
-    "www.google.com": 113
+    "www.google.com": 119
   },
   "mutations": {
-    "tried": 1657,
-    "successful": 2
+    "tried": 1587,
+    "successful": 0
   },
   "ai": {
     "enabled": true,
-    "anomalies": 113,
+    "anomalies": 117,
     "retrains": 13,
-    "history_size": 15120,
+    "history_size": 15029,
     "protocol_trends": {
+      "SS": {
+        "success_rate": 0.339,
+        "rf_rate": 0.936,
+        "trend": -0.305,
+        "total": 1482
+      },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1310
+        "total": 1327
       },
       "VLESS": {
-        "success_rate": 0.005,
-        "rf_rate": 0.87,
-        "trend": 0.004,
-        "total": 14722
-      },
-      "SS": {
-        "success_rate": 0.333,
-        "rf_rate": 0.902,
-        "trend": 0.034,
-        "total": 1473
+        "success_rate": 0.004,
+        "rf_rate": 0.903,
+        "trend": 0.58,
+        "total": 14618
       },
       "Trojan": {
-        "success_rate": 0.642,
-        "rf_rate": 0.623,
-        "trend": -1.863,
-        "total": 215
+        "success_rate": 0.644,
+        "rf_rate": 0.669,
+        "trend": -0.303,
+        "total": 202
       }
     },
     "category_effectiveness": {
-      "telegram": {
-        "success_rate": 0.979,
-        "weight": 1.0,
-        "avg_time_ms": 2033.8,
-        "priority": "critical"
-      },
       "google": {
-        "success_rate": 0.917,
+        "success_rate": 0.934,
         "weight": 0.75,
-        "avg_time_ms": 3809.0,
-        "priority": "important"
-      },
-      "instagram": {
-        "success_rate": 0.963,
-        "weight": 0.75,
-        "avg_time_ms": 3527.2,
+        "avg_time_ms": 3855.5,
         "priority": "important"
       },
       "youtube": {
-        "success_rate": 0.915,
+        "success_rate": 0.939,
         "weight": 1.0,
-        "avg_time_ms": 2968.0,
+        "avg_time_ms": 3378.8,
+        "priority": "critical"
+      },
+      "instagram": {
+        "success_rate": 0.971,
+        "weight": 0.75,
+        "avg_time_ms": 3597.7,
+        "priority": "important"
+      },
+      "telegram": {
+        "success_rate": 0.984,
+        "weight": 1.0,
+        "avg_time_ms": 2663.0,
         "priority": "critical"
       },
       "twitter": {
-        "success_rate": 0.941,
+        "success_rate": 0.969,
         "weight": 0.75,
-        "avg_time_ms": 2147.4,
+        "avg_time_ms": 2682.7,
         "priority": "important"
       }
     },
     "sni_performance": {
       "www.google.com": {
-        "success_rate": 0.042,
-        "avg_latency": 516.0,
-        "total": 16410
+        "success_rate": 0.043,
+        "avg_latency": 573.0,
+        "total": 16302
       }
     },
     "transport_performance": {
       "tcp": {
-        "success_rate": 0.042,
-        "avg_latency": 516.0,
-        "total": 16410
+        "success_rate": 0.043,
+        "avg_latency": 573.0,
+        "total": 16302
       }
     }
   },
   "dpi": {
-    "total_suspects": 37,
+    "total_suspects": 43,
     "high_confidence": [
-      "109.120.190.78:443",
-      "51.250.46.121:5443",
-      "109.120.189.160:443",
-      "217.16.27.217:443",
-      "109.120.188.156:443",
-      "95.163.208.234:8443",
-      "89.208.228.139:52006",
-      "51.250.90.103:443",
-      "5.188.141.67:443",
-      "95.163.211.13:443",
-      "37.139.34.115:443",
-      "84.201.187.140:4443",
-      "84.201.128.76:443",
-      "45.15.128.75:8443",
-      "5.188.141.131:443",
-      "5.188.141.18:443",
+      "109.120.181.41:443",
       "51.250.0.147:443",
-      "185.86.147.55:8443",
-      "37.139.33.125:443",
-      "185.86.147.61:8443",
-      "51.250.3.183:443",
-      "185.5.38.111:55988",
-      "51.250.75.178:443",
-      "51.250.83.255:443",
-      "109.120.191.46:443",
-      "95.163.210.173:443",
-      "51.250.95.176:443",
+      "217.16.27.217:443",
+      "51.250.14.48:7445",
       "89.208.228.167:443",
-      "109.120.189.142:443",
-      "51.250.68.142:443",
-      "download.lastilhame.monster:443",
-      "51.250.65.209:443",
       "51.250.4.119:443",
+      "51.250.90.103:443",
+      "144.31.178.150:8443",
+      "37.139.33.223:52006",
+      "178.154.202.254:7445",
+      "5.188.141.18:443",
+      "37.139.34.115:443",
+      "51.250.75.178:443",
+      "51.250.65.209:443",
+      "5.188.141.131:443",
+      "45.15.128.75:8443",
+      "178.154.224.33:443",
+      "51.250.69.188:7443",
+      "5.188.141.67:443",
+      "84.201.187.140:4443",
+      "146.185.242.246:51006",
+      "51.250.83.255:443",
+      "185.86.147.61:8443",
+      "109.120.190.78:443",
+      "109.120.189.112:51006",
       "51.250.80.61:443",
       "109.120.189.145:443",
+      "51.250.117.173:4443",
+      "51.250.95.176:443",
+      "95.163.208.234:8443",
+      "51.250.46.121:5443",
+      "109.120.189.142:443",
+      "185.86.147.55:8443",
+      "84.201.128.76:443",
+      "89.208.228.139:52006",
+      "109.120.188.156:443",
+      "109.120.189.160:443",
+      "37.139.33.125:443",
+      "5.188.141.12:52006",
+      "download.lastilhame.monster:443",
+      "95.163.210.173:443",
       "51.250.87.167:443",
-      "37.139.33.223:52006"
+      "51.250.117.173:443"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1098
+    "monitored_endpoints": 978
   },
-  "processing_time": 1295.5548868179321
+  "processing_time": 1204.5912277698517
 }
