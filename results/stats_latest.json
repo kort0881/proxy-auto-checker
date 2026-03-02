@@ -1,160 +1,158 @@
 {
-  "timestamp": "2026-03-02T07:02:43.778057",
+  "timestamp": "2026-03-02T12:50:30.717133",
   "region": "EU",
   "route_tag": "default",
-  "total_checked": 2892,
-  "total_working": 117,
-  "rf_ready": 94,
-  "rf_ready_percent": 80.3,
+  "total_checked": 2799,
+  "total_working": 106,
+  "rf_ready": 93,
+  "rf_ready_percent": 87.7,
   "quick_check": {
-    "passed": 133,
-    "failed": 248
+    "passed": 124,
+    "failed": 232
   },
   "by_quality": {
-    "elite": 75,
-    "premium": 24,
-    "good": 18
+    "elite": 81,
+    "premium": 12,
+    "good": 13
   },
   "by_protocol": {
-    "SS": 94,
-    "VLESS": 6,
-    "Trojan": 17
+    "VLESS": 4,
+    "SS": 89,
+    "Trojan": 13
   },
   "by_transport": {
-    "tcp": 117
+    "tcp": 106
   },
   "by_sni": {
-    "www.google.com": 117
+    "www.google.com": 106
   },
   "mutations": {
-    "tried": 1772,
-    "successful": 0
+    "tried": 1748,
+    "successful": 1
   },
   "ai": {
     "enabled": true,
-    "anomalies": 115,
-    "retrains": 14,
-    "history_size": 15078,
+    "anomalies": 106,
+    "retrains": 13,
+    "history_size": 15186,
     "protocol_trends": {
       "VLESS": {
         "success_rate": 0.003,
-        "rf_rate": 0.844,
+        "rf_rate": 0.841,
         "trend": 0.0,
-        "total": 14693
+        "total": 14606
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1467
-      },
-      "SS": {
-        "success_rate": 0.357,
-        "rf_rate": 0.942,
-        "trend": -1.725,
-        "total": 1545
+        "total": 1472
       },
       "Trojan": {
-        "success_rate": 0.578,
-        "rf_rate": 0.65,
-        "trend": 0.013,
-        "total": 173
+        "success_rate": 0.545,
+        "rf_rate": 0.608,
+        "trend": 0.272,
+        "total": 178
+      },
+      "SS": {
+        "success_rate": 0.355,
+        "rf_rate": 0.924,
+        "trend": -0.182,
+        "total": 1530
       }
     },
     "category_effectiveness": {
       "telegram": {
-        "success_rate": 0.981,
+        "success_rate": 0.97,
         "weight": 1.0,
-        "avg_time_ms": 2444.4,
+        "avg_time_ms": 4810.8,
         "priority": "critical"
-      },
-      "youtube": {
-        "success_rate": 0.977,
-        "weight": 1.0,
-        "avg_time_ms": 3623.2,
-        "priority": "critical"
-      },
-      "instagram": {
-        "success_rate": 0.971,
-        "weight": 0.75,
-        "avg_time_ms": 4316.8,
-        "priority": "important"
       },
       "google": {
-        "success_rate": 0.967,
+        "success_rate": 0.959,
         "weight": 0.75,
-        "avg_time_ms": 4619.6,
+        "avg_time_ms": 6692.1,
         "priority": "important"
       },
-      "twitter": {
-        "success_rate": 0.961,
+      "instagram": {
+        "success_rate": 0.968,
         "weight": 0.75,
-        "avg_time_ms": 3801.7,
+        "avg_time_ms": 5799.2,
+        "priority": "important"
+      },
+      "youtube": {
+        "success_rate": 0.961,
+        "weight": 1.0,
+        "avg_time_ms": 5699.3,
+        "priority": "critical"
+      },
+      "twitter": {
+        "success_rate": 0.958,
+        "weight": 0.75,
+        "avg_time_ms": 5516.4,
         "priority": "important"
       }
     },
     "sni_performance": {
       "www.google.com": {
         "success_rate": 0.042,
-        "avg_latency": 1309.4,
-        "total": 16411
+        "avg_latency": 2250.0,
+        "total": 16314
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.042,
-        "avg_latency": 1309.4,
-        "total": 16411
+        "avg_latency": 2250.0,
+        "total": 16314
       }
     }
   },
   "dpi": {
-    "total_suspects": 40,
+    "total_suspects": 38,
     "high_confidence": [
-      "51.250.85.206:5443",
-      "51.250.87.167:443",
-      "185.112.59.134:8446",
-      "95.163.210.173:443",
-      "51.250.83.255:443",
-      "51.250.69.188:8449",
-      "5.188.141.67:443",
-      "109.120.190.78:443",
-      "89.208.228.167:443",
-      "178.154.202.254:7445",
-      "51.250.68.142:443",
-      "217.16.27.217:443",
-      "109.120.191.46:443",
-      "51.250.65.209:443",
-      "84.201.129.184:8449",
-      "37.139.34.115:443",
       "51.250.0.147:443",
-      "51.250.80.61:443",
-      "109.120.189.142:443",
-      "146.185.209.170:443",
-      "109.120.188.156:443",
-      "178.154.224.33:443",
+      "37.139.33.223:52006",
+      "37.139.33.125:443",
+      "51.250.85.206:5443",
+      "217.16.27.217:443",
+      "109.120.189.145:443",
+      "109.120.181.41:443",
       "89.208.228.139:52006",
-      "51.250.4.119:443",
-      "51.250.90.103:443",
+      "95.163.210.159:80",
+      "178.154.202.254:7445",
+      "185.112.59.134:8446",
+      "144.31.178.150:8443",
       "109.120.189.112:51006",
       "5.188.141.131:443",
-      "51.250.95.176:443",
-      "95.163.210.159:80",
+      "37.139.34.115:443",
+      "51.250.65.209:443",
+      "109.120.189.142:443",
       "185.130.112.165:8448",
-      "144.31.178.150:8443",
-      "95.163.211.13:443",
-      "5.188.140.76:443",
-      "5.188.141.18:443",
-      "37.139.33.125:443",
-      "37.139.33.223:52006",
+      "95.163.210.159:8080",
       "109.120.189.160:443",
+      "89.208.228.167:443",
+      "51.250.95.176:443",
+      "51.250.69.188:8449",
+      "109.120.188.156:443",
       "45.15.128.75:8443",
+      "51.250.83.255:443",
+      "51.250.80.61:443",
+      "51.250.4.119:443",
+      "51.250.87.167:443",
+      "5.188.140.76:443",
+      "51.250.43.209:8080",
+      "5.188.141.67:443",
+      "178.154.224.33:443",
       "5.188.141.12:52006",
-      "109.120.189.145:443"
+      "5.188.141.18:443",
+      "51.250.68.142:443",
+      "51.250.14.48:7445",
+      "146.185.209.170:443"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1106
+    "monitored_endpoints": 1127
   },
-  "processing_time": 1332.8304891586304
+  "processing_time": 1291.9965250492096
 }
