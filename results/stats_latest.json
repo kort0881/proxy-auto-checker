@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-03-04T19:33:05.294105",
+  "timestamp": "2026-03-04T20:18:09.080717",
   "region": "ALL",
   "route_tag": "default",
-  "total_checked": 2885,
+  "total_checked": 2788,
   "total_working": 0,
   "rf_ready": 0,
   "rf_ready_percent": 0.0,
@@ -19,26 +19,25 @@
   "by_transport": {},
   "by_sni": {},
   "mutations": {
-    "tried": 2257,
+    "tried": 2170,
     "successful": 0
   },
   "ai": {
     "enabled": true,
     "anomalies": 0,
-    "retrains": 14,
-    "history_size": 15085
+    "retrains": 13,
+    "history_size": 15188
   },
   "dpi": {
-    "total_suspects": 4,
+    "total_suspects": 3,
     "high_confidence": [
+      "185.112.59.134:8446",
       "cloud.quattro-tech.ru:8443",
-      "45.15.128.75:8443",
-      "185.130.112.165:8448",
-      "185.112.59.134:8446"
+      "185.130.112.165:8448"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1187
+    "monitored_endpoints": 1171
   },
-  "processing_time": 150.16057467460632
+  "processing_time": 137.0450553894043
 }
