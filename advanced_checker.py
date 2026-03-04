@@ -2028,10 +2028,11 @@ def _flush_history_and_stats(results: List[CheckResult], region: str):
     """Guaranteed flush of history and stats to disk"""
     ai_engine.finalize()
     dpi_detector.save_stats()
-    if results:
-        save_results(results, region)
-    else:
-        stats_data = {
+    # FIX: всегда вызываем save_results — FALLBACK внутри разберётся с пустым xray-списком
+    save_results(results, region)
+    return
+    stats_data = {  # unreachable, kept for reference
+
             "timestamp": datetime.now().isoformat(),
             "region": region,
             "route_tag": CONFIG.ROUTE_TAG,
@@ -2279,6 +2280,26 @@ def main():
 
     xray_time = time.time() - xray_start
     total_time = time.time() - stats.start_time
+
+    # ── FIX PATCH 2: FALLBACK — если xray не дал ни одного живого ключа,
+    # строим минимальные CheckResult из TCP-прошедших ключей.
+    if not results and tcp_passed:
+        log(f"[FALLBACK] Xray gave 0 results — building CheckResult list from {len(tcp_passed)} TCP-passed keys")
+        for _key in tcp_passed:
+            _host, _port = extract_host_port(_key)
+            _, _proto, _sec = parse_key_to_config(_key)
+            results.append(CheckResult(
+                key=_key,
+                alive=True,
+                protocol=_proto or "Unknown",
+                host=_host or "",
+                port=_port or 0,
+                security=_sec or "none",
+                latency=0.0,
+                jitter=0.0,
+                route_tag=CONFIG.ROUTE_TAG,
+            ))
+        log(f"[FALLBACK] Built {len(results)} CheckResult objects from TCP keys")
 
     _flush_history_and_stats(results, args.region)
 
