@@ -1757,6 +1757,7 @@ def _two_phase_test(
         transport_used=transport
     )
 
+
 # ==================== SAVE RESULTS ====================
 def save_results(results: List[CheckResult], region: str = "ALL"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1776,7 +1777,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         if r.rf_ready:
             rf_ready_results.append(r)
 
-            # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
+    # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
     if not any(by_quality.values()):
         log("[FALLBACK] No Xray-alive keys, classifying TCP-passed into ELITE/PREMIUM/GOOD")
 
@@ -1819,10 +1820,8 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             stats.by_quality[Quality.GOOD] = len(good_tcp)
             stats.rf_ready = 0
 
-
         total_tcp = len(tcp_alive)
         log(f"[FALLBACK] TCP total={total_tcp}, ELITE={len(elite_tcp)}, PREMIUM={len(premium_tcp)}, GOOD={len(good_tcp)}")
-
 
     # 3. Записываем файлы по качеству (ELITE / PREMIUM / GOOD)
     for quality in Quality:
@@ -1981,7 +1980,6 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
     return stats_data
 
 
-
 # ==================== SELFHOST CONFIG GENERATOR ====================
 def generate_selfhost_config(sni: str = None, port: int = 443):
     if sni is None:
@@ -2024,49 +2022,12 @@ def generate_selfhost_config(sni: str = None, port: int = 443):
 
 
 # ==================== HELPERS ====================
-def _flush_history_and_stats(results: List[CheckResult], region: str):
-    """Guaranteed flush of history and stats to disk"""
+def _flush_history_and_stats(results: List[CheckResult], region: str) -> None:
+    """Guaranteed flush of history and stats to disk."""
     ai_engine.finalize()
     dpi_detector.save_stats()
-    # FIX: всегда вызываем save_results — FALLBACK внутри разберётся с пустым xray-списком
     save_results(results, region)
     return
-    stats_data = {  # unreachable, kept for reference
-
-            "timestamp": datetime.now().isoformat(),
-            "region": region,
-            "route_tag": CONFIG.ROUTE_TAG,
-            "total_checked": stats.tcp_passed,
-            "total_working": 0,
-            "rf_ready": 0,
-            "rf_ready_percent": 0.0,
-            "quick_check": {
-                "passed": stats.quick_passed,
-                "failed": stats.quick_failed,
-            },
-            "by_quality": {q.value: 0 for q in Quality},
-            "by_protocol": dict(stats.by_protocol),
-            "by_transport": dict(stats.by_transport),
-            "by_sni": dict(stats.by_sni),
-            "mutations": {
-                "tried": stats.mutations_tried,
-                "successful": stats.mutations_success,
-            },
-            "ai": {
-                "enabled": ai_engine.enabled,
-                "anomalies": stats.ai_anomalies,
-                "retrains": stats.ai_retrains,
-                "history_size": len(ai_engine.history),
-            },
-            "dpi": dpi_detector.get_stats(),
-            "processing_time": time.time() - stats.start_time,
-        }
-        try:
-            with open(STATS_FILE, 'w', encoding='utf-8') as f:
-                json.dump(stats_data, f, indent=2)
-            log(f"[SAVE] Stats (empty run) -> {STATS_FILE.name}")
-        except Exception as e:
-            log(f"[WARN] Could not write stats: {e}")
 
 
 # ==================== MAIN ====================
