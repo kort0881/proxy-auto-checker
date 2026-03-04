@@ -1776,22 +1776,52 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         if r.rf_ready:
             rf_ready_results.append(r)
 
-    # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
+        # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
     if not any(by_quality.values()) and stats.tcp_passed > 0:
-        log("[FALLBACK] No Xray-alive keys, using TCP-passed as GOOD")
+        log("[FALLBACK] No Xray-alive keys, classifying TCP-passed into ELITE/PREMIUM/GOOD")
 
-        fallback_results: List[CheckResult] = []
-        for r in results:
-            # Здесь предполагаем, что r.alive==True соответствует TCP-прошедшим
-            if r.alive:
+        # Берём все TCP-alive
+        tcp_alive: List[CheckResult] = [r for r in results if r.alive]
+
+        elite_tcp: List[CheckResult] = []
+        premium_tcp: List[CheckResult] = []
+        good_tcp: List[CheckResult] = []
+
+        for r in tcp_alive:
+            # На GitHub категорий/AI нет, используем только latency + jitter как суррогат
+            lat = r.latency or 9999
+            jit = r.jitter or 9999
+
+            if lat <= QUALITY_THRESHOLDS[Quality.ELITE].latency_max and jit <= QUALITY_THRESHOLDS[Quality.ELITE].jitter_max:
+                r.quality = Quality.ELITE
+                elite_tcp.append(r)
+            elif lat <= QUALITY_THRESHOLDS[Quality.PREMIUM].latency_max and jit <= QUALITY_THRESHOLDS[Quality.PREMIUM].jitter_max:
+                r.quality = Quality.PREMIUM
+                premium_tcp.append(r)
+            else:
                 r.quality = Quality.GOOD
-                fallback_results.append(r)
+                good_tcp.append(r)
 
-        if fallback_results:
-            fallback_results.sort(key=lambda x: x.latency)
-            by_quality[Quality.GOOD] = fallback_results
-            rf_ready_results = []  # RF на чистом TCP не считаем
-            log(f"[FALLBACK] TCP-good keys: {len(fallback_results)}")
+        for lst in (elite_tcp, premium_tcp, good_tcp):
+            lst.sort(key=lambda x: x.latency or 9999)
+
+        by_quality[Quality.ELITE] = elite_tcp
+        by_quality[Quality.PREMIUM] = premium_tcp
+        by_quality[Quality.GOOD] = good_tcp
+
+        # RF на чистом TCP не считаем
+        rf_ready_results = []
+
+        # Обновим stats, чтобы телега/README могли опираться на JSON
+        with stats_lock:
+            stats.by_quality[Quality.ELITE] = len(elite_tcp)
+            stats.by_quality[Quality.PREMIUM] = len(premium_tcp)
+            stats.by_quality[Quality.GOOD] = len(good_tcp)
+            stats.rf_ready = 0
+
+        total_tcp = len(tcp_alive)
+        log(f"[FALLBACK] TCP total={total_tcp}, ELITE={len(elite_tcp)}, PREMIUM={len(premium_tcp)}, GOOD={len(good_tcp)}")
+
 
     # 3. Записываем файлы по качеству (ELITE / PREMIUM / GOOD)
     for quality in Quality:
