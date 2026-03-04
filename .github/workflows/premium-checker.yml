@@ -46,7 +46,6 @@ jobs:
     - name: Run Checker
       id: check
       run: |
-        set -e
         REGION="${{ github.event.inputs.region || 'ALL' }}"
         python advanced_checker.py --region "$REGION" --workers 16 --tcp-workers 50
         
@@ -63,6 +62,7 @@ jobs:
           premium=$(grep -c "://" results/premium/premium.txt 2>/dev/null || echo "0")
         fi
         
+        # Enable nullglob to handle no matches safely
         shopt -s nullglob
         for f in results/premium/*.txt; do
           count=$(grep -c "://" "$f" 2>/dev/null || echo "0")
@@ -78,11 +78,11 @@ jobs:
         echo "📊 Found: Total=$total, Elite=$elite, Premium=$premium"
 
     - name: Generate README
-      if: always()
+      if: success()
       env:
-        TOTAL: ${{ steps.check.outputs.total || '0' }}
-        ELITE: ${{ steps.check.outputs.elite || '0' }}
-        PREMIUM: ${{ steps.check.outputs.premium || '0' }}
+        TOTAL: ${{ steps.check.outputs.total }}
+        ELITE: ${{ steps.check.outputs.elite }}
+        PREMIUM: ${{ steps.check.outputs.premium }}
         REPO: ${{ github.repository }}
       run: |
         DATE=$(date -u +'%Y-%m-%d')
@@ -138,14 +138,14 @@ jobs:
           results/premium/*.txt
           results/stats_latest.json
         retention-days: 7
-        if-no-files-found: ignore
 
     - name: Commit Results
-      if: always()
+      if: success()
       run: |
         git config user.name "AI Proxy Bot"
         git config user.email "bot@github.actions"
         
+        # Robust pull/push loop
         for i in 1 2 3 4 5; do
           git pull origin main --rebase --autostash || { sleep 5; continue; }
           break
@@ -157,12 +157,12 @@ jobs:
         git add -f README.md || true
         
         if git diff --cached --quiet; then
-          echo "ℹ️ No changes to commit"
+          echo "No changes to commit"
           exit 0
         fi
         
-        TOTAL="${{ steps.check.outputs.total || '0' }}"
-        ELITE="${{ steps.check.outputs.elite || '0' }}"
+        TOTAL="${{ steps.check.outputs.total }}"
+        ELITE="${{ steps.check.outputs.elite }}"
         
         git commit -m "🔥 Update: ${TOTAL} keys (${ELITE} elite) [$(date -u +'%Y-%m-%d')]"
         
