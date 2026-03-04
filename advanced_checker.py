@@ -1776,9 +1776,8 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         if r.rf_ready:
             rf_ready_results.append(r)
 
-        # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
-        if not any(by_quality.values()):
-
+            # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
+    if not any(by_quality.values()):
         log("[FALLBACK] No Xray-alive keys, classifying TCP-passed into ELITE/PREMIUM/GOOD")
 
         # Берём все TCP-alive
@@ -1819,6 +1818,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             stats.by_quality[Quality.PREMIUM] = len(premium_tcp)
             stats.by_quality[Quality.GOOD] = len(good_tcp)
             stats.rf_ready = 0
+
 
         total_tcp = len(tcp_alive)
         log(f"[FALLBACK] TCP total={total_tcp}, ELITE={len(elite_tcp)}, PREMIUM={len(premium_tcp)}, GOOD={len(good_tcp)}")
