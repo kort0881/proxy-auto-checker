@@ -5,25 +5,25 @@ on:
     - cron: '0 */12 * * *'  # Каждые 12 часов (00:00 и 12:00 UTC)
   workflow_dispatch:  # Ручной запуск через Actions
 
-# ✅ ДОБАВЛЕНО: Запрет параллельных запусков
+# ✅ Запрет параллельных запусков
 concurrency:
-  group: proxy-checker-push  # Общая группа для обоих workflow
-  cancel-in-progress: false  # Ждём завершения предыдущего
+  group: proxy-checker-push
+  cancel-in-progress: false
 
-# ✅ ДОБАВЛЕНО: Permissions для git push
+# ✅ Permissions для git push
 permissions:
   contents: write
 
 jobs:
   check-and-post:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 2 часа максимум
+    timeout-minutes: 120
     
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # ✅ ДОБАВЛЕНО: полная история для git pull
+        fetch-depth: 0
     
     - name: 🐍 Setup Python 3.11
       uses: actions/setup-python@v5
@@ -36,15 +36,48 @@ jobs:
         pip install requests[socks]
     
     - name: 🔍 Run proxy checker
+      id: checker
       run: |
-        python check_proxies.py
-      continue-on-error: false
+        python check_proxies.py 2>&1 | tee checker.log
+        exit_code=${PIPESTATUS[0]}
+        echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+        
+        # Проверяем наличие результатов
+        if ls results/verified_*.txt 1> /dev/null 2>&1; then
+          echo "has_results=true" >> $GITHUB_OUTPUT
+          echo "✅ Results files found"
+        else
+          echo "has_results=false" >> $GITHUB_OUTPUT
+          echo "⚠️ No result files found"
+        fi
+        
+        # Не останавливаем workflow при exit code 1
+        exit 0
+    
+    - name: 📊 Show checker summary
+      if: always()
+      run: |
+        echo "=== Checker Exit Code: ${{ steps.checker.outputs.exit_code }} ==="
+        echo "=== Has Results: ${{ steps.checker.outputs.has_results }} ==="
+        
+        if [ -f "checker.log" ]; then
+          echo ""
+          echo "=== Last 30 lines of checker output ==="
+          tail -30 checker.log
+        fi
+        
+        if [ -d "results" ]; then
+          echo ""
+          echo "=== Files in results/ ==="
+          ls -lah results/ || echo "Empty or no results directory"
+        fi
     
     - name: 💾 Save to repository
-      if: success()
+      if: steps.checker.outputs.has_results == 'true'
       run: |
         mkdir -p checked/latest
         latest_verified=$(ls -t results/verified_*.txt 2>/dev/null | head -1)
+        
         if [ -f "$latest_verified" ]; then
           cp "$latest_verified" checked/latest/verified.txt
           key_count=$(grep -v "^#" checked/latest/verified.txt | grep -v "^$" | wc -l)
@@ -54,44 +87,59 @@ jobs:
         fi
     
     - name: 📤 Post to Telegram
-      if: success()
+      if: steps.checker.outputs.has_results == 'true'
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
         TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
       run: |
-        python post_to_telegram.py
+        python post_to_telegram.py || echo "⚠️ Telegram posting failed"
     
     - name: 📁 Upload results as artifact
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: verified-keys
-        path: results/verified_*.txt
+        name: verified-keys-${{ github.run_number }}
+        path: |
+          results/verified_*.txt
+          results/verified_meta_*.jsonl
+          checker.log
         retention-days: 7
+        if-no-files-found: warn
     
     - name: 🚀 Commit to repository
-      if: success()
+      if: steps.checker.outputs.has_results == 'true'
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
         
-        # Подтягиваем последние изменения из main
+        # Подтягиваем последние изменения
         git pull origin main --rebase --autostash || git pull origin main || echo "Nothing to pull"
         
-        # Добавляем наши изменения
+        # Добавляем изменения
         git add checked/latest/
         
-        # Коммитим (если есть изменения)
-        git diff --cached --quiet || git commit -m "✨ Update verified keys: $(date -u +'%Y-%m-%d %H:%M UTC')"
+        # Коммитим если есть изменения
+        if ! git diff --cached --quiet; then
+          git commit -m "✨ Update verified keys: $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push origin main
+          echo "✅ Changes committed and pushed"
+        else
+          echo "ℹ️ No changes to commit"
+        fi
+    
+    - name: 📝 Workflow summary
+      if: always()
+      run: |
+        echo "## 📊 Workflow Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Checker Exit Code:** ${{ steps.checker.outputs.exit_code }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Results Found:** ${{ steps.checker.outputs.has_results }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Run Time:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
         
-        # Пушим
-        git push origin main
-
-
-
-
-
-
-
-
+        if [ -f "results/verified_"*.txt ]; then
+          key_count=$(grep -v "^#" results/verified_*.txt | grep -v "^$" | wc -l)
+          echo "- **Verified Keys:** $key_count" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- **Verified Keys:** 0" >> $GITHUB_STEP_SUMMARY
+        fi
