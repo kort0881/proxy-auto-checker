@@ -1757,24 +1757,48 @@ def _two_phase_test(
         transport_used=transport
     )
 
-
 # ==================== SAVE RESULTS ====================
 def save_results(results: List[CheckResult], region: str = "ALL"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    by_quality = defaultdict(list)
-    rf_ready_results = []
+    by_quality: Dict[Quality, List[CheckResult]] = defaultdict(list)
+    rf_ready_results: List[CheckResult] = []
 
+    # 1. Максимально ослабляем критерии: всё, что alive после пайплайна, считаем минимум GOOD
     for r in results:
-        if r.alive and r.quality:
-            by_quality[r.quality].append(r)
-            if r.rf_ready:
-                rf_ready_results.append(r)
+        if not r.alive:
+            continue
 
-    # Записываем файлы по качеству — без дополнительных условий на RF-ready
+        # Если качество не выставлено Xray-логикой — ставим GOOD по умолчанию
+        if not r.quality:
+            r.quality = Quality.GOOD
+
+        by_quality[r.quality].append(r)
+        if r.rf_ready:
+            rf_ready_results.append(r)
+
+    # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
+    if not any(by_quality.values()) and stats.tcp_passed > 0:
+        log("[FALLBACK] No Xray-alive keys, using TCP-passed as GOOD")
+
+        fallback_results: List[CheckResult] = []
+        for r in results:
+            # Здесь предполагаем, что r.alive==True соответствует TCP-прошедшим
+            if r.alive:
+                r.quality = Quality.GOOD
+                fallback_results.append(r)
+
+        if fallback_results:
+            fallback_results.sort(key=lambda x: x.latency)
+            by_quality[Quality.GOOD] = fallback_results
+            rf_ready_results = []  # RF на чистом TCP не считаем
+            log(f"[FALLBACK] TCP-good keys: {len(fallback_results)}")
+
+    # 3. Записываем файлы по качеству (ELITE / PREMIUM / GOOD)
     for quality in Quality:
         items = by_quality.get(quality, [])
         if not items:
             continue
+
         items.sort(key=lambda x: x.latency)
         filename = PREMIUM_FOLDER / f"{quality.value}.txt"
         with open(filename, 'w', encoding='utf-8') as f:
@@ -1785,30 +1809,37 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             f.write(f"# Keys: {len(items)}\n\n")
             for r in items:
                 tg = " TG" if r.telegram else ""
-                is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
                 reg = "RU" if is_ru else "EU"
                 mut = f" {r.mutation_used}" if r.mutation_used else ""
                 ai = f" {r.ai_verdict}" if r.ai_verdict else ""
                 score_tag = f" ai{r.ai_score:.1f}" if r.ai_score > 0 else ""
                 rf = f" RF{r.rf_score:.1f}" if r.rf_ready else ""
                 dpi = " DPI?" if r.dpi_suspect else ""
-                comment = f"[{r.latency:.0f}ms|{reg}|j{r.jitter:.0f}|rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|{r.categories}cat|crit{r.critical_categories}{tg}|{r.protocol}|{r.transport_used}|sni:{r.sni_used}{mut}{ai}{score_tag}{rf}{dpi}{MY_CHANNEL}]"
+                comment = (
+                    f"[{r.latency:.0f}ms|{reg}|j{r.jitter:.0f}|"
+                    f"rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|"
+                    f"{r.categories}cat|crit{r.critical_categories}"
+                    f"{tg}|{r.protocol}|{r.transport_used}|sni:{r.sni_used}"
+                    f"{mut}{ai}{score_tag}{rf}{dpi}{MY_CHANNEL}]"
+                )
                 base_key = r.key.split('#')[0]
                 f.write(f"{base_key}#{quote(comment)}\n")
         log(f"[SAVE] {quality.value.upper()}: {len(items)} -> {filename.name}")
 
+    # 4. RF-READY отдельным файлом (если есть)
     if rf_ready_results:
         rf_ready_results.sort(key=lambda x: -x.rf_score)
         rf_filename = RF_FOLDER / f"rf_ready_{timestamp}.txt"
         with open(rf_filename, 'w', encoding='utf-8') as f:
-            f.write(f"# RF-READY KEYS\n")
+            f.write("# RF-READY KEYS\n")
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"# Route: {CONFIG.ROUTE_TAG}\n")
             f.write(f"# Keys: {len(rf_ready_results)}\n\n")
             for r in rf_ready_results:
                 tg = "TG+" if r.telegram else ""
-                is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
                 reg = "RU" if is_ru else "EU"
                 comment = (
                     f"RF{r.rf_score:.1f} {reg} {r.quality.value.upper()} "
@@ -1818,8 +1849,12 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
                 f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
         log(f"[SAVE] RF-READY: {len(rf_ready_results)} -> {rf_filename.name}")
 
-    all_results = [r for r in results if r.alive]
+    # 5. Общий verified_*.txt
+    all_results: List[CheckResult] = []
+    for q in Quality:
+        all_results.extend(by_quality.get(q, []))
     all_results.sort(key=lambda x: x.latency)
+
     verified_file = RESULTS_FOLDER / f"verified_{timestamp}.txt"
     with open(verified_file, 'w', encoding='utf-8') as f:
         f.write(f"# {MY_CHANNEL}\n")
@@ -1829,12 +1864,14 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         f.write(f"# RF-Ready: {len(rf_ready_results)}\n\n")
         for r in all_results:
             rf_tag = " RF" if r.rf_ready else ""
-            is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+            is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
             reg = "RU" if is_ru else "EU"
-            comment = f"{reg} {r.quality.value.upper()}{rf_tag} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
+            q = (r.quality.value.upper() if r.quality else "GOOD")
+            comment = f"{reg} {q}{rf_tag} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
             f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
     log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
 
+    # 6. Статистика (оставляем как было, только опираемся на by_quality)
     trend_summary = {}
     for proto, ps in ai_engine.protocol_stats.items():
         if ps['total'] > 0:
@@ -1911,6 +1948,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
     log(f"[SAVE] Stats -> {STATS_FILE.name}")
     dpi_detector.save_stats()
     return stats_data
+
 
 
 # ==================== SELFHOST CONFIG GENERATOR ====================
