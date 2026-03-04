@@ -1777,7 +1777,8 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             rf_ready_results.append(r)
 
         # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
-    if not any(by_quality.values()) and stats.tcp_passed > 0:
+        if not any(by_quality.values()):
+
         log("[FALLBACK] No Xray-alive keys, classifying TCP-passed into ELITE/PREMIUM/GOOD")
 
         # Берём все TCP-alive
