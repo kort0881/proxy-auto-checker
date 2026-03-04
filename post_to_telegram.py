@@ -13,7 +13,8 @@ PUBLIC_CHANNEL = "@vlesstrojan"
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
-PREMIUM_FOLDER = os.path.join(RESULTS_FOLDER, "premium")  # НОВОЕ
+PREMIUM_FOLDER = os.path.join(RESULTS_FOLDER, "premium")
+LIGHT_VERIFIED = os.path.join(WORK_DIR, "checked", "latest", "verified.txt")
 
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
@@ -31,9 +32,9 @@ TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
 REACTIONS_TEXT = (
     "Если формат зашел — жми 👍\n"
-    "Не согласен — выбери 😡\n"
+    "Не согласен — выбери ⚡️\n"
     "Хочешь продолжение — поставь 🔥\n"
-    "Конфиг рабочий? жми 🟢, лагает — тыкай 🔴\n"
+    "Конфиг рабочий? жми 🟢, лагает — тыкай 🧨\n"
     "Протокол топ? ставь 🚀, если фейл — жми 💥\n"
     "Юзаешь? отмечай 😎, если нет — выбирай 🤔"
 )
@@ -45,18 +46,15 @@ SUBSCRIPTIONS_URL = (
 
 
 def load_subscriptions():
-    """Загрузить ссылки на подписки по HTTP из первого репозитория."""
     try:
         resp = requests.get(SUBSCRIPTIONS_URL, timeout=15)
         if resp.status_code != 200:
             print(f"⚠️ Не удалось получить подписки: HTTP {resp.status_code}")
             return None
-
         content = resp.text.strip()
         if not content:
             print("⚠️ Подписки пустые")
             return None
-
         return content
     except Exception as e:
         print(f"❌ Ошибка загрузки подписок: {e}")
@@ -64,55 +62,37 @@ def load_subscriptions():
 
 
 def format_subscriptions_for_telegram(subscriptions_text):
-    """Только заголовки, без самих ссылок."""
     if not subscriptions_text:
         return ""
-
     lines = subscriptions_text.strip().split("\n")
     formatted_lines = []
-
     for line in lines:
         line = line.strip()
         if not line:
             continue
-
         if line.startswith("==="):
-            # Оставляем только разделы, как: === RUSSIA ===, === EUROPE ===
             formatted_lines.append(f"\n<b>{line}</b>")
-        # Всё, что начинается с http, просто пропускаем
-
     return "\n".join(formatted_lines)
 
 
 def parse_subscriptions_for_buttons(subscriptions_text):
-    """
-    Парсит subscriptions_list.txt в список кнопок:
-    [{'text': '📥 ru_white_part1', 'url': 'https://raw.../ru_white_part1.txt'}, ...]
-    """
     if not subscriptions_text:
         return []
-
     lines = subscriptions_text.strip().split("\n")
     buttons = []
-
     for line in lines:
         line = line.strip()
-        if not line:
-            continue
-        if line.startswith("==="):
+        if not line or line.startswith("==="):
             continue
         if line.startswith("http"):
             filename = line.split("/")[-1].replace(".txt", "")
             btn_text = f"📥 {filename}"
-            # Telegram ограничивает длину текста кнопки, подрежем до 32 символов
             btn_text = btn_text[:32]
             buttons.append({"text": btn_text, "url": line})
-
     return buttons
 
 
 def clean_key(k: str) -> str:
-    """Убираем мусор из ключа."""
     k = k.strip()
     if " " in k:
         k = k.split(" ")[0]
@@ -120,21 +100,14 @@ def clean_key(k: str) -> str:
 
 
 def fix_universal(key: str) -> str:
-    """
-    Делает VLESS-ключ универсальным:
-    - Меняет type=xhttp на type=http для совместимости с Hiddify Desktop.
-    """
     key = key.strip()
     if not key.startswith("vless://") or "type=xhttp" not in key:
         return key
-
     try:
         parsed = urllib.parse.urlparse(key)
         query = urllib.parse.parse_qs(parsed.query)
-
         if query.get("type", [""])[0].lower() == "xhttp":
             query["type"] = ["http"]
-
         new_query = urllib.parse.urlencode(query, doseq=True)
         return urllib.parse.urlunparse(
             (
@@ -151,10 +124,6 @@ def fix_universal(key: str) -> str:
 
 
 def load_premium_keys():
-    """
-    Загрузить ключи из results/premium/ в порядке приоритета:
-    elite.txt → premium.txt → good.txt
-    """
     all_keys = []
     stats = {"elite": 0, "premium": 0, "good": 0}
 
@@ -166,7 +135,6 @@ def load_premium_keys():
 
     for filename, category in priority_files:
         filepath = os.path.join(PREMIUM_FOLDER, filename)
-
         if not os.path.exists(filepath):
             print(f"  ⚠️ {filename} не найден")
             continue
@@ -188,15 +156,10 @@ def load_premium_keys():
 
 
 def load_fallback_keys():
-    """
-    Fallback: загрузить из verified_*.txt или semi_dead_*.txt
-    (если premium/ пусто)
-    """
     verified_files = [
         f for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("verified_") and f.endswith(".txt")
     ]
-
     semi_dead_files = [
         f for f in os.listdir(RESULTS_FOLDER)
         if f.startswith("semi_dead_") and f.endswith(".txt")
@@ -231,11 +194,25 @@ def load_fallback_keys():
     return keys, latest, source
 
 
+def load_light_verified_keys():
+    """
+    Fallback №2: свежий TCP-список из checked/latest/verified.txt,
+    если premium и verified/semi_dead пустые.
+    """
+    if not os.path.exists(LIGHT_VERIFIED):
+        return []
+    keys = []
+    with open(LIGHT_VERIFIED, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                key = fix_universal(clean_key(line))
+                if key:
+                    keys.append(key)
+    return keys
+
+
 def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
-    """
-    Создаёт список markdown-сообщений.
-    В каждом: дисклеймер + до per_chunk ключей в код-блоках + хвост.
-    """
     keys = [clean_key(k) for k in keys[:max_total_keys]]
     chunks = []
     offset = 0
@@ -276,7 +253,6 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
 
 
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
-    """Отправка фото с подписью, затем файла как ответ."""
     url = f"https://api.telegram.org/bot{bot_token}"
 
     try:
@@ -320,7 +296,6 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
 
 
 def create_public_file(all_keys, stats=None):
-    """Создать файл с первыми 100 ключами для публичного канала."""
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"public_top100_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
@@ -343,7 +318,6 @@ def create_public_file(all_keys, stats=None):
 
 
 def create_private_file(all_keys, stats=None):
-    """Создать файл со всеми ключами (кроме первых 10) для закрытого канала."""
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"private_remaining_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
@@ -367,7 +341,6 @@ def create_private_file(all_keys, stats=None):
 
 
 def safe_remove(filepath: str):
-    """Безопасное удаление файла."""
     try:
         if os.path.exists(filepath):
             os.remove(filepath)
@@ -379,7 +352,6 @@ def main():
     if not BOT_TOKEN_PUBLIC:
         print("❌ TELEGRAM_BOT_TOKEN_PUBLIC не установлен")
         return 1
-
     if not BOT_TOKEN_PRIVATE:
         print("❌ TELEGRAM_BOT_TOKEN не установлен")
         return 1
@@ -393,7 +365,7 @@ def main():
         print(f"❌ Папка {RESULTS_FOLDER} не существует")
         return 1
 
-    # Загружаем подписки с GitHub
+    # Подписки
     subscriptions_raw = load_subscriptions()
     subscriptions_formatted = format_subscriptions_for_telegram(subscriptions_raw)
     subscriptions_buttons = parse_subscriptions_for_buttons(subscriptions_raw)
@@ -403,10 +375,10 @@ def main():
     key_stats = None
     source_info = ""
 
+    # 1) Premium
     if os.path.exists(PREMIUM_FOLDER):
         print("📁 Ищем ключи в results/premium/...")
         all_keys, key_stats = load_premium_keys()
-
         if all_keys:
             source_info = "premium (elite + premium + good)"
             print(f"\n✅ Загружено из premium: {len(all_keys)} ключей")
@@ -414,16 +386,22 @@ def main():
                 f"   Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}"
             )
 
+    # 2) verified/semi_dead
     if not all_keys:
         print("\n📁 Premium пусто, ищем verified/semi_dead...")
         all_keys, filename, source = load_fallback_keys()
-
         if all_keys:
             source_info = f"{source} ({filename})"
             print(f"✅ Fallback: {len(all_keys)} ключей из {filename}")
         else:
-            print("❌ Нет файлов с ключами")
-            return 1
+            print("⚠️ verified/semi_dead нет, пробуем checked/latest/verified.txt...")
+            all_keys = load_light_verified_keys()
+            if all_keys:
+                source_info = "checked/latest/verified.txt (TCP-only)"
+                print(f"✅ Fallback: {len(all_keys)} ключей из checked/latest/verified.txt")
+            else:
+                print("❌ Нет файлов с ключами")
+                return 1
 
     total_keys = len(all_keys)
     print(f"\n📦 Всего ключей: {total_keys}")
@@ -463,7 +441,6 @@ def main():
             caption,
             bot_token=BOT_TOKEN_PUBLIC,
         )
-
         if result and result.get("ok"):
             print(f"✅ Пост отправлен в {PUBLIC_CHANNEL}")
         else:
@@ -474,9 +451,8 @@ def main():
 
     safe_remove(public_file)
 
-    # Пост с подписками в публичный канал: красивый текст + кнопки копирования
+    # Пост с подписками в публичный канал
     if subscriptions_formatted and subscriptions_buttons:
-        # формируем клавиатуру вручную (Bot API copy_text)
         keyboard = []
         row = []
         for btn in subscriptions_buttons:
@@ -570,7 +546,6 @@ def main():
                 caption,
                 bot_token=BOT_TOKEN_PRIVATE,
             )
-
             if result and result.get("ok"):
                 print(
                     f"✅ Пост с файлом отправлен ({private_count} ключей в файле)"
@@ -581,7 +556,7 @@ def main():
         else:
             print("⚠️ Нет картинки для приватного канала")
 
-        # Пост с подписками в приватный канал (VIP) + кнопки копирования
+        # Пост с подписками (приват)
         if subscriptions_formatted and subscriptions_buttons:
             keyboard = []
             row = []
