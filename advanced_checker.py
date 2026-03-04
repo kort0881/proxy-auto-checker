@@ -9,6 +9,7 @@ AI Proxy Checker v5.0 RF-READY
 - RF-метка качества
 - Гибкая работа с SNI
 - Определение региона RU/EU
+- Prefiltered keys поддержка
 """
 
 import os
@@ -59,6 +60,7 @@ STATS_FILE = RESULTS_FOLDER / "stats_latest.json"
 LOG_FILE = RESULTS_FOLDER / "checker.log"
 CATEGORY_STATS_FILE = RESULTS_FOLDER / "category_stats.json"
 DPI_STATS_FILE = RESULTS_FOLDER / "dpi_stats.json"
+PREFILTER_FILE = WORK_DIR / "checked" / "latest" / "verified.txt"
 
 for d in [XRAY_FOLDER, RESULTS_FOLDER, PREMIUM_FOLDER, RF_FOLDER]:
     d.mkdir(parents=True, exist_ok=True)
@@ -85,6 +87,19 @@ def read_source_text(url: str) -> str:
             time.sleep(2)
 
 
+# ==================== PREFILTERED KEYS LOADER ====================
+def load_prefiltered_keys() -> List[str]:
+    """Load keys from prefilter file (verified.txt)"""
+    if not PREFILTER_FILE.exists():
+        return []
+    text = PREFILTER_FILE.read_text(encoding="utf-8", errors="ignore")
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
 # ==================== SOURCES ====================
 KEY_SOURCES = {
     "RU": [
@@ -99,7 +114,6 @@ KEY_SOURCES = {
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
     ],
     "Prefiltered": [
-        # Замени на реальный путь к файлу после первичной проверки.
         # Поддерживаются форматы:
         #   "results/verified_2026-02-18_12-00-00.txt"   — относительный путь
         #   "/home/user/vpn/results/verified_latest.txt" — абсолютный путь
@@ -116,12 +130,12 @@ MY_CHANNEL = "@vlesstrojan"
 class Config:
     # ==================== WORKERS ====================
     TCP_WORKERS: int = 60
-    XRAY_WORKERS: int = 8          # [PATCHED] снижено с 16 до 8
+    XRAY_WORKERS: int = 8
     # ==================== TIMEOUTS ====================
     TCP_TIMEOUT: int = 6
     TCP_RETRIES: int = 1
     XRAY_TIMEOUT: int = 12
-    XRAY_STARTUP: float = 6.5      # [PATCHED] увеличено с 4.5 до 6.5
+    XRAY_STARTUP: float = 6.5
     XRAY_STARTUP_QUICK: float = 3.5
     QUICK_CHECK_TIMEOUT: int = 7
     CATEGORY_TIMEOUT: int = 6
@@ -137,7 +151,6 @@ class Config:
         ("https://www.google.com", "google", "important"),
         ("https://www.instagram.com", "instagram", "important"),
         ("https://twitter.com", "twitter", "important"),
-        # Убраны: vk, tiktok для скорости
     ])
     CATEGORY_PARALLEL: int = 4
     # RF-критерии
@@ -976,9 +989,7 @@ def setup_xray() -> Optional[Path]:
         log("[OK] Xray installed")
         return exe_path
     except Exception as e:
-        log(f"[ERR] Xray setup failed: {e}")
-        # [PATCHED] Не прерываем main() жёстким None — возвращаем None,
-        # но main() обработает это мягко (exit code 0).
+        log(f"[WARN] Xray setup failed: {e}")
         return None
 
 
@@ -1376,6 +1387,23 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
                 count += 1
             stats.total_downloaded += count
             log(f"    {url.split('/')[-1]}: {count}")
+    
+    # Add prefiltered keys
+    prefiltered = load_prefiltered_keys()
+    if prefiltered:
+        log(f"  Region: Prefiltered (from {PREFILTER_FILE})")
+        count = 0
+        for line in prefiltered:
+            normalized = line.split("#")[0].strip()
+            if normalized in seen:
+                duplicates += 1
+                continue
+            seen.add(normalized)
+            all_keys.append(line)
+            count += 1
+        stats.total_downloaded += count
+        log(f"    verified.txt: {count}")
+    
     stats.duplicates = duplicates
     stats.unique = len(all_keys)
     log(f"  Total: {stats.total_downloaded + duplicates} | Dupes: {duplicates} | Unique: {len(all_keys)}")
@@ -1902,22 +1930,12 @@ def generate_selfhost_config(sni: str = None, port: int = 443):
 
 # ==================== HELPERS ====================
 def _flush_history_and_stats(results: List[CheckResult], region: str):
-    """
-    [PATCHED] Гарантированный сброс истории и статистики на диск
-    до финального return в main(). Вызывается всегда, даже при
-    пустом списке alive-ключей.
-    """
-    # 1. Finalize AI (сохраняет category weights, тренды)
+    """Guaranteed flush of history and stats to disk"""
     ai_engine.finalize()
-
-    # 2. Сохраняем DPI статистику
     dpi_detector.save_stats()
-
-    # 3. Если есть результаты — сохраняем файлы
     if results:
         save_results(results, region)
     else:
-        # Нет alive-ключей, но stats и DPI всё равно пишем
         stats_data = {
             "timestamp": datetime.now().isoformat(),
             "region": region,
@@ -2061,14 +2079,11 @@ def main():
         print(f"    {q.value.upper():>7}: lat<={t.latency_max}ms  jit<={t.jitter_max}ms  cat>={t.categories_min}")
     print()
 
-    # ------------------------------------------------------------------ #
-    # [PATCHED] setup_xray: при неудаче — логируем и выходим с кодом 0   #
-    # ------------------------------------------------------------------ #
     xray_exe = setup_xray()
     if not xray_exe:
         log("[WARN] Xray unavailable — skipping Xray-level checks (exit 0)")
         _flush_history_and_stats([], args.region)
-        return 0  # <-- было return 1
+        return 0
 
     if args.region != 'ALL':
         sources = {args.region: KEY_SOURCES.get(args.region, [])}
@@ -2170,10 +2185,6 @@ def main():
     xray_time = time.time() - xray_start
     total_time = time.time() - stats.start_time
 
-    # ------------------------------------------------------------------ #
-    # [PATCHED] Гарантированный сброс истории и статистики               #
-    # Выполняется ВСЕГДА — даже если results пустой                      #
-    # ------------------------------------------------------------------ #
     _flush_history_and_stats(results, args.region)
 
     # === SUMMARY ===
@@ -2246,12 +2257,9 @@ def main():
 
     print("=" * 60)
 
-    # ------------------------------------------------------------------ #
-    # [PATCHED] При отсутствии alive-ключей — предупреждаем, но exit 0   #
-    # ------------------------------------------------------------------ #
     if not results:
         log("[WARN] NO ALIVE KEYS (Xray-level) — all keys failed at Xray stage")
-        return 0  # <-- было return 1 (неявно через отсутствие ветки)
+        return 0
 
     return 0 if stats.xray_passed > 0 else 0
 
