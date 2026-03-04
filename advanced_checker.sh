@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # advanced_checker.sh — обёртка для advanced_checker.py
-# FIX: убраны все expr/let/арифметика с $TOTAL/$ELITE/$PREMIUM — только вывод строк из JSON
+# FIX: убрана любая арифметика, только чтение JSON и echo
 
 set -euo pipefail
 
@@ -17,7 +17,6 @@ echo "  AI Proxy Checker — bash wrapper"
 echo "  Region: $REGION | Transport: $TRANSPORT | Route: $ROUTE_TAG"
 echo "============================================================"
 
-# Запускаем чекер
 "$PYTHON" "$CHECKER" \
     --region "$REGION" \
     --transport "$TRANSPORT" \
@@ -25,7 +24,7 @@ echo "============================================================"
 
 EXIT_CODE=$?
 
-# Читаем статистику из JSON (без арифметики в bash)
+# Читаем статистику из JSON (без expr/let/$(( )))
 if [ -f "$STATS_FILE" ] && command -v python3 &>/dev/null; then
     TOTAL=$(python3 -c "import json; d=json.load(open('$STATS_FILE')); print(d.get('total_working', 0))" 2>/dev/null || echo "0")
     ELITE=$(python3 -c "import json; d=json.load(open('$STATS_FILE')); print(d.get('by_quality',{}).get('elite',0))" 2>/dev/null || echo "0")
