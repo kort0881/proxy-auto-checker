@@ -48,34 +48,17 @@ jobs:
       run: |
         REGION="${{ github.event.inputs.region || 'ALL' }}"
         python advanced_checker.py --region "$REGION" --workers 16 --tcp-workers 50
-        
-        # Safe count logic
-        total=0
-        elite=0
-        premium=0
-        
-        if [ -f results/premium/elite.txt ]; then
-          elite=$(grep -c "://" results/premium/elite.txt 2>/dev/null || echo "0")
-        fi
-        
-        if [ -f results/premium/premium.txt ]; then
-          premium=$(grep -c "://" results/premium/premium.txt 2>/dev/null || echo "0")
-        fi
-        
-        # Enable nullglob to handle no matches safely
-        shopt -s nullglob
-        for f in results/premium/*.txt; do
-          count=$(grep -c "://" "$f" 2>/dev/null || echo "0")
-          count=${count:-0}
-          total=$((total + count))
-        done
-        shopt -u nullglob
-        
-        echo "total=$total" >> "$GITHUB_OUTPUT"
-        echo "elite=$elite" >> "$GITHUB_OUTPUT"
-        echo "premium=$premium" >> "$GITHUB_OUTPUT"
-        
-        echo "📊 Found: Total=$total, Elite=$elite, Premium=$premium"
+
+        # Берём статистику из JSON, без арифметики в bash
+        TOTAL=$(python -c "import json; d=json.load(open('results/stats_latest.json')); print(d.get('total_working', 0))" 2>/dev/null || echo "0")
+        ELITE=$(python -c "import json; d=json.load(open('results/stats_latest.json')); print(d.get('by_quality', {}).get('elite', 0))" 2>/dev/null || echo "0")
+        PREMIUM=$(python -c "import json; d=json.load(open('results/stats_latest.json')); print(d.get('by_quality', {}).get('premium', 0))" 2>/dev/null || echo "0")
+
+        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "elite=$ELITE" >> "$GITHUB_OUTPUT"
+        echo "premium=$PREMIUM" >> "$GITHUB_OUTPUT"
+
+        echo "📊 Found: Total=$TOTAL, Elite=$ELITE, Premium=$PREMIUM"
 
     - name: Generate README
       if: success()
@@ -171,3 +154,4 @@ jobs:
           git pull --rebase origin main
           sleep $((i * 5))
         done
+
