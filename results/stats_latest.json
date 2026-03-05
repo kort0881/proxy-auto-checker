@@ -1,8 +1,9 @@
 {
-  "timestamp": "2026-03-05T12:52:07.892356",
+  "timestamp": "2026-03-05T13:24:42.316830",
   "region": "ALL",
   "route_tag": "default",
-  "total_checked": 611,
+  "mode": "FALLBACK",
+  "total_checked": 608,
   "total_working": 0,
   "rf_ready": 0,
   "rf_partial": 0,
@@ -20,44 +21,44 @@
   "by_transport": {},
   "by_sni": {},
   "mutations": {
-    "tried": 574,
+    "tried": 571,
     "successful": 0
   },
   "ai": {
     "enabled": true,
     "anomalies": 0,
     "retrains": 3,
-    "history_size": 15011,
+    "history_size": 15008,
     "protocol_trends": {
+      "Trojan": {
+        "success_rate": 0.0,
+        "rf_rate": 0.0,
+        "trend": 0.0,
+        "total": 219
+      },
       "VLESS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 12504
+        "total": 12498
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1359
-      },
-      "Trojan": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 225
+        "total": 1354
       },
       "SS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1512
+        "total": 1515
       },
       "VMess": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 11
+        "total": 22
       }
     },
     "category_effectiveness": {},
@@ -65,24 +66,24 @@
       "www.google.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 13643
+        "total": 13039
       },
       "www.cloudflare.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 609
+        "total": 1215
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 13643
+        "total": 13039
       },
       "xhttp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 609
+        "total": 1215
       }
     }
   },
@@ -91,7 +92,7 @@
     "high_confidence": [],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 478
+    "monitored_endpoints": 474
   },
-  "processing_time": 80.79075360298157
+  "processing_time": 81.79358148574829
 }
