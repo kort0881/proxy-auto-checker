@@ -1,98 +1,25 @@
 {
-  "timestamp": "2026-03-05T16:13:27.402564",
+  "timestamp": "2026-03-05T18:51:55.356235",
   "region": "ALL",
-  "route_tag": "default",
-  "mode": "FALLBACK",
-  "total_checked": 617,
-  "total_working": 0,
-  "rf_ready": 0,
-  "rf_partial": 0,
-  "rf_ready_percent": 0.0,
-  "quick_check": {
-    "passed": 0,
-    "failed": 0
-  },
+  "mode": "TCP-LITE",
+  "total_checked": 3126,
+  "total_working": 2837,
   "by_quality": {
-    "elite": 0,
-    "premium": 0,
-    "good": 0
+    "elite": 2607,
+    "premium": 70,
+    "good": 160
   },
-  "by_protocol": {},
-  "by_transport": {},
-  "by_sni": {},
-  "mutations": {
-    "tried": 578,
-    "successful": 0
+  "by_protocol": {
+    "VLESS": 2310,
+    "SS": 488,
+    "Trojan": 27,
+    "VMess": 12
   },
-  "ai": {
-    "enabled": true,
-    "anomalies": 0,
-    "retrains": 3,
-    "history_size": 15017,
-    "protocol_trends": {
-      "VLESS": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 12939
-      },
-      "": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 1137
-      },
-      "Trojan": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 194
-      },
-      "SS": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 1280
-      },
-      "VMess": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 67
-      }
-    },
-    "category_effectiveness": {},
-    "sni_performance": {
-      "www.google.com": {
-        "success_rate": 0.0,
-        "avg_latency": 0.0,
-        "total": 10828
-      },
-      "www.cloudflare.com": {
-        "success_rate": 0.0,
-        "avg_latency": 0.0,
-        "total": 3652
-      }
-    },
-    "transport_performance": {
-      "tcp": {
-        "success_rate": 0.0,
-        "avg_latency": 0.0,
-        "total": 10828
-      },
-      "xhttp": {
-        "success_rate": 0.0,
-        "avg_latency": 0.0,
-        "total": 3652
-      }
-    }
+  "errors": {
+    "tcp_refused": 349,
+    "tcp_timeout": 896,
+    "parse_error": 30,
+    "dns_error": 25
   },
-  "dpi": {
-    "total_suspects": 0,
-    "high_confidence": [],
-    "medium_confidence": [],
-    "false_positives": [],
-    "monitored_endpoints": 480
-  },
-  "processing_time": 372.9224991798401
+  "processing_time": 177.41401982307434
 }
