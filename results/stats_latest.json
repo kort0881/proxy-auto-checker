@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-03-05T14:30:42.980096",
+  "timestamp": "2026-03-05T16:13:27.402564",
   "region": "ALL",
   "route_tag": "default",
   "mode": "FALLBACK",
-  "total_checked": 599,
+  "total_checked": 617,
   "total_working": 0,
   "rf_ready": 0,
   "rf_partial": 0,
@@ -21,44 +21,44 @@
   "by_transport": {},
   "by_sni": {},
   "mutations": {
-    "tried": 562,
+    "tried": 578,
     "successful": 0
   },
   "ai": {
     "enabled": true,
     "anomalies": 0,
-    "retrains": 2,
-    "history_size": 15199,
+    "retrains": 3,
+    "history_size": 15017,
     "protocol_trends": {
       "VLESS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 12940
+        "total": 12939
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1134
+        "total": 1137
       },
       "Trojan": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 193
+        "total": 194
       },
       "SS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1277
+        "total": 1280
       },
       "VMess": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 55
+        "total": 67
       }
     },
     "category_effectiveness": {},
@@ -66,24 +66,24 @@
       "www.google.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 11427
+        "total": 10828
       },
       "www.cloudflare.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 3038
+        "total": 3652
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 11427
+        "total": 10828
       },
       "xhttp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 3038
+        "total": 3652
       }
     }
   },
@@ -92,7 +92,7 @@
     "high_confidence": [],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 467
+    "monitored_endpoints": 480
   },
-  "processing_time": 382.9500684738159
+  "processing_time": 372.9224991798401
 }
