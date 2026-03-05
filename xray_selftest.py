@@ -85,7 +85,7 @@ def main() -> int:
                 for _ in range(20):
                     line = proc.stdout.readline()
                     if not line:
-                        break:
+                        break
                     print("[XRAY]", line.rstrip())
             except Exception:
                 pass
