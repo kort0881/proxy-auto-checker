@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker v5.1 RF-READY
+AI Proxy Checker v5.2 RF-READY
 Адаптация под российские реалии с DPI-детекцией
 - XHTTP транспорт для VLESS
 - Разделение нейтральных и категорийных проверок
@@ -165,6 +165,18 @@ class Config:
     # Route tagging
     ROUTE_TAG: str = "default"
 CONFIG = Config()
+
+# ==================== FALLBACK THRESHOLDS ====================
+# Используются когда XRAY=0 — отбор по TCP-латентности + истории AI
+FALLBACK_ELITE_LATENCY   = 300
+FALLBACK_ELITE_SUCCESS   = 0.85
+
+FALLBACK_PREMIUM_LATENCY = 700
+FALLBACK_PREMIUM_SUCCESS = 0.70
+
+FALLBACK_GOOD_LATENCY    = 1500
+FALLBACK_GOOD_SUCCESS    = 0.50
+
 # ==================== QUALITY ====================
 class Quality(Enum):
     ELITE = "elite"
@@ -1430,6 +1442,121 @@ def calculate_rf_readiness(
     return True, min(rf_score, 1.0), rf_partial
 
 
+# ==================== FALLBACK SELECTION ====================
+def assign_fallback_quality(
+    result: CheckResult,
+    host_stats: Dict,
+    dpi_detector_ref: "DPIDetector",
+) -> Optional[Quality]:
+    """
+    Присвоение качества в fallback-режиме (XRAY=0).
+    Использует TCP-латентность текущего прогона + историческую статистику host:port.
+    Не берёт DPI-подозреваемых и хосты с малой историей.
+    """
+    if not result.host or not result.port:
+        return None
+
+    # DPI-подозреваемых не берём
+    if dpi_detector_ref.is_dpi_suspect(result.host, result.port):
+        return None
+
+    host_key = f"{result.host}:{result.port}"
+    hs = host_stats.get(host_key)
+
+    if not hs or hs.get("total", 0) < 5:
+        # Мало истории — ненадёжно
+        return None
+
+    total    = hs.get("total", 0)
+    success  = hs.get("success", 0)
+    avg_hist_latency  = hs.get("avg_latency", 9999.0)
+    hist_rate         = success / max(total, 1)
+    # last_success_rate хранится в protocol_stats, в host_stats его нет —
+    # используем hist_rate как запасной вариант
+    last_success_rate = hist_rate
+    rf_ready_flag     = hs.get("rf_ready", False)
+
+    # Актуальная TCP-латентность, если есть; иначе историческая
+    current_latency = result.latency if result.latency else avg_hist_latency
+
+    # Базовый фильтр
+    if hist_rate < FALLBACK_GOOD_SUCCESS and last_success_rate < FALLBACK_GOOD_SUCCESS:
+        return None
+    if current_latency > FALLBACK_GOOD_LATENCY:
+        return None
+
+    # ELITE
+    if (
+        current_latency <= FALLBACK_ELITE_LATENCY
+        and hist_rate >= FALLBACK_ELITE_SUCCESS
+        and (rf_ready_flag or last_success_rate >= FALLBACK_ELITE_SUCCESS)
+    ):
+        return Quality.ELITE
+
+    # PREMIUM
+    if (
+        current_latency <= FALLBACK_PREMIUM_LATENCY
+        and hist_rate >= FALLBACK_PREMIUM_SUCCESS
+    ):
+        return Quality.PREMIUM
+
+    # Всё остальное, прошедшее базовый фильтр
+    return Quality.GOOD
+
+
+def select_fallback_results(
+    results: List[CheckResult],
+    ai_engine_ref: "AIEngine",
+    dpi_detector_ref: "DPIDetector",
+) -> List[CheckResult]:
+    """
+    Fallback-режим: XRAY=0.
+    Перебирает все CheckResult (живые после TCP), присваивает quality по истории AI,
+    помечает alive=True и возвращает отсортированный список.
+    """
+    host_stats = ai_engine_ref.host_stats
+    selected: List[CheckResult] = []
+
+    for r in results:
+        q = assign_fallback_quality(r, host_stats, dpi_detector_ref)
+        if q is None:
+            continue
+
+        new = CheckResult(
+            key=r.key,
+            alive=True,
+            latency=r.latency,
+            jitter=r.jitter,
+            reconnect_success=r.reconnect_success,
+            categories=r.categories,
+            critical_categories=r.critical_categories,
+            category_details=r.category_details,
+            telegram=r.telegram,
+            quality=q,
+            protocol=r.protocol,
+            host=r.host,
+            port=r.port,
+            security=r.security,
+            error=None,
+            mutation_used=r.mutation_used,
+            is_anomaly=r.is_anomaly,
+            ai_verdict=r.ai_verdict,
+            ai_score=r.ai_score,
+            rf_ready=False,   # в fallback свежий RF не считаем
+            rf_score=0.0,
+            rf_partial=False,
+            sni_used=r.sni_used,
+            transport_used=r.transport_used,
+            route_tag=r.route_tag,
+            dpi_suspect=False,
+        )
+        selected.append(new)
+
+    selected.sort(key=lambda x: x.latency if x.latency else 9999.0)
+    log(f"[FALLBACK] Selected {len(selected)} keys by TCP+history/AI")
+    return selected
+
+
 # ==================== XRAY CHECK WITH RF LOGIC ====================
 def xray_full_check(key: str, xray_exe: Path, sni: str = None, transport: str = None) -> CheckResult:
     if sni is None:
@@ -1666,7 +1793,7 @@ def _two_phase_test(
         transport_used=transport
     )
 # ==================== SAVE RESULTS ====================
-def save_results(results: List[CheckResult], region: str = "ALL"):
+def save_results(results: List[CheckResult], region: str = "ALL", fallback_mode: bool = False):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     by_quality = defaultdict(list)
     rf_ready_results = []
@@ -1692,6 +1819,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
             f.write(f"# Route: {CONFIG.ROUTE_TAG}\n")
+            f.write(f"# Mode: {'FALLBACK' if fallback_mode else 'NORMAL'}\n")
             f.write(f"# Keys: {len(items)}\n\n")
             for r in items:
                 tg = " TG" if r.telegram else ""
@@ -1745,6 +1873,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         f.write(f"# {MY_CHANNEL}\n")
         f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"# Route: {CONFIG.ROUTE_TAG}\n")
+        f.write(f"# Mode: {'FALLBACK' if fallback_mode else 'NORMAL'}\n")
         f.write(f"# Working: {len(all_results)}\n")
         f.write(f"# RF-Ready: {len(rf_ready_results)} (partial: {len(rf_partial_results)})\n\n")
         for r in all_results:
@@ -1795,6 +1924,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         "timestamp": datetime.now().isoformat(),
         "region": region,
         "route_tag": CONFIG.ROUTE_TAG,
+        "mode": "FALLBACK" if fallback_mode else "NORMAL",
         "total_checked": stats.tcp_passed,
         "total_working": len(all_results),
         "rf_ready": len(rf_ready_results),
@@ -1927,7 +2057,7 @@ def main():
         CONFIG.MAX_SAFE_MUTATIONS = 0
 
     print("\n" + "=" * 60)
-    print(" AI Proxy Checker v5.1 RF-READY")
+    print(" AI Proxy Checker v5.2 RF-READY")
     print(" Адаптация под российские реалии")
     print(f" Channel: {MY_CHANNEL}")
     print("=" * 60)
@@ -2069,8 +2199,38 @@ def main():
 
     ai_engine.finalize()
 
+    # ── Fallback: если Xray ничего не дал — отбираем по TCP+истории/AI ──
+    has_xray_success = stats.xray_passed > 0
+    fallback_mode = False
+
+    if not has_xray_success and tcp_passed:
+        log("[FALLBACK] XRAY=0 — switching to TCP+history/AI selection")
+        # Строим минимальные CheckResult из tcp_passed для передачи в fallback
+        tcp_results = []
+        for key in tcp_passed:
+            host, port = extract_host_port(key)
+            proto_cfg, proto, sec = parse_key_to_config(key)
+            cr = CheckResult(
+                key=key, alive=True,
+                latency=0,  # TCP не замеряет latency точно — fallback возьмёт из истории
+                host=host or "",
+                port=port or 0,
+                protocol=proto,
+                security=sec,
+                route_tag=CONFIG.ROUTE_TAG,
+            )
+            tcp_results.append(cr)
+        results = select_fallback_results(tcp_results, ai_engine, dpi_detector)
+        fallback_mode = True
+        # Обновляем статистику fallback-результатов
+        with stats_lock:
+            for r in results:
+                stats.xray_passed += 1
+                stats.by_quality[r.quality] += 1
+                stats.by_protocol[r.protocol] += 1
+
     # [FIX #5] Всегда сохраняем результаты (даже пустые) и всегда возвращаем 0
-    save_results(results, args.region)
+    save_results(results, args.region, fallback_mode=fallback_mode)
 
     # === SUMMARY ===
     print("\n" + "=" * 60)
@@ -2082,7 +2242,10 @@ def main():
     print(f" XRAY: {stats.xray_passed} ({stats.xray_passed * 100 // max(stats.tcp_passed, 1)}%)")
 
     # [FIX #5] Не крашим при 0 результатах
-    if stats.xray_passed == 0:
+    if fallback_mode:
+        log(f"[FALLBACK] Mode active — {len(results)} keys selected by TCP+history/AI")
+        print(f" FALLBACK: {len(results)} keys (no Xray successes, selected by TCP+AI history)")
+    elif stats.xray_passed == 0:
         log("[WARN] No alive keys found. Check your sources or network.")
     else:
         print(f" RF-Ready: {stats.rf_ready} ({stats.rf_ready * 100 // max(stats.xray_passed, 1)}%)")
