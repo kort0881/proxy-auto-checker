@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-03-05T13:24:42.316830",
+  "timestamp": "2026-03-05T13:36:26.196313",
   "region": "ALL",
   "route_tag": "default",
   "mode": "FALLBACK",
-  "total_checked": 608,
+  "total_checked": 616,
   "total_working": 0,
   "rf_ready": 0,
   "rf_partial": 0,
@@ -21,44 +21,44 @@
   "by_transport": {},
   "by_sni": {},
   "mutations": {
-    "tried": 571,
+    "tried": 579,
     "successful": 0
   },
   "ai": {
     "enabled": true,
     "anomalies": 0,
     "retrains": 3,
-    "history_size": 15008,
+    "history_size": 15016,
     "protocol_trends": {
-      "Trojan": {
+      "SS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 219
+        "total": 1286
       },
       "VLESS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 12498
+        "total": 12976
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1354
+        "total": 1130
       },
-      "SS": {
+      "Trojan": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1515
+        "total": 191
       },
       "VMess": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 22
+        "total": 33
       }
     },
     "category_effectiveness": {},
@@ -66,24 +66,24 @@
       "www.google.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 13039
+        "total": 12657
       },
       "www.cloudflare.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 1215
+        "total": 1829
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 13039
+        "total": 12657
       },
       "xhttp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 1215
+        "total": 1829
       }
     }
   },
@@ -92,7 +92,7 @@
     "high_confidence": [],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 474
+    "monitored_endpoints": 482
   },
-  "processing_time": 81.79358148574829
+  "processing_time": 77.53568816184998
 }
