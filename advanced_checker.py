@@ -167,15 +167,17 @@ class Config:
 CONFIG = Config()
 
 # ==================== FALLBACK THRESHOLDS ====================
-# Используются когда XRAY=0 — отбор по TCP-латентности + истории AI
-FALLBACK_ELITE_LATENCY   = 300
-FALLBACK_ELITE_SUCCESS   = 0.85
+# РФ-режим при XRAY=0: мягкие пороги, чтобы не получать ноль
+# Упор на "лучшее из худшего" по истории, не на идеальные элитники
 
-FALLBACK_PREMIUM_LATENCY = 700
-FALLBACK_PREMIUM_SUCCESS = 0.70
+FALLBACK_ELITE_LATENCY   = 450   # до ~450 ms
+FALLBACK_ELITE_SUCCESS   = 0.70  # 70%+ успешных попыток по host_key
 
-FALLBACK_GOOD_LATENCY    = 1500
-FALLBACK_GOOD_SUCCESS    = 0.50
+FALLBACK_PREMIUM_LATENCY = 900   # до ~900 ms
+FALLBACK_PREMIUM_SUCCESS = 0.50  # 50%+
+
+FALLBACK_GOOD_LATENCY    = 1800  # до ~1.8 s
+FALLBACK_GOOD_SUCCESS    = 0.30  # 30%+
 
 # ==================== QUALITY ====================
 class Quality(Enum):
@@ -1462,45 +1464,45 @@ def assign_fallback_quality(
 
     host_key = f"{result.host}:{result.port}"
     hs = host_stats.get(host_key)
+    total = hs.get("total", 0) if hs else 0
 
-    if not hs or hs.get("total", 0) < 5:
-        # Мало истории — ненадёжно
+    # Вместо "total >= 5" достаточно двух прошлых попыток
+    if not hs or total < 2:
         return None
 
-    total    = hs.get("total", 0)
     success  = hs.get("success", 0)
-    avg_hist_latency  = hs.get("avg_latency", 9999.0)
-    hist_rate         = success / max(total, 1)
-    # last_success_rate хранится в protocol_stats, в host_stats его нет —
-    # используем hist_rate как запасной вариант
-    last_success_rate = hist_rate
-    rf_ready_flag     = hs.get("rf_ready", False)
+    hist_rate = success / max(total, 1)
 
-    # Актуальная TCP-латентность, если есть; иначе историческая
-    current_latency = result.latency if result.latency else avg_hist_latency
-
-    # Базовый фильтр
-    if hist_rate < FALLBACK_GOOD_SUCCESS and last_success_rate < FALLBACK_GOOD_SUCCESS:
+    # Для GOOD достаточно 30% успеха — отсеиваем только явный мусор
+    if hist_rate < FALLBACK_GOOD_SUCCESS:
         return None
+
+    # Берём актуальную TCP-латентность; если Xray вообще не дошёл до замера —
+    # подставляем историческую среднюю, а при её отсутствии — 800 ms
+    current_latency = result.latency
+    if not current_latency or current_latency <= 0:
+        avg_hist_latency = hs.get("avg_latency", 0)
+        current_latency = avg_hist_latency if avg_hist_latency > 0 else 800
+
+    # Отсекаем только совсем безнадёжные по латентности
     if current_latency > FALLBACK_GOOD_LATENCY:
         return None
 
-    # ELITE
+    # ELITE: быстрые + надёжные
     if (
         current_latency <= FALLBACK_ELITE_LATENCY
         and hist_rate >= FALLBACK_ELITE_SUCCESS
-        and (rf_ready_flag or last_success_rate >= FALLBACK_ELITE_SUCCESS)
     ):
         return Quality.ELITE
 
-    # PREMIUM
+    # PREMIUM: средние по скорости, но достаточно надёжные
     if (
         current_latency <= FALLBACK_PREMIUM_LATENCY
         and hist_rate >= FALLBACK_PREMIUM_SUCCESS
     ):
         return Quality.PREMIUM
 
-    # Всё остальное, прошедшее базовый фильтр
+    # Всё остальное, что прошло базовые фильтры — GOOD
     return Quality.GOOD
 
 
