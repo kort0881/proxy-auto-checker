@@ -179,6 +179,12 @@ FALLBACK_PREMIUM_SUCCESS = 0.50  # 50%+
 FALLBACK_GOOD_LATENCY    = 1800  # до ~1.8 s
 FALLBACK_GOOD_SUCCESS    = 0.30  # 30%+
 
+# Нейтральные URL для активного мини-чека в fallback (без прокси)
+NEUTRAL_URLS_FALLBACK = [
+    "https://cp.cloudflare.com/generate_204",
+    "http://www.gstatic.com/generate_204",
+]
+
 # ==================== QUALITY ====================
 class Quality(Enum):
     ELITE = "elite"
@@ -1445,6 +1451,120 @@ def calculate_rf_readiness(
 
 
 # ==================== FALLBACK SELECTION ====================
+def run_fallback_health_checks(
+    host: str,
+    port: int,
+    timeout: float = 3.0,
+    attempts: int = 5,
+) -> Dict:
+    """
+    Активный мини-чек host:port без прокси.
+    Замеряет 8 метрик: TCP ping, TLS/HTTP success%, avg latency,
+    max jitter, min speed, timeout rate.
+    Вызывается только как последний шаг fallback (history и TCP+AI не дали результата).
+    """
+    tcp_latencies: List[float] = []
+    tcp_success  = 0
+    http_success = 0
+    timeouts     = 0
+    speeds: List[float] = []
+
+    for _ in range(attempts):
+        # TCP ping
+        t0 = time.time()
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                tcp_success += 1
+                tcp_latencies.append((time.time() - t0) * 1000.0)
+        except socket.timeout:
+            timeouts += 1
+        except Exception:
+            pass
+
+        # HTTP/HTTPS к нейтральным URL (без прокси — проверяем сеть машины)
+        try:
+            url = random.choice(NEUTRAL_URLS_FALLBACK)
+            t1 = time.time()
+            resp = requests.get(url, timeout=timeout)
+            dt = time.time() - t1
+            if resp.status_code in (200, 204):
+                http_success += 1
+                content_bits = len(resp.content) * 8.0
+                speeds.append(content_bits / max(dt, 0.001) / 1e6)  # Mbps
+                tcp_latencies.append(dt * 1000.0)
+        except requests.Timeout:
+            timeouts += 1
+        except Exception:
+            pass
+
+    if tcp_latencies:
+        avg_latency  = sum(tcp_latencies) / len(tcp_latencies)
+        tcp_ping_max = max(tcp_latencies)
+        max_jitter   = max(tcp_latencies) - min(tcp_latencies)
+    else:
+        avg_latency  = 9999.0
+        tcp_ping_max = 9999.0
+        max_jitter   = 9999.0
+
+    # TLS success считаем равным HTTP success (HTTPS-запросы прошли → TLS ок)
+    tls_success = http_success
+
+    return {
+        "tcp_ping_max":    tcp_ping_max,
+        "tcp_success":     tcp_success  / attempts,
+        "tls_success":     tls_success  / attempts,
+        "http_success":    http_success / attempts,
+        "avg_latency":     avg_latency,
+        "max_jitter":      max_jitter,
+        "min_speed_mbps":  min(speeds) if speeds else 0.0,
+        "timeout_rate":    timeouts / attempts,
+    }
+
+
+def classify_fallback_level(metrics: Dict) -> Optional[Quality]:
+    """
+    Классификация по 8 метрикам активного мини-чека.
+    Пороги подобраны под РФ-условия (high DPI, нестабильная сеть).
+    """
+    if (
+        metrics["tcp_ping_max"]   <= 250  and
+        metrics["tcp_success"]    >= 0.90 and
+        metrics["tls_success"]    >= 0.85 and
+        metrics["http_success"]   >= 0.85 and
+        metrics["avg_latency"]    <= 200  and
+        metrics["max_jitter"]     <= 80   and
+        metrics["min_speed_mbps"] >= 10   and
+        metrics["timeout_rate"]   <= 0.05
+    ):
+        return Quality.ELITE
+
+    if (
+        metrics["tcp_ping_max"]   <= 600  and
+        metrics["tcp_success"]    >= 0.75 and
+        metrics["tls_success"]    >= 0.70 and
+        metrics["http_success"]   >= 0.70 and
+        metrics["avg_latency"]    <= 400  and
+        metrics["max_jitter"]     <= 150  and
+        metrics["min_speed_mbps"] >= 5    and
+        metrics["timeout_rate"]   <= 0.10
+    ):
+        return Quality.PREMIUM
+
+    if (
+        metrics["tcp_ping_max"]   <= 1200 and
+        metrics["tcp_success"]    >= 0.50 and
+        metrics["tls_success"]    >= 0.40 and
+        metrics["http_success"]   >= 0.40 and
+        metrics["avg_latency"]    <= 800  and
+        metrics["max_jitter"]     <= 250  and
+        metrics["min_speed_mbps"] >= 2    and
+        metrics["timeout_rate"]   <= 0.20
+    ):
+        return Quality.GOOD
+
+    return None
+
+
 def assign_fallback_quality(
     result: CheckResult,
     host_stats: Dict[str, Dict],
@@ -1608,6 +1728,35 @@ def select_fallback_results(
         f"[FALLBACK] TCP+AI mode: {len(selected)} keys "
         f"(historical_good_hosts={historical_good_count})"
     )
+
+    # --- Режим 3: активный мини-чек, если ни история, ни TCP+AI ничего не дали ---
+    if not selected:
+        log("[FALLBACK] No keys from history/AI — running ACTIVE HEALTH checks (top-200 TCP)")
+        base_candidates = sorted(
+            results,
+            key=lambda r: r.latency if r.latency > 0 else 9999.0
+        )[:200]
+
+        backup: List[CheckResult] = []
+        for r in base_candidates:
+            if not r.host or not r.port:
+                continue
+            if dpi_detector_ref.is_dpi_suspect(r.host, r.port):
+                continue
+
+            metrics = run_fallback_health_checks(r.host, r.port, timeout=3.0, attempts=5)
+            q = classify_fallback_level(metrics)
+            if q is None:
+                continue
+
+            r.quality = q
+            r.alive   = True
+            backup.append(r)
+
+        backup.sort(key=lambda x: x.latency if x.latency > 0 else 9999.0)
+        selected = backup
+        log(f"[FALLBACK] ACTIVE HEALTH mode: {len(selected)} keys (mini-checks on top-200)")
+
     return selected
 
 
