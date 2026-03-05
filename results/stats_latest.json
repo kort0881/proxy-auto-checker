@@ -1,10 +1,11 @@
 {
-  "timestamp": "2026-03-05T06:35:40.573527",
+  "timestamp": "2026-03-05T12:52:07.892356",
   "region": "ALL",
   "route_tag": "default",
-  "total_checked": 2674,
-  "total_working": 2674,
+  "total_checked": 611,
+  "total_working": 0,
   "rf_ready": 0,
+  "rf_partial": 0,
   "rf_ready_percent": 0.0,
   "quick_check": {
     "passed": 0,
@@ -13,44 +14,50 @@
   "by_quality": {
     "elite": 0,
     "premium": 0,
-    "good": 2674
+    "good": 0
   },
   "by_protocol": {},
   "by_transport": {},
   "by_sni": {},
   "mutations": {
-    "tried": 2049,
+    "tried": 574,
     "successful": 0
   },
   "ai": {
     "enabled": true,
     "anomalies": 0,
-    "retrains": 13,
-    "history_size": 15074,
+    "retrains": 3,
+    "history_size": 15011,
     "protocol_trends": {
       "VLESS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 14061
+        "total": 12504
       },
       "": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1590
+        "total": 1359
       },
       "Trojan": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 262
+        "total": 225
       },
       "SS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 1761
+        "total": 1512
+      },
+      "VMess": {
+        "success_rate": 0.0,
+        "rf_rate": 0.0,
+        "trend": 0.0,
+        "total": 11
       }
     },
     "category_effectiveness": {},
@@ -58,31 +65,33 @@
       "www.google.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 16084
+        "total": 13643
+      },
+      "www.cloudflare.com": {
+        "success_rate": 0.0,
+        "avg_latency": 0.0,
+        "total": 609
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 16084
+        "total": 13643
+      },
+      "xhttp": {
+        "success_rate": 0.0,
+        "avg_latency": 0.0,
+        "total": 609
       }
     }
   },
   "dpi": {
-    "total_suspects": 7,
-    "high_confidence": [
-      "51.250.8.26:5443",
-      "45.15.128.75:8443",
-      "51.250.95.115:443",
-      "51.250.92.19:443",
-      "185.112.59.134:8446",
-      "51.250.76.178:443",
-      "51.250.90.137:443"
-    ],
+    "total_suspects": 0,
+    "high_confidence": [],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1135
+    "monitored_endpoints": 478
   },
-  "processing_time": 74.32869935035706
+  "processing_time": 80.79075360298157
 }
