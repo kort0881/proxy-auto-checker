@@ -1,8 +1,31 @@
+name: Xray selftest
+
+on:
+  workflow_dispatch:  # запуск руками из вкладки Actions
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests
+
       - name: Xray self test
         run: |
           cat > xray_selftest.py << 'EOF'
           #!/usr/bin/env python3
-          import json, os, random, socket, subprocess, time
+          import json, random, socket, subprocess, time
           from pathlib import Path
           import requests
 
