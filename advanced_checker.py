@@ -9,7 +9,6 @@ AI Proxy Checker v5.0 RF-READY
 - RF-метка качества
 - Гибкая работа с SNI
 - Определение региона RU/EU
-- Prefiltered keys поддержка
 """
 
 import os
@@ -60,7 +59,6 @@ STATS_FILE = RESULTS_FOLDER / "stats_latest.json"
 LOG_FILE = RESULTS_FOLDER / "checker.log"
 CATEGORY_STATS_FILE = RESULTS_FOLDER / "category_stats.json"
 DPI_STATS_FILE = RESULTS_FOLDER / "dpi_stats.json"
-PREFILTER_FILE = WORK_DIR / "checked" / "latest" / "verified.txt"
 
 for d in [XRAY_FOLDER, RESULTS_FOLDER, PREMIUM_FOLDER, RF_FOLDER]:
     d.mkdir(parents=True, exist_ok=True)
@@ -68,19 +66,14 @@ for d in [XRAY_FOLDER, RESULTS_FOLDER, PREMIUM_FOLDER, RF_FOLDER]:
 
 # ==================== UNIVERSAL SOURCE READER ====================
 def read_source_text(url: str) -> str:
-    """Universal source reader: http/https/file:// or local path.
-    Локальные пути (без http-схемы) читаются напрямую — без HTTP-запроса."""
-    # file:// URI
+    """Universal source reader: http/https/file:// or local path"""
     if url.startswith("file://"):
         p = Path(urlparse(url).path)
         return p.read_text(encoding="utf-8", errors="ignore")
-    # Локальный путь — не пытаемся слать HTTP
-    if not url.startswith("http://") and not url.startswith("https://"):
-        p = Path(url)
-        if p.exists():
-            return p.read_text(encoding="utf-8", errors="ignore")
-        raise FileNotFoundError(f"Local file not found: {url}")
-    # HTTP/HTTPS с retry
+    p = Path(url)
+    if p.exists():
+        return p.read_text(encoding="utf-8", errors="ignore")
+    # Обычный HTTP/HTTPS с retry
     for attempt in range(3):
         try:
             r = requests.get(url, timeout=30)
@@ -90,37 +83,6 @@ def read_source_text(url: str) -> str:
             if attempt == 2:
                 raise
             time.sleep(2)
-
-
-# ==================== PREFILTERED KEYS LOADER ====================
-def load_prefiltered_keys() -> List[str]:
-    """Load keys from prefilter file — ONLY local read, no HTTP request ever."""
-    candidates = [
-        PREFILTER_FILE,                                    # checked/latest/verified.txt
-        RESULTS_FOLDER / "verified_latest.txt",           # results/verified_latest.txt
-        WORK_DIR / "results" / "verified_latest.txt",
-    ]
-    # Добавляем пути из KEY_SOURCES["Prefiltered"], если они локальные
-    for src in KEY_SOURCES.get("Prefiltered", []):
-        if not src.startswith("http"):
-            candidates.append(Path(src))
-            candidates.append(WORK_DIR / src)
-
-    for candidate in candidates:
-        try:
-            p = Path(candidate)
-            if p.exists():
-                text = p.read_text(encoding="utf-8", errors="ignore")
-                keys = [
-                    line.strip()
-                    for line in text.splitlines()
-                    if line.strip() and not line.startswith("#")
-                ]
-                if keys:
-                    return keys
-        except Exception:
-            continue
-    return []
 
 
 # ==================== SOURCES ====================
@@ -137,6 +99,7 @@ KEY_SOURCES = {
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
     ],
     "Prefiltered": [
+        # Замени на реальный путь к файлу после первичной проверки.
         # Поддерживаются форматы:
         #   "results/verified_2026-02-18_12-00-00.txt"   — относительный путь
         #   "/home/user/vpn/results/verified_latest.txt" — абсолютный путь
@@ -152,21 +115,21 @@ MY_CHANNEL = "@vlesstrojan"
 @dataclass
 class Config:
     # ==================== WORKERS ====================
-    TCP_WORKERS: int = 60
-    XRAY_WORKERS: int = 8
+    TCP_WORKERS: int = 60  # ↑ +50%
+    XRAY_WORKERS: int = 16  # ↑ +100% ГЛАВНОЕ!
     # ==================== TIMEOUTS ====================
-    TCP_TIMEOUT: int = 6
+    TCP_TIMEOUT: int = 6  # ↓ -2 сек
     TCP_RETRIES: int = 1
-    XRAY_TIMEOUT: int = 20                 # FIX: было 12 → 20
-    XRAY_STARTUP: float = 7.0             # FIX: было 6.5 → 7.0
-    XRAY_STARTUP_QUICK: float = 5.0      # FIX: было 3.5 → 5.0
-    QUICK_CHECK_TIMEOUT: int = 7
-    CATEGORY_TIMEOUT: int = 6
+    XRAY_TIMEOUT: int = 12  # ↓ -3 сек
+    XRAY_STARTUP: float = 4.5  # ↓ -1.5 сек
+    XRAY_STARTUP_QUICK: float = 3.5  # ↓ -0.5 сек
+    QUICK_CHECK_TIMEOUT: int = 7  # ↓ -3 сек
+    CATEGORY_TIMEOUT: int = 6  # ↓ -2 сек
     # ==================== SAMPLES & TESTS ====================
-    LATENCY_SAMPLES: int = 2
-    MIN_LATENCY_SUCCESS: int = 1
-    RECONNECT_TESTS: int = 1
-    MIN_RECONNECT_SUCCESS: int = 0         # FIX: было 1 → 0 (реконнект не блокирует)
+    LATENCY_SAMPLES: int = 2  # ↓ -1 проба
+    MIN_LATENCY_SUCCESS: int = 1  # ↓ -1
+    RECONNECT_TESTS: int = 1  # ↓ -1 тест
+    MIN_RECONNECT_SUCCESS: int = 1
     # ==================== CATEGORIES ====================
     CATEGORY_URLS: List[Tuple[str, str, str]] = field(default_factory=lambda: [
         ("https://web.telegram.org", "telegram", "critical"),
@@ -174,37 +137,38 @@ class Config:
         ("https://www.google.com", "google", "important"),
         ("https://www.instagram.com", "instagram", "important"),
         ("https://twitter.com", "twitter", "important"),
+        # Убраны: vk, tiktok для скорости
     ])
     CATEGORY_PARALLEL: int = 4
-    # RF-критерии (ослаблены)
-    RF_MIN_CRITICAL_CATEGORIES: int = 1   # было 1
-    RF_MIN_TOTAL_CATEGORIES: int = 1      # FIX: было 2 → 1
-    RF_MAX_LATENCY: float = 2000          # FIX: было 1000 → 2000
-
+    # RF-критерии
+    RF_MIN_CRITICAL_CATEGORIES: int = 1  # Минимум critical категорий
+    RF_MIN_TOTAL_CATEGORIES: int = 2  # Минимум категорий всего
+    RF_MAX_LATENCY: float = 1000  # Макс латентность для RF
+    
     # Нейтральные сайты для базовой проверки alive
     NEUTRAL_URLS: List[str] = field(default_factory=lambda: [
         'https://cp.cloudflare.com/generate_204',
         'http://www.gstatic.com/generate_204',
         'https://captive.apple.com/hotspot-detect.html',
     ])
-
+    
     # SNI configuration
     SNI_LIST: List[str] = field(default_factory=lambda: [
         "www.google.com",
-        "www.microsoft.com",
+        "www.microsoft.com", 
         "www.cloudflare.com",
         "cdn.jsdelivr.net",
     ])
     DEFAULT_SNI: str = "www.google.com"
-
+    
     # Transport modes
-    TRANSPORT_MODE: str = "tcp"
+    TRANSPORT_MODE: str = "tcp"  # "tcp" or "xhttp"
     XHTTP_PATH: str = "/api/v1/updates"
-
+    
     # DPI detection
-    DPI_THRESHOLD: int = 30               # FIX: было 10 → 30
-    DPI_WINDOW: int = 50
-
+    DPI_THRESHOLD: int = 10  # После N ошибок подряд по IP:port - DPI suspect
+    DPI_WINDOW: int = 50  # Окно проверки
+    
     MAX_SAFE_MUTATIONS: int = 1
     GC_EVERY: int = 50
 
@@ -213,9 +177,9 @@ class Config:
     AI_TRAIN_BATCH: int = 5000
     AI_RETRAIN_EVERY: int = 200
     AI_TREND_WINDOW: int = 50
-
+    
     # Route tagging
-    ROUTE_TAG: str = "default"
+    ROUTE_TAG: str = "default"  # MTS, Tele2, HomeISP, etc.
 
 
 CONFIG = Config()
@@ -235,16 +199,15 @@ class QualityThreshold:
     categories_min: int
 
 
-# FIX: Ослабленные пороги качества
 QUALITY_THRESHOLDS = {
     Quality.ELITE: QualityThreshold(
-        latency_max=250, jitter_max=100, categories_min=4    # как было
+        latency_max=250, jitter_max=100, categories_min=4
     ),
     Quality.PREMIUM: QualityThreshold(
-        latency_max=900, jitter_max=300, categories_min=2    # FIX: было 600/200/3
+        latency_max=600, jitter_max=200, categories_min=3
     ),
     Quality.GOOD: QualityThreshold(
-        latency_max=2500, jitter_max=800, categories_min=1   # FIX: было 2000/600/2
+        latency_max=2000, jitter_max=600, categories_min=2
     ),
 }
 
@@ -258,7 +221,7 @@ class CheckResult:
     reconnect_success: int = 0
     categories: int = 0
     category_details: Dict[str, bool] = field(default_factory=dict)
-    critical_categories: int = 0
+    critical_categories: int = 0  # Количество критичных категорий
     telegram: bool = False
     quality: Optional[Quality] = None
     protocol: str = ""
@@ -270,12 +233,12 @@ class CheckResult:
     is_anomaly: bool = False
     ai_verdict: str = ""
     ai_score: float = 0.0
-    rf_ready: bool = False
-    rf_score: float = 0.0
+    rf_ready: bool = False  # Готов для РФ
+    rf_score: float = 0.0  # RF-скор 0..1
     sni_used: str = ""
     transport_used: str = ""
     route_tag: str = ""
-    dpi_suspect: bool = False
+    dpi_suspect: bool = False  # Подозрение на DPI
 
 
 @dataclass
@@ -289,7 +252,7 @@ class Stats:
     quick_failed: int = 0
     xray_passed: int = 0
     xray_failed: int = 0
-    rf_ready: int = 0
+    rf_ready: int = 0  # RF-готовых ключей
     by_quality: Dict[Quality, int] = field(
         default_factory=lambda: defaultdict(int)
     )
@@ -305,7 +268,7 @@ class Stats:
     errors: Dict[str, int] = field(
         default_factory=lambda: defaultdict(int)
     )
-    dpi_suspects: int = 0
+    dpi_suspects: int = 0  # Подозрений на DPI
     ai_anomalies: int = 0
     ai_retrains: int = 0
     mutations_success: int = 0
@@ -326,36 +289,51 @@ def record_error(error: str):
 class DPIDetector:
     """
     Улучшенный детектор DPI-блокировок по паттернам ошибок.
-    DPI обычно проявляется как: quick_fail, xray_startup, reconnect_fail.
-    НЕ считаем DPI: latency_fail, below_threshold, parse_error, tcp_*.
+    
+    DPI обычно проявляется как:
+    - quick_fail (нейтральные сайты не отвечают)
+    - xray_startup (xray падает сразу при запуске)
+    - reconnect_fail (режется при реконнекте)
+    
+    НЕ считаем DPI:
+    - latency_fail (просто медленно)
+    - below_threshold (частично работает)
+    - parse_error (мусорный ключ)
     """
-
+    
+    # Типы ошибок, связанные с DPI
     DPI_ERROR_TYPES = {
-        'quick_fail',
-        'xray_startup',
-        'reconnect_fail',
+        'quick_fail',      # Главный признак DPI - режет нейтральные
+        'xray_startup',    # DPI может ломать handshake
+        'reconnect_fail',  # DPI режет повторные подключения
     }
-
+    
+    # Типы ошибок НЕ связанные с DPI
     NON_DPI_ERROR_TYPES = {
-        'latency_fail',
-        'below_threshold',
-        'parse_error',
-        'tcp_timeout',
-        'tcp_refused',
-        'dns_error',
+        'latency_fail',     # Просто медленно
+        'below_threshold',  # Работает, но плохо
+        'parse_error',      # Мусор
+        'tcp_timeout',      # Хост мертв
+        'tcp_refused',      # Порт закрыт
+        'dns_error',        # DNS проблема
     }
-
+    
     def __init__(self):
+        # host:port -> список последних проверок
         self.check_history = defaultdict(list)
         self._lock = threading.Lock()
-        self.dpi_suspects = set()
-        self.false_positives = set()
-
+        self.dpi_suspects = set()  # Подозрительные host:port
+        self.false_positives = set()  # Исключенные из подозрений
+        
     def record_check(self, host: str, port: int, error: Optional[str], success: bool):
+        """Записать результат проверки"""
         if not host or not port:
             return
+            
         key = f"{host}:{port}"
+        
         with self._lock:
+            # Добавляем в историю
             self.check_history[key].append({
                 'error': error,
                 'success': success,
@@ -363,68 +341,114 @@ class DPIDetector:
                 'is_dpi_error': error in self.DPI_ERROR_TYPES if error else False,
                 'is_non_dpi_error': error in self.NON_DPI_ERROR_TYPES if error else False,
             })
+            
+            # Ограничиваем размер окна
             if len(self.check_history[key]) > CONFIG.DPI_WINDOW:
                 self.check_history[key] = self.check_history[key][-CONFIG.DPI_WINDOW:]
+            
+            # Проверяем на DPI-паттерн
             self._analyze_pattern(key)
-
+    
     def _analyze_pattern(self, key: str):
+        """
+        Умная проверка паттерна на подозрение DPI.
+        
+        DPI suspect если:
+        1. Много DPI-типов ошибок подряд (≥ DPI_THRESHOLD)
+        2. Доля DPI-ошибок > 80% в окне
+        3. НЕТ non-DPI ошибок (если есть - это мусорный ключ)
+        """
         history = self.check_history[key]
+        
         if len(history) < CONFIG.DPI_THRESHOLD:
             return
+        
+        # Берем последние N записей
         recent = history[-CONFIG.DPI_THRESHOLD:]
+        
+        # Считаем типы
         dpi_errors = sum(1 for r in recent if r['is_dpi_error'])
         non_dpi_errors = sum(1 for r in recent if r['is_non_dpi_error'])
         successes = sum(1 for r in recent if r['success'])
+        
+        # Если есть non-DPI ошибки - это не DPI, а просто плохой ключ/хост
         if non_dpi_errors > 0:
+            # Помечаем как false positive если был в suspects
             if key in self.dpi_suspects:
                 self.dpi_suspects.remove(key)
                 self.false_positives.add(key)
             return
+        
+        # Если есть успехи среди последних - не DPI (DPI режет постоянно)
         if successes > 0:
             return
+        
+        # DPI suspect: много DPI-ошибок подряд без успехов и non-DPI
         dpi_ratio = dpi_errors / len(recent)
+        
         if dpi_errors >= CONFIG.DPI_THRESHOLD * 0.8 and dpi_ratio >= 0.8:
             if key not in self.dpi_suspects and key not in self.false_positives:
                 self.dpi_suspects.add(key)
                 with stats_lock:
                     stats.dpi_suspects += 1
+                
+                # Определяем паттерн
                 error_types = [r['error'] for r in recent if r['error'] in self.DPI_ERROR_TYPES]
                 most_common = max(set(error_types), key=error_types.count) if error_types else 'unknown'
+                
                 log(f"[DPI] Suspect detected: {key} (pattern: {most_common}, {dpi_errors}/{len(recent)} DPI errors)")
-
+    
     def is_dpi_suspect(self, host: str, port: int) -> bool:
+        """Проверить, подозрительный ли host:port"""
         if not host or not port:
             return False
         key = f"{host}:{port}"
         return key in self.dpi_suspects
-
+    
     def get_confidence(self, host: str, port: int) -> float:
+        """
+        Уровень уверенности в DPI (0..1).
+        1.0 = точно DPI, 0.0 = точно нет.
+        """
         if not host or not port:
             return 0.0
+        
         key = f"{host}:{port}"
         history = self.check_history.get(key, [])
+        
         if not history:
             return 0.0
+        
+        # Анализируем историю
         dpi_errors = sum(1 for r in history if r['is_dpi_error'])
         non_dpi_errors = sum(1 for r in history if r['is_non_dpi_error'])
         total = len(history)
+        
         if non_dpi_errors > 0:
-            return 0.0
+            return 0.0  # Есть non-DPI признаки = не DPI
+        
         if total == 0:
             return 0.0
+        
+        # Чем больше доля DPI-ошибок - тем выше уверенность
         return dpi_errors / total
-
+    
     def get_stats(self) -> Dict:
+        """Получить статистику DPI"""
         with self._lock:
+            # Группируем по уверенности
             high_confidence = []
             medium_confidence = []
+            
             for suspect in self.dpi_suspects:
                 host, port = suspect.rsplit(':', 1)
                 confidence = self.get_confidence(host, int(port))
+                
                 if confidence >= 0.9:
                     high_confidence.append(suspect)
                 elif confidence >= 0.7:
                     medium_confidence.append(suspect)
+            
             return {
                 'total_suspects': len(self.dpi_suspects),
                 'high_confidence': high_confidence,
@@ -432,22 +456,33 @@ class DPIDetector:
                 'false_positives': list(self.false_positives),
                 'monitored_endpoints': len(self.check_history)
             }
-
+    
     def save_stats(self):
+        """Сохранить статистику в файл"""
         try:
             stats_data = self.get_stats()
+            
+            # Добавляем детали по каждому suspect
             details = {}
             for suspect in self.dpi_suspects:
                 host, port = suspect.rsplit(':', 1)
                 confidence = self.get_confidence(host, int(port))
                 history = self.check_history.get(suspect, [])
-                recent_errors = [r['error'] for r in history[-10:] if r['error']]
+                
+                # Последние ошибки
+                recent_errors = [
+                    r['error'] for r in history[-10:] 
+                    if r['error']
+                ]
+                
                 details[suspect] = {
                     'confidence': round(confidence, 2),
                     'total_checks': len(history),
                     'recent_errors': recent_errors
                 }
+            
             stats_data['suspect_details'] = details
+            
             with open(DPI_STATS_FILE, 'w') as f:
                 json.dump(stats_data, f, indent=2)
         except:
@@ -526,7 +561,9 @@ def cleanup_memory():
 
 # ==================== AI ENGINE (enhanced) ====================
 class AIEngine:
-    """Enhanced AI engine с поддержкой RF-метрик"""
+    """
+    Enhanced AI engine с поддержкой RF-метрик
+    """
 
     def __init__(self):
         self.enabled = AI_AVAILABLE
@@ -536,14 +573,16 @@ class AIEngine:
         self._lock = threading.Lock()
         self._checks_since_retrain = 0
 
+        # Dynamic performance tracking
         self.protocol_stats = defaultdict(lambda: {
             'success': 0, 'total': 0,
             'latencies': [],
             'trend': 0.0,
             'last_success_rate': 0.5,
-            'rf_ready_count': 0
+            'rf_ready_count': 0  # RF-готовых
         })
 
+        # Per-host performance
         self.host_stats = defaultdict(lambda: {
             'success': 0, 'total': 0,
             'avg_latency': 0.0,
@@ -552,16 +591,19 @@ class AIEngine:
             'rf_ready': False
         })
 
+        # Category weights (adaptive)
         self.category_weights = defaultdict(lambda: {
             'success': 0, 'total': 0, 'avg_time': 0.0,
             'weight': 1.0,
             'priority': 'optional'
         })
-
+        
+        # SNI performance
         self.sni_stats = defaultdict(lambda: {
             'success': 0, 'total': 0, 'avg_latency': 0.0
         })
-
+        
+        # Transport performance
         self.transport_stats = defaultdict(lambda: {
             'success': 0, 'total': 0, 'avg_latency': 0.0
         })
@@ -631,6 +673,7 @@ class AIEngine:
                 if len(ps['latencies']) > CONFIG.AI_TREND_WINDOW * 2:
                     ps['latencies'] = ps['latencies'][-CONFIG.AI_TREND_WINDOW * 2:]
 
+        # Per-host stats
         host_key = rec.get('host_key', '')
         if host_key:
             hs = self.host_stats[host_key]
@@ -646,13 +689,15 @@ class AIEngine:
                     if len(hs['quality_history']) > 20:
                         hs['quality_history'] = hs['quality_history'][-20:]
 
+        # Category stats
         cat_details = rec.get('category_details', {})
         for cat_name, success in cat_details.items():
             cw = self.category_weights[cat_name]
             cw['total'] += 1
             if success:
                 cw['success'] += 1
-
+        
+        # SNI stats
         sni = rec.get('sni_used', '')
         if sni:
             ss = self.sni_stats[sni]
@@ -660,7 +705,8 @@ class AIEngine:
             if rec.get('alive'):
                 ss['success'] += 1
                 ss['avg_latency'] = ss['avg_latency'] * 0.8 + rec.get('latency', 0) * 0.2
-
+        
+        # Transport stats
         transport = rec.get('transport_used', '')
         if transport:
             ts = self.transport_stats[transport]
@@ -675,9 +721,11 @@ class AIEngine:
             if len(lats) < CONFIG.AI_TREND_WINDOW:
                 ps['trend'] = 0.0
                 continue
+
             window = CONFIG.AI_TREND_WINDOW
             old_window = lats[-window * 2:-window]
             new_window = lats[-window:]
+
             if old_window and new_window:
                 old_avg = mean(old_window)
                 new_avg = mean(new_window)
@@ -685,17 +733,22 @@ class AIEngine:
                     ps['trend'] = (old_avg - new_avg) / old_avg
                 else:
                     ps['trend'] = 0.0
+
             if ps['total'] > 0:
                 ps['last_success_rate'] = ps['success'] / ps['total']
 
     def _update_category_weights(self):
+        """Пересчет весов категорий с учетом приоритета"""
         for name, cw in self.category_weights.items():
+            # Установить приоритет из конфига
             for url, cat_name, priority in CONFIG.CATEGORY_URLS:
                 if cat_name == name:
                     cw['priority'] = priority
                     break
+            
             if cw['total'] > 10:
                 rate = cw['success'] / cw['total']
+                # Базовый вес от success rate
                 if rate > 0.9:
                     base_weight = 0.5
                 elif rate > 0.6:
@@ -704,23 +757,29 @@ class AIEngine:
                     base_weight = 1.0
                 else:
                     base_weight = 0.3
+                
+                # Бонус за приоритет
                 priority_bonus = {
                     'critical': 2.0,
                     'important': 1.5,
                     'optional': 1.0
                 }.get(cw['priority'], 1.0)
+                
                 cw['weight'] = base_weight * priority_bonus
 
     def _train(self):
         if len(self.history) < 50:
             return
+
         self._compute_trends()
         self._update_category_weights()
+
         try:
             train_data = self.history[-CONFIG.AI_TRAIN_BATCH:]
             X = []
             for rec in train_data:
                 X.append(self._extract_features(rec))
+
             X = np.array(X)
             X_scaled = self.scaler.fit_transform(X)
             self.model_anomaly = IsolationForest(
@@ -734,6 +793,7 @@ class AIEngine:
     def _extract_features(self, rec: Dict) -> List[float]:
         proto = rec.get('protocol', '')
         ps = self.protocol_stats.get(proto, {})
+
         return [
             rec.get('latency', 999),
             rec.get('jitter', 100),
@@ -776,28 +836,35 @@ class AIEngine:
     def prioritize_keys(self, keys: List[str]) -> List[str]:
         if not self.enabled:
             return keys
+
         self._compute_trends()
 
         def score(key):
             kl = key.lower()
+
+            # Base protocol score
             if 'vless://' in kl:
-                proto, s = 'VLESS', 0.8
+                proto, s = 'VLESS', 0.8  # VLESS приоритетнее для RF
             elif 'trojan://' in kl:
                 proto, s = 'Trojan', 0.6
             elif 'vmess://' in kl:
-                proto, s = 'VMess', 0.4
+                proto, s = 'VMess', 0.4  # VMess менее надежен в RF
             else:
-                proto, s = 'SS', 0.2
+                proto, s = 'SS', 0.2  # Shadowsocks очень рискован
+
             ps = self.protocol_stats.get(proto)
             if ps and ps['total'] > 10:
                 rate = ps['success'] / ps['total']
                 rf_rate = ps['rf_ready_count'] / max(ps['success'], 1)
                 s = s * 0.2 + rate * 0.4 + rf_rate * 0.3
+
                 trend = ps.get('trend', 0)
                 if trend > 0:
                     s += trend * 0.2
                 elif trend < -0.1:
                     s -= 0.1
+
+            # Host reputation
             host, port = extract_host_port(key)
             if host and port:
                 host_key = f"{host}:{port}"
@@ -805,25 +872,36 @@ class AIEngine:
                 if hs and hs['total'] > 3:
                     host_rate = hs['success'] / hs['total']
                     s += host_rate * 0.15
+
                     if hs.get('rf_ready'):
-                        s += 0.2
+                        s += 0.2  # Бонус за RF-готовность
+
                     age = time.time() - hs.get('last_seen', 0)
                     if age < 86400 and host_rate > 0.7:
                         s += 0.1
+
+            # Security type bonus
             if 'security=reality' in kl:
-                s += 0.2
+                s += 0.2  # Reality - лучшее для RF
             elif 'security=tls' in kl:
                 s += 0.05
+
             return s
 
         return sorted(keys, key=score, reverse=True)
 
     def get_adaptive_categories(self) -> List[Tuple[str, str, str, float]]:
+        """
+        Возвращает категории с весами и приоритетами
+        Format: (url, name, priority, weight)
+        """
         result = []
         for url, name, priority in CONFIG.CATEGORY_URLS:
             cw = self.category_weights.get(name, {})
             weight = cw.get('weight', 1.0)
             result.append((url, name, priority, weight))
+
+        # Критичные - первые
         result.sort(key=lambda x: (
             0 if x[2] == 'critical' else 1 if x[2] == 'important' else 2,
             -x[3]
@@ -860,11 +938,14 @@ class AIEngine:
             }
             features = [self._extract_features(rec)]
             fs = self.scaler.transform(features)
+
             if self.model_anomaly.predict(fs)[0] == -1:
                 result.is_anomaly = True
                 result.ai_verdict = "[ANOMALY]"
                 with stats_lock:
                     stats.ai_anomalies += 1
+
+            # AI score
             proto_ps = self.protocol_stats.get(result.protocol, {})
             avg_lats = proto_ps.get('latencies', [])
             if avg_lats:
@@ -876,8 +957,11 @@ class AIEngine:
                     result.ai_score = 0.5
             else:
                 result.ai_score = 0.5
+
+            # RF score bonus
             if result.rf_ready:
                 result.ai_score = min(1.0, result.ai_score * 1.2)
+
         except:
             pass
 
@@ -913,6 +997,7 @@ class AIEngine:
             self._update_stats_from_record(record)
         except:
             pass
+
         self._maybe_retrain()
 
     def safe_mutate(self, proxy_config: Dict, attempt: int) -> Tuple[Dict, str]:
@@ -932,19 +1017,24 @@ class AIEngine:
                 stream['realitySettings']['fingerprint'] = new
                 name = f"FP_{new}"
         return mutated, name
-
+    
     def get_best_sni(self) -> str:
+        """Получить лучший SNI по статистике"""
         if not self.sni_stats:
             return CONFIG.DEFAULT_SNI
+        
         best_sni = CONFIG.DEFAULT_SNI
         best_score = 0
-        for sni, s in self.sni_stats.items():
-            if s['total'] > 5:
-                rate = s['success'] / s['total']
-                score = rate * 1000 / max(s['avg_latency'], 1)
+        
+        for sni, stats in self.sni_stats.items():
+            if stats['total'] > 5:
+                rate = stats['success'] / stats['total']
+                # Чем меньше латентность и выше success rate - тем лучше
+                score = rate * 1000 / max(stats['avg_latency'], 1)
                 if score > best_score:
                     best_score = score
                     best_sni = sni
+        
         return best_sni
 
     def finalize(self):
@@ -1005,7 +1095,7 @@ def setup_xray() -> Optional[Path]:
         log("[OK] Xray installed")
         return exe_path
     except Exception as e:
-        log(f"[WARN] Xray setup failed: {e}")
+        log(f"[ERR] Xray setup: {e}")
         return None
 
 
@@ -1051,12 +1141,14 @@ class XraySession:
             config = create_xray_config(self.proxy_config, self.port)
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
+
             self.process = subprocess.Popen(
                 [str(self.xray_exe), "run", "-c", str(self.config_file)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
             register_process(self.process)
+
             if wait_for_port(self.port, timeout=self.startup) and self.process.poll() is None:
                 self.proxies = {
                     'http': f'http://127.0.0.1:{self.port}',
@@ -1119,16 +1211,19 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
                 encoded += '=' * (4 - padding)
             data = json.loads(base64.b64decode(encoded).decode('utf-8'))
             return data.get("add"), int(data.get("port", 443))
+
         for prefix in ["vless://", "trojan://", "ss://"]:
             if key.lower().startswith(prefix):
                 key = key[len(prefix):]
                 break
+
         if "@" in key:
             key = key.split("@", 1)[1]
         if "?" in key:
             key = key.split("?")[0]
         if "#" in key:
             key = key.split("#")[0]
+
         if ":" in key:
             host, port = key.rsplit(":", 1)
             return host.strip("[]"), int(port)
@@ -1138,16 +1233,21 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
 
 
 def parse_key_to_config(key: str, sni: str = None, transport: str = None) -> Tuple[Optional[Dict], str, str]:
+    """
+    Парсинг ключа с поддержкой кастомного SNI и транспорта
+    """
     if sni is None:
         sni = CONFIG.DEFAULT_SNI
     if transport is None:
         transport = CONFIG.TRANSPORT_MODE
+    
     key_lower = key.lower()
     security = "none"
     if "security=reality" in key_lower:
         security = "reality"
     elif "security=tls" in key_lower:
         security = "tls"
+
     try:
         if key_lower.startswith("vless://"):
             return parse_vless(key, sni, transport), "VLESS", security
@@ -1163,6 +1263,9 @@ def parse_key_to_config(key: str, sni: str = None, transport: str = None) -> Tup
 
 
 def parse_vless(key: str, sni: str, transport: str) -> Optional[Dict]:
+    """
+    VLESS парсер с поддержкой XHTTP транспорта
+    """
     try:
         key = key[8:]
         if "@" not in key:
@@ -1173,13 +1276,17 @@ def parse_vless(key: str, sni: str, transport: str) -> Optional[Dict]:
             return None
         host, port = server_part.rsplit(":", 1)
         host = host.strip("[]")
+
         params = {}
         if "?" in rest:
             for param in rest.split("?")[1].split("#")[0].split("&"):
                 if "=" in param:
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
+
+        # Определяем транспорт
         network = transport if transport in ["tcp", "xhttp"] else params.get("type", "tcp")
+        
         config = {
             "protocol": "vless",
             "settings": {
@@ -1198,21 +1305,26 @@ def parse_vless(key: str, sni: str, transport: str) -> Optional[Dict]:
                 "security": params.get("security", "none")
             }
         }
+
+        # Security settings
         if params.get("security") == "tls":
             config["streamSettings"]["tlsSettings"] = {
-                "serverName": sni,
+                "serverName": sni,  # Используем кастомный SNI
                 "allowInsecure": True,
                 "fingerprint": params.get("fp", "chrome")
             }
         elif params.get("security") == "reality":
             config["streamSettings"]["realitySettings"] = {
-                "dest": f"{sni}:{port}",
-                "serverName": sni,
+                "dest": f"{sni}:{port}",  # ВАЖНО: dest должен быть SNI:port
+                "serverName": sni,  # Используем кастомный SNI
                 "publicKey": params.get("pbk", ""),
                 "shortId": params.get("sid", ""),
                 "fingerprint": params.get("fp", "chrome")
             }
+
+        # Transport settings
         if network == "xhttp":
+            # XHTTP транспорт для обхода DPI
             config["streamSettings"]["xhttpSettings"] = {
                 "path": CONFIG.XHTTP_PATH,
                 "host": sni
@@ -1239,6 +1351,7 @@ def parse_vless(key: str, sni: str, transport: str) -> Optional[Dict]:
                     }
                 }
             }
+
         return config
     except:
         return None
@@ -1253,6 +1366,7 @@ def parse_vmess(key: str, sni: str) -> Optional[Dict]:
         data = json.loads(base64.b64decode(encoded).decode('utf-8'))
         host = data.get("add", "")
         port = int(data.get("port", 443))
+
         config = {
             "protocol": "vmess",
             "settings": {
@@ -1271,16 +1385,19 @@ def parse_vmess(key: str, sni: str) -> Optional[Dict]:
                 "security": data.get("tls", "none") if data.get("tls") else "none"
             }
         }
+
         if data.get("tls") == "tls":
             config["streamSettings"]["tlsSettings"] = {
-                "serverName": sni,
+                "serverName": sni,  # Используем кастомный SNI
                 "allowInsecure": True
             }
+
         if data.get("net") == "ws":
             config["streamSettings"]["wsSettings"] = {
                 "path": data.get("path", "/"),
                 "headers": {"Host": data.get("host", host)}
             }
+
         return config
     except:
         return None
@@ -1298,12 +1415,14 @@ def parse_trojan(key: str, sni: str) -> Optional[Dict]:
             return None
         host, port = server_part.rsplit(":", 1)
         host = host.strip("[]")
+
         params = {}
         if "?" in rest:
             for param in rest.split("?")[1].split("#")[0].split("&"):
                 if "=" in param:
                     k, v = param.split("=", 1)
                     params[k] = unquote(v)
+
         config = {
             "protocol": "trojan",
             "settings": {
@@ -1319,7 +1438,7 @@ def parse_trojan(key: str, sni: str) -> Optional[Dict]:
             }
         }
         config["streamSettings"]["tlsSettings"] = {
-            "serverName": sni,
+            "serverName": sni,  # Используем кастомный SNI
             "allowInsecure": True,
             "fingerprint": params.get("fp", "chrome")
         }
@@ -1372,15 +1491,14 @@ def parse_shadowsocks(key: str) -> Optional[Dict]:
 def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
     if sources is None:
         sources = KEY_SOURCES
+
     all_keys = []
     seen = set()
     duplicates = 0
+
     log("[DL] Downloading keys...")
 
-    # RU/EU — HTTP-источники
     for region, urls in sources.items():
-        if region == "Prefiltered":
-            continue  # обрабатываем отдельно ниже
         log(f"  Region: {region}")
         for url in urls:
             try:
@@ -1388,11 +1506,13 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
             except Exception as e:
                 log(f"    FAIL {url.split('/')[-1]}: {e}")
                 continue
+
             if 'base64' in url:
                 try:
                     content = base64.b64decode(content).decode('utf-8')
                 except:
                     pass
+
             count = 0
             for line in content.split('\n'):
                 line = html.unescape(line.strip())
@@ -1408,25 +1528,6 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
             stats.total_downloaded += count
             log(f"    {url.split('/')[-1]}: {count}")
 
-    # Prefiltered — ТОЛЬКО локальное чтение, никакого HTTP
-    if "Prefiltered" in sources:
-        prefiltered = load_prefiltered_keys()
-        if prefiltered:
-            log(f"  Region: Prefiltered")
-            count = 0
-            for line in prefiltered:
-                normalized = line.split("#")[0].strip()
-                if normalized in seen:
-                    duplicates += 1
-                    continue
-                seen.add(normalized)
-                all_keys.append(line)
-                count += 1
-            stats.total_downloaded += count
-            log(f"    verified_latest.txt: {count}")
-        else:
-            log(f"  Region: Prefiltered — файл не найден, пропускаем")
-
     stats.duplicates = duplicates
     stats.unique = len(all_keys)
     log(f"  Total: {stats.total_downloaded + duplicates} | Dupes: {duplicates} | Unique: {len(all_keys)}")
@@ -1439,6 +1540,7 @@ def tcp_check(key: str) -> Optional[str]:
     if not host or not port:
         record_error("parse_error")
         return None
+
     for attempt in range(CONFIG.TCP_RETRIES + 1):
         try:
             with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
@@ -1461,6 +1563,7 @@ def tcp_check(key: str) -> Optional[str]:
 
 # ==================== CATEGORY CHECKS ====================
 def check_single_category(session: XraySession, url: str, name: str, priority: str) -> Tuple[str, bool, float, str]:
+    """Returns (name, success, response_time_ms, priority)"""
     t1 = time.time()
     resp = session.get(url, timeout=CONFIG.CATEGORY_TIMEOUT, allow_redirects=True)
     elapsed = (time.time() - t1) * 1000
@@ -1470,16 +1573,23 @@ def check_single_category(session: XraySession, url: str, name: str, priority: s
 
 
 def check_categories_parallel(session: XraySession) -> Tuple[int, int, bool, Dict[str, bool]]:
+    """
+    Проверка категорий параллельно
+    Returns (total_count, critical_count, telegram, details_dict)
+    """
     categories_passed = 0
     critical_passed = 0
     telegram_works = False
     details = {}
+
     adaptive_cats = ai_engine.get_adaptive_categories()
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.CATEGORY_PARALLEL) as cat_executor:
         futures = {
             cat_executor.submit(check_single_category, session, url, name, priority): name
             for url, name, priority, weight in adaptive_cats
         }
+
         for future in concurrent.futures.as_completed(futures, timeout=CONFIG.CATEGORY_TIMEOUT + 5):
             try:
                 name, success, elapsed, priority = future.result(timeout=1)
@@ -1490,6 +1600,8 @@ def check_categories_parallel(session: XraySession) -> Tuple[int, int, bool, Dic
                         critical_passed += 1
                     if name == "telegram":
                         telegram_works = True
+
+                # Update AI stats
                 cw = ai_engine.category_weights[name]
                 cw['total'] += 1
                 cw['priority'] = priority
@@ -1498,6 +1610,7 @@ def check_categories_parallel(session: XraySession) -> Tuple[int, int, bool, Dic
                 cw['avg_time'] = cw['avg_time'] * 0.8 + elapsed * 0.2
             except:
                 pass
+
     return categories_passed, critical_passed, telegram_works, details
 
 
@@ -1510,15 +1623,33 @@ def calculate_rf_readiness(
     latency: float,
     reconnect_success: int
 ) -> Tuple[bool, float]:
+    """
+    Явная функция расчета RF-готовности.
+    
+    RF-ready критерии:
+    1. alive == True (базовая живость)
+    2. critical_passed >= порога (важнейшие сервисы работают)
+    3. categories_passed >= минимума (достаточно сервисов)
+    4. latency <= лимита (приемлемая скорость для РФ)
+    5. reconnect_success >= минимума (стабильность)
+    
+    Returns: (rf_ready: bool, rf_score: float [0..1])
+    """
     if not alive:
         return False, 0.0
+    
+    # Базовые критерии
     meets_critical = critical_passed >= CONFIG.RF_MIN_CRITICAL_CATEGORIES
     meets_total = categories_passed >= CONFIG.RF_MIN_TOTAL_CATEGORIES
     meets_latency = latency <= CONFIG.RF_MAX_LATENCY
-    # MIN_RECONNECT_SUCCESS=0 → условие всегда выполняется
     meets_reconnect = reconnect_success >= CONFIG.MIN_RECONNECT_SUCCESS
+    
     rf_ready = meets_critical and meets_total and meets_latency and meets_reconnect
+    
+    # RF Score - взвешенная оценка качества для РФ
     if not rf_ready:
+        # Не прошел базовые критерии - низкий скор
+        # Но даем частичные баллы за то, что есть
         partial_score = 0.0
         if meets_critical:
             partial_score += 0.2
@@ -1528,52 +1659,84 @@ def calculate_rf_readiness(
             partial_score += 0.1
         if meets_reconnect:
             partial_score += 0.1
-        return False, min(partial_score, 0.49)
+        return False, min(partial_score, 0.49)  # Максимум 0.49 для не-ready
+    
+    # Полный расчет RF Score для ready ключей
+    
+    # 1. Критичные категории (40% веса)
+    # Telegram, YouTube - самое важное для РФ
     total_critical = len([c for c in CONFIG.CATEGORY_URLS if c[2] == "critical"])
     critical_ratio = critical_passed / max(total_critical, 1)
     critical_score = min(critical_ratio, 1.0)
+    
+    # 2. Важные категории (20% веса)
+    # Google, Instagram, Twitter
     important_passed = sum(
         1 for name, passed in category_details.items()
         if passed and any(
-            c[1] == name and c[2] == "important"
+            c[1] == name and c[2] == "important" 
             for c in CONFIG.CATEGORY_URLS
         )
     )
     total_important = len([c for c in CONFIG.CATEGORY_URLS if c[2] == "important"])
     important_ratio = important_passed / max(total_important, 1)
     important_score = min(important_ratio, 1.0)
+    
+    # 3. Латентность (30% веса)
+    # Чем меньше - тем лучше. 0ms = 1.0, RF_MAX_LATENCY = 0.0
     latency_score = max(0, 1.0 - latency / CONFIG.RF_MAX_LATENCY)
+    
+    # 4. Стабильность реконнекта (10% веса)
     reconnect_ratio = reconnect_success / max(CONFIG.RECONNECT_TESTS, 1)
     reconnect_score = min(reconnect_ratio, 1.0)
+    
+    # Итоговый RF Score
     rf_score = (
         critical_score * 0.4 +
         important_score * 0.2 +
         latency_score * 0.3 +
         reconnect_score * 0.1
     )
+    
+    # Бонус за "все работает"
     if critical_passed == total_critical and categories_passed >= 5:
-        rf_score = min(1.0, rf_score * 1.1)
+        rf_score = min(1.0, rf_score * 1.1)  # +10% бонус
+    
     return True, min(rf_score, 1.0)
 
 
 # ==================== XRAY CHECK WITH RF LOGIC ====================
 def xray_full_check(key: str, xray_exe: Path, sni: str = None, transport: str = None) -> CheckResult:
+    """
+    Полная проверка с поддержкой кастомного SNI и транспорта
+    """
     if sni is None:
-        sni = ai_engine.get_best_sni()
+        sni = ai_engine.get_best_sni()  # Используем лучший SNI
     if transport is None:
         transport = CONFIG.TRANSPORT_MODE
+    
     proxy_config, protocol, security = parse_key_to_config(key, sni, transport)
     if not proxy_config:
         return CheckResult(key=key, alive=False, error="parse_error", route_tag=CONFIG.ROUTE_TAG)
+
     host, port = extract_host_port(key)
+    
+    # Проверяем DPI-подозрение
     dpi_suspect = dpi_detector.is_dpi_suspect(host, port) if host and port else False
+
     result = _two_phase_test(key, proxy_config, protocol, security, xray_exe, host, port, sni, transport)
+    
+    # Записываем в DPI детектор
     if host and port:
         dpi_detector.record_check(host, port, result.error, result.alive)
+    
     result.dpi_suspect = dpi_suspect
     result.route_tag = CONFIG.ROUTE_TAG
+
     if result.alive:
         return result
+
+    # Мутации только если не DPI-подозрение
     if CONFIG.MAX_SAFE_MUTATIONS >= 1 and result.error != "quick_fail" and not dpi_suspect:
         mutated_config, mutation_name = ai_engine.safe_mutate(proxy_config, 1)
         if mutation_name:
@@ -1587,6 +1750,7 @@ def xray_full_check(key: str, xray_exe: Path, sni: str = None, transport: str = 
                 with stats_lock:
                     stats.mutations_success += 1
                 return mut_result
+
     return result
 
 
@@ -1601,6 +1765,11 @@ def _two_phase_test(
     sni: str,
     transport: str
 ) -> CheckResult:
+    """
+    Двухфазный тест:
+    1. Быстрая проверка на нейтральных сайтах (alive)
+    2. Полная проверка категорий (качество)
+    """
     latencies = []
     categories_passed = 0
     critical_passed = 0
@@ -1614,6 +1783,8 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port,
                 security=security, sni_used=sni, transport_used=transport
             )
+
+        # === PHASE A: Quick check на нейтральных сайтах ===
         quick_ok = False
         for neutral_url in CONFIG.NEUTRAL_URLS:
             try:
@@ -1624,9 +1795,10 @@ def _two_phase_test(
                     quick_ok = True
                     with stats_lock:
                         stats.quick_passed += 1
-                    break
+                    break  # Достаточно одного успеха
             except:
                 pass
+
         if not quick_ok:
             with stats_lock:
                 stats.quick_failed += 1
@@ -1635,6 +1807,8 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port,
                 security=security, sni_used=sni, transport_used=transport
             )
+
+        # === PHASE B: Latency samples ===
         for i in range(CONFIG.LATENCY_SAMPLES - 1):
             url = CONFIG.NEUTRAL_URLS[(i + 1) % len(CONFIG.NEUTRAL_URLS)]
             try:
@@ -1645,17 +1819,21 @@ def _two_phase_test(
             except:
                 pass
             time.sleep(0.1)
+
         if len(latencies) < CONFIG.MIN_LATENCY_SUCCESS:
             return CheckResult(
                 key=key, alive=False, error="latency_fail",
                 protocol=protocol, host=host, port=port,
                 security=security, sni_used=sni, transport_used=transport
             )
+
+        # === PHASE C: Categories (не влияют на alive) ===
         categories_passed, critical_passed, telegram_works, category_details = check_categories_parallel(session)
 
     avg_latency = mean(latencies)
     jitter = stdev(latencies) if len(latencies) > 1 else 0
 
+    # === RECONNECT ===
     reconnect_success = 0
     for _ in range(CONFIG.RECONNECT_TESTS):
         time.sleep(0.3)
@@ -1666,7 +1844,6 @@ def _two_phase_test(
             if resp and resp.status_code in [200, 204]:
                 reconnect_success += 1
 
-    # MIN_RECONNECT_SUCCESS=0 → этот блок никогда не срабатывает
     if reconnect_success < CONFIG.MIN_RECONNECT_SUCCESS:
         return CheckResult(
             key=key, alive=False, error="reconnect_fail",
@@ -1682,8 +1859,10 @@ def _two_phase_test(
             transport_used=transport
         )
 
+    # === RF-READY CHECK ===
+    # Используем отдельную функцию для явной RF-логики
     rf_ready, rf_score = calculate_rf_readiness(
-        alive=True,
+        alive=True,  # Дошли сюда - значит alive
         critical_passed=critical_passed,
         categories_passed=categories_passed,
         category_details=category_details,
@@ -1691,6 +1870,7 @@ def _two_phase_test(
         reconnect_success=reconnect_success
     )
 
+    # === QUALITY ===
     quality = None
     weighted_score = ai_engine.weighted_category_score(category_details)
 
@@ -1704,11 +1884,13 @@ def _two_phase_test(
             quality = q
             break
 
+    # Weighted bonus
     if quality == Quality.GOOD and weighted_score > 0.7:
         quality = Quality.PREMIUM
     elif quality == Quality.PREMIUM and weighted_score > 0.85:
         quality = Quality.ELITE
 
+    # RF bonus
     if rf_ready and quality == Quality.GOOD:
         quality = Quality.PREMIUM
 
@@ -1761,128 +1943,79 @@ def _two_phase_test(
 # ==================== SAVE RESULTS ====================
 def save_results(results: List[CheckResult], region: str = "ALL"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    by_quality: Dict[Quality, List[CheckResult]] = defaultdict(list)
-    rf_ready_results: List[CheckResult] = []
 
-    # 1. Максимально ослабляем критерии: всё, что alive после пайплайна, считаем минимум GOOD
+    by_quality = defaultdict(list)
+    rf_ready_results = []
+    
     for r in results:
-        if not r.alive:
-            continue
+        if r.alive and r.quality:
+            by_quality[r.quality].append(r)
+            if r.rf_ready:
+                rf_ready_results.append(r)
 
-        # Если качество не выставлено Xray-логикой — ставим GOOD по умолчанию
-        if not r.quality:
-            r.quality = Quality.GOOD
-
-        by_quality[r.quality].append(r)
-        if r.rf_ready:
-            rf_ready_results.append(r)
-
-    # 2. Если даже после этого ничего нет (все умерли на Xray) — Fallback на TCP-прошедшие
-    if not any(by_quality.values()):
-        log("[FALLBACK] No Xray-alive keys, classifying TCP-passed into ELITE/PREMIUM/GOOD")
-
-        # Берём все TCP-alive
-        tcp_alive: List[CheckResult] = [r for r in results if r.alive]
-
-        elite_tcp: List[CheckResult] = []
-        premium_tcp: List[CheckResult] = []
-        good_tcp: List[CheckResult] = []
-
-        for r in tcp_alive:
-            # На GitHub категорий/AI нет, используем только latency + jitter как суррогат
-            lat = r.latency or 9999
-            jit = r.jitter or 9999
-
-            if lat <= QUALITY_THRESHOLDS[Quality.ELITE].latency_max and jit <= QUALITY_THRESHOLDS[Quality.ELITE].jitter_max:
-                r.quality = Quality.ELITE
-                elite_tcp.append(r)
-            elif lat <= QUALITY_THRESHOLDS[Quality.PREMIUM].latency_max and jit <= QUALITY_THRESHOLDS[Quality.PREMIUM].jitter_max:
-                r.quality = Quality.PREMIUM
-                premium_tcp.append(r)
-            else:
-                r.quality = Quality.GOOD
-                good_tcp.append(r)
-
-        for lst in (elite_tcp, premium_tcp, good_tcp):
-            lst.sort(key=lambda x: x.latency or 9999)
-
-        by_quality[Quality.ELITE] = elite_tcp
-        by_quality[Quality.PREMIUM] = premium_tcp
-        by_quality[Quality.GOOD] = good_tcp
-
-        # RF на чистом TCP не считаем
-        rf_ready_results = []
-
-        # Обновим stats, чтобы телега/README могли опираться на JSON
-        with stats_lock:
-            stats.by_quality[Quality.ELITE] = len(elite_tcp)
-            stats.by_quality[Quality.PREMIUM] = len(premium_tcp)
-            stats.by_quality[Quality.GOOD] = len(good_tcp)
-            stats.rf_ready = 0
-
-        total_tcp = len(tcp_alive)
-        log(f"[FALLBACK] TCP total={total_tcp}, ELITE={len(elite_tcp)}, PREMIUM={len(premium_tcp)}, GOOD={len(good_tcp)}")
-
-    # 3. Записываем файлы по качеству (ELITE / PREMIUM / GOOD)
+    # Сохраняем по качеству
     for quality in Quality:
         items = by_quality.get(quality, [])
         if not items:
             continue
-
         items.sort(key=lambda x: x.latency)
         filename = PREMIUM_FOLDER / f"{quality.value}.txt"
+
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(f"# {quality.value.upper()}\n")
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
             f.write(f"# Route: {CONFIG.ROUTE_TAG}\n")
             f.write(f"# Keys: {len(items)}\n\n")
+
             for r in items:
                 tg = " TG" if r.telegram else ""
-                is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
-                reg = "RU" if is_ru else "EU"
+                
+                # Определяем регион по хосту (простейший способ)
+                is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                region = "RU" if is_ru else "EU"
+                
                 mut = f" {r.mutation_used}" if r.mutation_used else ""
                 ai = f" {r.ai_verdict}" if r.ai_verdict else ""
                 score_tag = f" ai{r.ai_score:.1f}" if r.ai_score > 0 else ""
                 rf = f" RF{r.rf_score:.1f}" if r.rf_ready else ""
                 dpi = " DPI?" if r.dpi_suspect else ""
-                comment = (
-                    f"[{r.latency:.0f}ms|{reg}|j{r.jitter:.0f}|"
-                    f"rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|"
-                    f"{r.categories}cat|crit{r.critical_categories}"
-                    f"{tg}|{r.protocol}|{r.transport_used}|sni:{r.sni_used}"
-                    f"{mut}{ai}{score_tag}{rf}{dpi}{MY_CHANNEL}]"
-                )
+                
+                # Добавляем {region} в начало метки
+                comment = f"[{r.latency:.0f}ms|{region}|j{r.jitter:.0f}|rc{r.reconnect_success}/{CONFIG.RECONNECT_TESTS}|{r.categories}cat|crit{r.critical_categories}{tg}|{r.protocol}|{r.transport_used}|sni:{r.sni_used}{mut}{ai}{score_tag}{rf}{dpi}{MY_CHANNEL}]"
+                
                 base_key = r.key.split('#')[0]
                 f.write(f"{base_key}#{quote(comment)}\n")
+
         log(f"[SAVE] {quality.value.upper()}: {len(items)} -> {filename.name}")
 
-    # 4. RF-READY отдельным файлом (если есть)
+    # Сохраняем RF-готовые отдельно
     if rf_ready_results:
-        rf_ready_results.sort(key=lambda x: -x.rf_score)
+        rf_ready_results.sort(key=lambda x: -x.rf_score)  # По убыванию RF score
         rf_filename = RF_FOLDER / f"rf_ready_{timestamp}.txt"
+        
         with open(rf_filename, 'w', encoding='utf-8') as f:
-            f.write("# RF-READY KEYS\n")
+            f.write(f"# RF-READY KEYS\n")
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"# Route: {CONFIG.ROUTE_TAG}\n")
             f.write(f"# Keys: {len(rf_ready_results)}\n\n")
+            
             for r in rf_ready_results:
                 tg = "TG+" if r.telegram else ""
-                is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
-                reg = "RU" if is_ru else "EU"
+                is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                region = "RU" if is_ru else "EU"
                 comment = (
-                    f"RF{r.rf_score:.1f} {reg} {r.quality.value.upper()} "
+                    f"RF{r.rf_score:.1f} {region} {r.quality.value.upper()} "
                     f"{r.latency:.0f}ms {r.protocol} {r.transport_used} "
                     f"crit{r.critical_categories} {tg} {MY_CHANNEL}"
                 )
                 f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
+        
         log(f"[SAVE] RF-READY: {len(rf_ready_results)} -> {rf_filename.name}")
 
-    # 5. Общий verified_*.txt
-    all_results: List[CheckResult] = []
-    for q in Quality:
-        all_results.extend(by_quality.get(q, []))
+    # Все результаты
+    all_results = [r for r in results if r.alive]
     all_results.sort(key=lambda x: x.latency)
 
     verified_file = RESULTS_FOLDER / f"verified_{timestamp}.txt"
@@ -1894,14 +2027,14 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
         f.write(f"# RF-Ready: {len(rf_ready_results)}\n\n")
         for r in all_results:
             rf_tag = " RF" if r.rf_ready else ""
-            is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
-            reg = "RU" if is_ru else "EU"
-            q = (r.quality.value.upper() if r.quality else "GOOD")
-            comment = f"{reg} {q}{rf_tag} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
+            is_ru = any(x in r.host.lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+            region = "RU" if is_ru else "EU"
+            comment = f"{region} {r.quality.value.upper()}{rf_tag} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
             f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
+
     log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
 
-    # 6. Статистика (оставляем как было, только опираемся на by_quality)
+    # Stats JSON
     trend_summary = {}
     for proto, ps in ai_engine.protocol_stats.items():
         if ps['total'] > 0:
@@ -1921,7 +2054,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
                 'avg_time_ms': round(cw['avg_time'], 1),
                 'priority': cw.get('priority', 'optional')
             }
-
+    
     sni_summary = {}
     for sni, ss in ai_engine.sni_stats.items():
         if ss['total'] > 0:
@@ -1930,7 +2063,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
                 'avg_latency': round(ss['avg_latency'], 1),
                 'total': ss['total']
             }
-
+    
     transport_summary = {}
     for transport, ts in ai_engine.transport_stats.items():
         if ts['total'] > 0:
@@ -1975,26 +2108,41 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
     }
     with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats_data, f, indent=2)
+
     log(f"[SAVE] Stats -> {STATS_FILE.name}")
+    
+    # Save DPI stats
     dpi_detector.save_stats()
+    
     return stats_data
 
 
 # ==================== SELFHOST CONFIG GENERATOR ====================
 def generate_selfhost_config(sni: str = None, port: int = 443):
+    """
+    Генератор selfhost конфига VLESS+Reality+XHTTP для РФ
+    """
     if sni is None:
         sni = CONFIG.DEFAULT_SNI
+    
+    # Generate random IDs
     import uuid
     user_id = str(uuid.uuid4())
     short_id = os.urandom(8).hex()
+    
+    # Placeholder для public key (нужно сгенерировать реальный ключ)
     public_key = "PLACEHOLDER_PUBLIC_KEY"
+    
     server_config = {
         "log": {"loglevel": "warning"},
         "inbounds": [{
             "port": port,
             "protocol": "vless",
             "settings": {
-                "clients": [{"id": user_id, "flow": ""}],
+                "clients": [{
+                    "id": user_id,
+                    "flow": ""
+                }],
                 "decryption": "none"
             },
             "streamSettings": {
@@ -2007,27 +2155,26 @@ def generate_selfhost_config(sni: str = None, port: int = 443):
                     "privateKey": "PLACEHOLDER_PRIVATE_KEY",
                     "shortIds": [short_id]
                 },
-                "xhttpSettings": {"path": CONFIG.XHTTP_PATH}
+                "xhttpSettings": {
+                    "path": CONFIG.XHTTP_PATH
+                }
             }
         }],
-        "outbounds": [{"protocol": "freedom", "tag": "direct"}]
+        "outbounds": [{
+            "protocol": "freedom",
+            "tag": "direct"
+        }]
     }
+    
+    # Client URL
     client_url = (
         f"vless://{user_id}@YOUR_SERVER_IP:{port}"
         f"?type=xhttp&security=reality&pbk={public_key}"
         f"&fp=chrome&sni={sni}&sid={short_id}"
         f"&path={CONFIG.XHTTP_PATH}#RF-Selfhost"
     )
+    
     return server_config, client_url
-
-
-# ==================== HELPERS ====================
-def _flush_history_and_stats(results: List[CheckResult], region: str) -> None:
-    """Guaranteed flush of history and stats to disk."""
-    ai_engine.finalize()
-    dpi_detector.save_stats()
-    save_results(results, region)
-    return
 
 
 # ==================== MAIN ====================
@@ -2049,21 +2196,26 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
-
+    
     # Generate selfhost mode
     if args.generate_selfhost:
         print("\n=== SELFHOST CONFIG GENERATOR ===\n")
         sni = input(f"SNI (default: {CONFIG.DEFAULT_SNI}): ").strip() or CONFIG.DEFAULT_SNI
         port = input("Port (default: 443): ").strip() or "443"
         port = int(port)
+        
         server_config, client_url = generate_selfhost_config(sni, port)
+        
         output_dir = WORK_DIR / "selfhost_configs"
         output_dir.mkdir(exist_ok=True)
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         server_file = output_dir / f"server_{timestamp}.json"
         client_file = output_dir / f"client_{timestamp}.txt"
+        
         with open(server_file, 'w') as f:
             json.dump(server_config, f, indent=2)
+        
         with open(client_file, 'w') as f:
             f.write(f"# VLESS+Reality+XHTTP Config for RF\n")
             f.write(f"# Generated: {datetime.now()}\n")
@@ -2075,20 +2227,22 @@ def main():
             f.write(f"{client_url}\n\n")
             f.write("IMPORTANT: Replace PLACEHOLDER values with real keys!\n")
             f.write("Generate keys with: xray x25519\n")
+        
         print(f"\n[OK] Server config: {server_file}")
         print(f"[OK] Client URL: {client_file}")
         print("\nIMPORTANT: Replace PLACEHOLDER values with real keys!")
         print("Generate keys with: xray x25519\n")
         return 0
-
+    
     # Normal checker mode
     CONFIG.XRAY_WORKERS = args.workers
     CONFIG.TCP_WORKERS = args.tcp_workers
     CONFIG.TRANSPORT_MODE = args.transport
     CONFIG.ROUTE_TAG = args.route_tag
-
+    
     if args.sni:
         CONFIG.DEFAULT_SNI = args.sni
+    
     if args.no_ai:
         ai_engine.enabled = False
     if args.no_mutations:
@@ -2099,6 +2253,7 @@ def main():
     print("  Адаптация под российские реалии")
     print(f"  Channel: {MY_CHANNEL}")
     print("=" * 60)
+
     print(f"\n  Settings:")
     print(f"    Region: {args.region}")
     print(f"    Route tag: {CONFIG.ROUTE_TAG}")
@@ -2106,14 +2261,15 @@ def main():
     print(f"    Default SNI: {CONFIG.DEFAULT_SNI}")
     print(f"    TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
     print(f"    XRAY: {CONFIG.XRAY_WORKERS} workers, {CONFIG.XRAY_TIMEOUT}s timeout")
-    print(f"    XRAY startup: {CONFIG.XRAY_STARTUP}s")
     print(f"    Quick check: {CONFIG.QUICK_CHECK_TIMEOUT}s")
     print(f"    Neutral sites: {len(CONFIG.NEUTRAL_URLS)}")
     print(f"    Categories: {len(CONFIG.CATEGORY_URLS)} (parallel x{CONFIG.CATEGORY_PARALLEL})")
-    print(f"    Reconnect: {CONFIG.RECONNECT_TESTS} test(s), min={CONFIG.MIN_RECONNECT_SUCCESS}")
+    print(f"    Reconnect: {CONFIG.RECONNECT_TESTS} test(s)")
     print(f"    DPI threshold: {CONFIG.DPI_THRESHOLD} errors")
     print(f"    AI: {'ON' if ai_engine.enabled else 'OFF'} (history: {len(ai_engine.history)})")
     print()
+
+    # RF criteria
     print(f"  RF-Ready criteria:")
     print(f"    Min critical categories: {CONFIG.RF_MIN_CRITICAL_CATEGORIES}")
     print(f"    Min total categories: {CONFIG.RF_MIN_TOTAL_CATEGORIES}")
@@ -2121,6 +2277,7 @@ def main():
     print(f"    Min reconnects: {CONFIG.MIN_RECONNECT_SUCCESS}/{CONFIG.RECONNECT_TESTS}")
     print()
 
+    # Protocol trends
     if ai_engine.enabled:
         for proto, ps in ai_engine.protocol_stats.items():
             if ps['total'] > 10:
@@ -2138,9 +2295,7 @@ def main():
 
     xray_exe = setup_xray()
     if not xray_exe:
-        log("[WARN] Xray unavailable — skipping Xray-level checks (exit 0)")
-        _flush_history_and_stats([], args.region)
-        return 0
+        return 1
 
     if args.region != 'ALL':
         sources = {args.region: KEY_SOURCES.get(args.region, [])}
@@ -2150,7 +2305,6 @@ def main():
     all_keys = download_and_deduplicate(sources)
     if not all_keys:
         log("[ERR] No keys found")
-        _flush_history_and_stats([], args.region)
         return 1
 
     if ai_engine.enabled:
@@ -2188,7 +2342,6 @@ def main():
 
     if not tcp_passed:
         log("[ERR] No TCP connections")
-        _flush_history_and_stats([], args.region)
         return 1
 
     # === XRAY ===
@@ -2213,9 +2366,11 @@ def main():
                 cleanup_memory()
             try:
                 result = future.result(timeout=120)
+
                 if ai_engine.enabled:
                     ai_engine.analyze_result(result)
                 ai_engine.save_result(result)
+
                 if result.alive:
                     results.append(result)
                     tg = " TG" if result.telegram else ""
@@ -2242,27 +2397,11 @@ def main():
     xray_time = time.time() - xray_start
     total_time = time.time() - stats.start_time
 
-    # ── FIX PATCH 2: FALLBACK — если xray не дал ни одного живого ключа,
-    # строим минимальные CheckResult из TCP-прошедших ключей.
-    if not results and tcp_passed:
-        log(f"[FALLBACK] Xray gave 0 results — building CheckResult list from {len(tcp_passed)} TCP-passed keys")
-        for _key in tcp_passed:
-            _host, _port = extract_host_port(_key)
-            _, _proto, _sec = parse_key_to_config(_key)
-            results.append(CheckResult(
-                key=_key,
-                alive=True,
-                protocol=_proto or "Unknown",
-                host=_host or "",
-                port=_port or 0,
-                security=_sec or "none",
-                latency=0.0,
-                jitter=0.0,
-                route_tag=CONFIG.ROUTE_TAG,
-            ))
-        log(f"[FALLBACK] Built {len(results)} CheckResult objects from TCP keys")
+    # Finalize
+    ai_engine.finalize()
 
-    _flush_history_and_stats(results, args.region)
+    if results:
+        save_results(results, args.region)
 
     # === SUMMARY ===
     print("\n" + "=" * 60)
@@ -2289,6 +2428,7 @@ def main():
         print(f"  AI anomalies: {stats.ai_anomalies}")
     print()
 
+    # Protocols
     for proto, count in sorted(stats.by_protocol.items(), key=lambda x: -x[1]):
         ps = ai_engine.protocol_stats.get(proto, {})
         trend = ps.get('trend', 0)
@@ -2297,12 +2437,14 @@ def main():
         print(f"    {proto}: {count} (RF: {rf_count}) {arrow}")
     print()
 
+    # Transports
     if stats.by_transport:
         print("  By transport:")
         for transport, count in stats.by_transport.items():
             print(f"    {transport}: {count}")
         print()
 
+    # SNI performance
     if stats.by_sni:
         print("  By SNI:")
         for sni, count in sorted(stats.by_sni.items(), key=lambda x: -x[1])[:5]:
@@ -2312,6 +2454,7 @@ def main():
             print(f"    {sni[:30]}: {count} ({rate:.0%}, {lat:.0f}ms)")
         print()
 
+    # Category effectiveness
     if ai_engine.category_weights:
         print("  Category effectiveness:")
         for name, cw in sorted(
@@ -2334,11 +2477,7 @@ def main():
 
     print("=" * 60)
 
-    if not results:
-        log("[WARN] NO ALIVE KEYS (Xray-level) — all keys failed at Xray stage")
-        return 0
-
-    return 0 if stats.xray_passed > 0 else 0
+    return 0 if stats.xray_passed > 0 else 1
 
 
 if __name__ == "__main__":
