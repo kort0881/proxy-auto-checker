@@ -1447,63 +1447,58 @@ def calculate_rf_readiness(
 # ==================== FALLBACK SELECTION ====================
 def assign_fallback_quality(
     result: CheckResult,
-    host_stats: Dict,
-    dpi_detector_ref: "DPIDetector",
+    host_stats: Dict[str, Dict],
+    dpi_detector_ref: DPIDetector,
 ) -> Optional[Quality]:
     """
-    Присвоение качества в fallback-режиме (XRAY=0).
-    Использует TCP-латентность текущего прогона + историческую статистику host:port.
-    Не берёт DPI-подозреваемых и хосты с малой историей.
+    Fallback-оценка качества, когда XRAY=0.
+    Использует историю по host:port, но не выкидывает ключи без истории.
     """
     if not result.host or not result.port:
         return None
 
-    # DPI-подозреваемых не берём
+    # Не берём явных DPI-подозреваемых
     if dpi_detector_ref.is_dpi_suspect(result.host, result.port):
         return None
 
     host_key = f"{result.host}:{result.port}"
     hs = host_stats.get(host_key)
-    total = hs.get("total", 0) if hs else 0
 
-    # Вместо "total >= 5" достаточно двух прошлых попыток
-    if not hs or total < 2:
-        return None
+    # Базовые параметры
+    avg_hist_latency = hs.get("avg_latency", 0.0) if hs else 0.0
+    total   = hs.get("total", 0)   if hs else 0
+    success = hs.get("success", 0) if hs else 0
+    # если истории нет — считаем нейтральные 0.5, чтобы дать шанс
+    hist_rate = success / max(total, 1) if total > 0 else 0.5
 
-    success  = hs.get("success", 0)
-    hist_rate = success / max(total, 1)
+    # Текущая latency: если нет — подставляем историю или дефолт
+    current_latency = result.latency if result.latency > 0 else avg_hist_latency
+    if current_latency <= 0:
+        current_latency = 800.0
 
-    # Для GOOD достаточно 30% успеха — отсеиваем только явный мусор
-    if hist_rate < FALLBACK_GOOD_SUCCESS:
-        return None
-
-    # Берём актуальную TCP-латентность; если Xray вообще не дошёл до замера —
-    # подставляем историческую среднюю, а при её отсутствии — 800 ms
-    current_latency = result.latency
-    if not current_latency or current_latency <= 0:
-        avg_hist_latency = hs.get("avg_latency", 0)
-        current_latency = avg_hist_latency if avg_hist_latency > 0 else 800
-
-    # Отсекаем только совсем безнадёжные по латентности
+    # Жёстко выкидываем только совсем плохие варианты
     if current_latency > FALLBACK_GOOD_LATENCY:
         return None
 
-    # ELITE: быстрые + надёжные
+    # ELITE: быстрая и устойчивая история
     if (
         current_latency <= FALLBACK_ELITE_LATENCY
         and hist_rate >= FALLBACK_ELITE_SUCCESS
     ):
         return Quality.ELITE
 
-    # PREMIUM: средние по скорости, но достаточно надёжные
+    # PREMIUM: средняя латентность, но приемлемая история
     if (
         current_latency <= FALLBACK_PREMIUM_LATENCY
         and hist_rate >= FALLBACK_PREMIUM_SUCCESS
     ):
         return Quality.PREMIUM
 
-    # Всё остальное, что прошло базовые фильтры — GOOD
-    return Quality.GOOD
+    # GOOD: всё, что прошло базовые фильтры; даже без истории (hs is None)
+    if hist_rate >= FALLBACK_GOOD_SUCCESS or hs is None:
+        return Quality.GOOD
+
+    return None
 
 
 def select_fallback_results(
@@ -1512,18 +1507,72 @@ def select_fallback_results(
     dpi_detector_ref: "DPIDetector",
 ) -> List[CheckResult]:
     """
-    Fallback-режим: XRAY=0.
-    Перебирает все CheckResult (живые после TCP), присваивает quality по истории AI,
-    помечает alive=True и возвращает отсортированный список.
+    Fallback-режим при XRAY=0.
+
+    Шаг 1: считаем, сколько хостов в текущем прогоне имеют нормальную историю.
+    Если таких >= 100 — используем «чистую историю» (history-mode).
+    Если меньше  — умный fallback по TCP+истории/AI (assign_fallback_quality).
     """
     host_stats = ai_engine_ref.host_stats
+    historical_good_hosts: Set[str] = set()
+
+    # --- Считаем исторически нормальные хосты среди текущих результатов ---
+    for r in results:
+        if not r.host or not r.port:
+            continue
+        host_key = f"{r.host}:{r.port}"
+        hs = host_stats.get(host_key)
+        if not hs:
+            continue
+        total     = hs.get("total", 0)
+        success   = hs.get("success", 0)
+        hist_rate = success / max(total, 1) if total > 0 else 0.0
+        avg_lat   = hs.get("avg_latency", 9999.0)
+        if hist_rate >= FALLBACK_GOOD_SUCCESS and avg_lat <= FALLBACK_GOOD_LATENCY:
+            historical_good_hosts.add(host_key)
+
+    historical_good_count = len(historical_good_hosts)
     selected: List[CheckResult] = []
 
+    # --- Режим 1: чистая история, если нормальных хостов >= 100 ---
+    if historical_good_count >= 100:
+        for r in results:
+            if not r.host or not r.port:
+                continue
+            host_key = f"{r.host}:{r.port}"
+            if host_key not in historical_good_hosts:
+                continue
+            hs        = host_stats.get(host_key) or {}
+            total     = hs.get("total", 0)
+            success   = hs.get("success", 0)
+            hist_rate = success / max(total, 1) if total > 0 else 0.0
+            avg_lat   = hs.get("avg_latency", 800.0)
+
+            if avg_lat <= FALLBACK_ELITE_LATENCY and hist_rate >= FALLBACK_ELITE_SUCCESS:
+                q = Quality.ELITE
+            elif avg_lat <= FALLBACK_PREMIUM_LATENCY and hist_rate >= FALLBACK_PREMIUM_SUCCESS:
+                q = Quality.PREMIUM
+            elif avg_lat <= FALLBACK_GOOD_LATENCY and hist_rate >= FALLBACK_GOOD_SUCCESS:
+                q = Quality.GOOD
+            else:
+                continue
+
+            r.quality = q
+            r.alive   = True
+            selected.append(r)
+
+        selected.sort(key=lambda x: x.latency if x.latency else 9999.0)
+        log(
+            f"[FALLBACK] HISTORY mode: {len(selected)} keys "
+            f"(historical_good_hosts={historical_good_count})"
+        )
+        return selected
+
+    # --- Режим 2: умный fallback по TCP+истории/AI ---
     for r in results:
         q = assign_fallback_quality(r, host_stats, dpi_detector_ref)
         if q is None:
             continue
-
         new = CheckResult(
             key=r.key,
             alive=True,
@@ -1544,7 +1593,7 @@ def select_fallback_results(
             is_anomaly=r.is_anomaly,
             ai_verdict=r.ai_verdict,
             ai_score=r.ai_score,
-            rf_ready=False,   # в fallback свежий RF не считаем
+            rf_ready=False,   # это fallback, RF не считаем
             rf_score=0.0,
             rf_partial=False,
             sni_used=r.sni_used,
@@ -1555,7 +1604,10 @@ def select_fallback_results(
         selected.append(new)
 
     selected.sort(key=lambda x: x.latency if x.latency else 9999.0)
-    log(f"[FALLBACK] Selected {len(selected)} keys by TCP+history/AI")
+    log(
+        f"[FALLBACK] TCP+AI mode: {len(selected)} keys "
+        f"(historical_good_hosts={historical_good_count})"
+    )
     return selected
 
 
