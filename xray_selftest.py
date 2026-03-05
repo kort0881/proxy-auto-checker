@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-import json, random, socket, subprocess, time
+import json
+import random
+import socket
+import subprocess
+import time
 from pathlib import Path
 
 import requests
@@ -31,14 +35,13 @@ def setup_xray() -> Path:
     filename = f"Xray-linux-{arch}.zip"
     url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
     print(f"[DL] {url}")
-        r = requests.get(url, stream=True, timeout=120)
+    r = requests.get(url, stream=True, timeout=120)
     r.raise_for_status()
     zippath = XRAYFOLDER / "xray.zip"
     with open(zippath, "wb") as f:
         for chunk in r.iter_content(8192):
             if chunk:
                 f.write(chunk)
-
     import zipfile
 
     with zipfile.ZipFile(zippath, "r") as zf:
@@ -82,11 +85,12 @@ def main() -> int:
                 for _ in range(20):
                     line = proc.stdout.readline()
                     if not line:
-                        break
+                        break:
                     print("[XRAY]", line.rstrip())
             except Exception:
                 pass
             return 1
+
         proxies = {
             "http": f"http://127.0.0.1:{port}",
             "https": f"http://127.0.0.1:{port}",
