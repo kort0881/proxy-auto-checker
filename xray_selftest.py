@@ -31,13 +31,14 @@ def setup_xray() -> Path:
     filename = f"Xray-linux-{arch}.zip"
     url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
     print(f"[DL] {url}")
-    r = requests.get(url, stream=True, timeout=120)
+        r = requests.get(url, stream=True, timeout=120)
     r.raise_for_status()
     zippath = XRAYFOLDER / "xray.zip"
     with open(zippath, "wb") as f:
-        for chunk in r.itercontent(8192):
+        for chunk in r.iter_content(8192):
             if chunk:
                 f.write(chunk)
+
     import zipfile
 
     with zipfile.ZipFile(zippath, "r") as zf:
