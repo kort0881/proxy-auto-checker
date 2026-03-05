@@ -23,7 +23,7 @@ import gc
 import argparse
 import logging
 from datetime import datetime
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -63,27 +63,11 @@ def read_source_text(url: str) -> str:
                 raise
             time.sleep(2)
 
-# ==================== SOURCES ====================
+# ==================== SOURCES (ONLY VERIFIED.TXT) ====================
 KEYSOURCES = {
-    "RU": [
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part2.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part3.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part4.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_all_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_all_part2.txt",
-        "https://raw.githubusercontent.com/sakha1370/OpenRay/main/output/country/RU.txt",
+    "Verified": [
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/checked/latest/verified.txt",
     ],
-    "EU": [
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part2.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_all_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_all_part2.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_all_part3.txt",
-        "https://raw.githubusercontent.com/sakha1370/OpenRay/main/output/country/DE.txt",
-    ],
-    "Prefiltered": [],
 }
 
 MY_CHANNEL = "@vlesstrojan"
@@ -284,19 +268,16 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
 def classify_quality(latency: float, jitter: float, success_rate: float) -> Optional[Quality]:
     """Классификация качества по TCP метрикам"""
 
-    # ELITE: быстрый и стабильный
     if (latency <= CONFIG.ELITE_MAX_LATENCY and
         jitter <= CONFIG.ELITE_MAX_JITTER and
         success_rate >= CONFIG.ELITE_MIN_SUCCESS):
         return Quality.ELITE
 
-    # PREMIUM: средняя скорость, приемлемая стабильность
     if (latency <= CONFIG.PREMIUM_MAX_LATENCY and
         jitter <= CONFIG.PREMIUM_MAX_JITTER and
         success_rate >= CONFIG.PREMIUM_MIN_SUCCESS):
         return Quality.PREMIUM
 
-    # GOOD: работает, но медленнее
     if (latency <= CONFIG.GOOD_MAX_LATENCY and
         success_rate >= CONFIG.GOOD_MIN_SUCCESS):
         return Quality.GOOD
@@ -304,10 +285,6 @@ def classify_quality(latency: float, jitter: float, success_rate: float) -> Opti
     return None
 
 def check_key_simple(key: str) -> CheckResult:
-    """
-    Простая TCP-проверка ключа с измерением латентности.
-    Делает N попыток TCP-коннекта, собирает метрики.
-    """
     host, port = extract_host_port(key)
     protocol, security = detect_protocol(key)
 
@@ -320,7 +297,6 @@ def check_key_simple(key: str) -> CheckResult:
 
     latencies: List[float] = []
     successes = 0
-    timeouts = 0
 
     for attempt in range(CONFIG.TCP_ATTEMPTS):
         try:
@@ -330,7 +306,6 @@ def check_key_simple(key: str) -> CheckResult:
                 latencies.append(latency_ms)
                 successes += 1
         except socket.timeout:
-            timeouts += 1
             record_error("tcp_timeout")
         except ConnectionRefusedError:
             record_error("tcp_refused")
@@ -380,7 +355,7 @@ def check_key_simple(key: str) -> CheckResult:
     )
 
 # ==================== SAVE RESULTS ====================
-def save_results(results: List[CheckResult], region: str = "ALL"):
+def save_results(results: List[CheckResult], region: str = "Verified"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     by_quality = defaultdict(list)
 
@@ -476,7 +451,7 @@ def save_results(results: List[CheckResult], region: str = "ALL"):
 # ==================== ARGS & MAIN ====================
 def parse_arguments():
     parser = argparse.ArgumentParser(description="AI Proxy Checker v5.2 LITE (TCP-only)")
-    parser.add_argument('--region', choices=['ALL', 'RU', 'EU', 'Prefiltered'], default='ALL')
+    parser.add_argument('--region', choices=['ALL', 'Verified'], default='Verified')
     parser.add_argument('--workers', type=int, default=CONFIG.TCP_WORKERS)
     parser.add_argument('--tcp-workers', type=int, default=CONFIG.TCP_WORKERS)
     parser.add_argument('--timeout', type=float, default=CONFIG.TCP_TIMEOUT)
@@ -486,7 +461,6 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
-    # workers из workflow: --tcp-workers 50
     CONFIG.TCP_WORKERS = args.tcp_workers
     CONFIG.TCP_TIMEOUT = args.timeout
     CONFIG.TCP_ATTEMPTS = args.attempts
@@ -508,10 +482,8 @@ def main():
     print(f"   GOOD:    lat<={CONFIG.GOOD_MAX_LATENCY}ms, success>={CONFIG.GOOD_MIN_SUCCESS:.0%}")
     print()
 
-    if args.region != 'ALL':
-        sources = {args.region: KEYSOURCES.get(args.region, [])}
-    else:
-        sources = KEYSOURCES
+    # Всегда берём Verified
+    sources = KEYSOURCES
 
     all_keys = download_and_deduplicate(sources)
     if not all_keys:
@@ -568,7 +540,7 @@ def main():
     tcp_time = time.time() - tcp_start
     total_time = time.time() - stats.start_time
 
-    save_results(results, args.region)
+    save_results(results, "Verified")
 
     print("\n" + "=" * 60)
     print(" RESULTS")
@@ -613,3 +585,4 @@ if __name__ == "__main__":
         exit_code = 1
 
     sys.exit(exit_code)
+
