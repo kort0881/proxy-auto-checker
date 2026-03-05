@@ -1,6 +1,5 @@
       - name: Xray self test
         run: |
-          chmod +x xray/xray || true
           cat > xray_selftest.py << 'EOF'
           #!/usr/bin/env python3
           import json, os, random, socket, subprocess, time
@@ -8,7 +7,7 @@
           import requests
 
           WORKDIR = Path(__file__).parent.absolute()
-          XRAYFOLDER = WORKDIR / "xray"
+          XRAYFOLDER = WORKDIR / "xray_selftest"
 
           def wait_for_port(port: int, timeout: float = 5.0) -> bool:
               deadline = time.time() + timeout
@@ -21,13 +20,6 @@
               return False
 
           def setup_xray() -> Path:
-              exename = "xray"
-              exepath = XRAYFOLDER / exename
-              if exepath.exists():
-                  print(f"[OK] Xray found at {exepath}")
-                  # на всякий случай ещё раз chmod
-                  exepath.chmod(0o755)
-                  return exepath
               XRAYFOLDER.mkdir(parents=True, exist_ok=True)
               import platform
               system = platform.system().lower()
@@ -49,6 +41,7 @@
               with zipfile.ZipFile(zippath, "r") as zf:
                   zf.extractall(XRAYFOLDER)
               zippath.unlink()
+              exepath = XRAYFOLDER / "xray"
               exepath.chmod(0o755)
               print(f"[OK] Xray installed at {exepath}")
               return exepath
@@ -69,7 +62,6 @@
                       "tag": "direct"
                   }]
               }
-              XRAYFOLDER.mkdir(parents=True, exist_ok=True)
               cfg_path = XRAYFOLDER / f"selftest_{port}.json"
               cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
               print(f"[CFG] {cfg_path}")
@@ -123,4 +115,5 @@
           EOF
 
           python xray_selftest.py
+
 
