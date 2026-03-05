@@ -77,21 +77,40 @@ def read_source_text(url: str) -> str:
                 raise
             time.sleep(2)
 # ==================== SOURCES ====================
-KEY_SOURCES = {
+KEYSOURCES = {
     "RU": [
-        "https://raw.githubusercontent.com/kort0881/vpn-vless-configs-russia/main/ru_white.txt",
-        "https://raw.githubusercontent.com/vorz1k/v2box/main/v2ray_ru.txt",
+        # ✅ Префильтрованные быстрые RU (FAST)
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part1.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part2.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part3.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_part4.txt",
+
+        # ✅ Полные RU (ALL)
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_all_part1.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/RU_Best/ru_white_all_part2.txt",
+
+        # ✅ Живой публичный RU
         "https://raw.githubusercontent.com/sakha1370/OpenRay/main/output/country/RU.txt",
-        "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/ru_configs.txt",
     ],
+
     "EU": [
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro.txt",
-        "https://raw.githubusercontent.com/vorz1k/v2box/main/v2ray_eu.txt",
+        # ✅ Префильтрованные быстрые EU (FAST)
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part1.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part2.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
+
+        # ✅ Полные EU (ALL)
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_all_part1.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_all_part2.txt",
+        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_all_part3.txt",
+
+        # ✅ Живой публичный DE
         "https://raw.githubusercontent.com/sakha1370/OpenRay/main/output/country/DE.txt",
     ],
+
     "Prefiltered": [
-        "file://results/verified_latest.txt"
-    ]
+        # Оставить пустым или заполнить своим файлом позже
+    ],
 }
 MY_CHANNEL = "@vlesstrojan"
 # ==================== CONFIG ====================
