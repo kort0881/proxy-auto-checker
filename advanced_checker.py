@@ -1275,7 +1275,9 @@ def parse_shadowsocks(key: str) -> Optional[Dict]:
 # ==================== DOWNLOAD ====================
 def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
     if sources is None:
-        sources = KEY_SOURCES
+        sources = if sources is None:
+    sources = KEYSOURCES
+
     all_keys = []
     seen = set()
     duplicates = 0
