@@ -1,7 +1,7 @@
 name: Xray selftest
 
 on:
-  workflow_dispatch:  # запуск руками
+  workflow_dispatch:
 
 jobs:
   selftest:
@@ -24,4 +24,5 @@ jobs:
       - name: Xray self test
         run: |
           python xray_selftest.py
+
 
