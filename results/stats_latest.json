@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-03-04T22:22:46.052395",
+  "timestamp": "2026-03-05T01:01:29.025057",
   "region": "ALL",
   "route_tag": "default",
-  "total_checked": 2847,
-  "total_working": 2847,
+  "total_checked": 2529,
+  "total_working": 2529,
   "rf_ready": 0,
   "rf_ready_percent": 0.0,
   "quick_check": {
@@ -13,44 +13,44 @@
   "by_quality": {
     "elite": 0,
     "premium": 0,
-    "good": 2847
+    "good": 2529
   },
   "by_protocol": {},
   "by_transport": {},
   "by_sni": {},
   "mutations": {
-    "tried": 2230,
+    "tried": 1910,
     "successful": 0
   },
   "ai": {
     "enabled": true,
     "anomalies": 0,
-    "retrains": 14,
-    "history_size": 15047,
+    "retrains": 12,
+    "history_size": 15129,
     "protocol_trends": {
-      "": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 1494
-      },
-      "SS": {
-        "success_rate": 0.0,
-        "rf_rate": 0.0,
-        "trend": 0.0,
-        "total": 1698
-      },
       "VLESS": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 14433
+        "total": 13874
+      },
+      "": {
+        "success_rate": 0.0,
+        "rf_rate": 0.0,
+        "trend": 0.0,
+        "total": 1635
       },
       "Trojan": {
         "success_rate": 0.0,
         "rf_rate": 0.0,
         "trend": 0.0,
-        "total": 222
+        "total": 258
+      },
+      "SS": {
+        "success_rate": 0.0,
+        "rf_rate": 0.0,
+        "trend": 0.0,
+        "total": 1762
       }
     },
     "category_effectiveness": {},
@@ -58,28 +58,28 @@
       "www.google.com": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 16353
+        "total": 15894
       }
     },
     "transport_performance": {
       "tcp": {
         "success_rate": 0.0,
         "avg_latency": 0.0,
-        "total": 16353
+        "total": 15894
       }
     }
   },
   "dpi": {
     "total_suspects": 4,
     "high_confidence": [
-      "cloud.quattro-tech.ru:8443",
       "185.130.112.165:8448",
+      "cloud.quattro-tech.ru:8443",
       "51.250.92.19:443",
       "185.112.59.134:8446"
     ],
     "medium_confidence": [],
     "false_positives": [],
-    "monitored_endpoints": 1178
+    "monitored_endpoints": 1136
   },
-  "processing_time": 81.1599862575531
+  "processing_time": 145.9887490272522
 }
