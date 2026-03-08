@@ -415,7 +415,6 @@ def check_key_simple(key: str) -> CheckResult:
             )
 
     # FIX: TLS validation moved BEFORE latency measurement.
-    # Previously TLS check happened after collecting latencies, discarding valid data on failure.
     if security == "tls":
         if not tls_handshake(host, port, CONFIG.TCP_TIMEOUT):
             record_error("tls_fail")
@@ -437,9 +436,6 @@ def check_key_simple(key: str) -> CheckResult:
     latencies: List[float] = []
     successes = 0
 
-    # FIX: DNS lookup measured once; subtracted only from the first attempt.
-    # On subsequent attempts the OS already has the address cached, so subtracting
-    # dns_latency from those measurements would skew results downward incorrectly.
     dns_latency = dns_lookup(host)
 
     for attempt in range(CONFIG.TCP_ATTEMPTS):
@@ -462,7 +458,6 @@ def check_key_simple(key: str) -> CheckResult:
         except socket.gaierror:
             record_error("dns_error")
         except Exception:
-            # FIX: was bare except
             record_error("tcp_other")
 
         if attempt < CONFIG.TCP_ATTEMPTS - 1:
@@ -496,9 +491,6 @@ def check_key_simple(key: str) -> CheckResult:
     avg_latency = mean(latencies)
     jitter = max(latencies) - min(latencies)
 
-    # FIX: proper percentile index calculation.
-    # Original used int(len*0.5) which equals index 2 for 5 samples — correct for p50,
-    # but int(len*0.9) = 4 which is actually the max, not p90. Clamped properly now.
     n = len(latencies)
     p50 = latencies[min(int(n * 0.50), n - 1)]
     p90 = latencies[min(int(n * 0.90), n - 1)]
@@ -537,6 +529,105 @@ def check_key_simple(key: str) -> CheckResult:
         }
 
     return result
+
+# ==================== SAVE RESULTS (added back) ====================
+
+def save_results(results: List[CheckResult], region: str = "Verified"):
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    by_quality = defaultdict(list)
+
+    for r in results:
+        if r.alive and r.quality:
+            by_quality[r.quality].append(r)
+
+    for quality in Quality:
+        items = by_quality.get(quality, [])
+        if not items:
+            continue
+
+        items.sort(key=lambda x: x.latency)
+        filename = PREMIUM_FOLDER / f"{quality.value}.txt"
+
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"# {quality.value.upper()}\n")
+            f.write(f"# {MY_CHANNEL}\n")
+            f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"# Mode: TCP-LITE-FIXED\n")
+            f.write(f"# Keys: {len(items)}\n\n")
+
+            for r in items:
+                is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+                reg = "RU" if is_ru else "EU"
+
+                comment = (
+                    f"[{r.latency:.0f}ms|{reg}|j{r.jitter:.0f}|"
+                    f"tcp{r.tcp_success_rate:.0%}|{r.protocol}|{MY_CHANNEL}]"
+                )
+                base_key = r.key.split('#')[0]
+                f.write(f"{base_key}#{quote(comment)}\n")
+
+        log(f"[SAVE] {quality.value.upper()}: {len(items)} -> {filename.name}")
+
+    all_results = [r for r in results if r.alive]
+    all_results.sort(key=lambda x: x.latency)
+
+    verified_file = RESULTS_FOLDER / f"verified_{timestamp}.txt"
+    with open(verified_file, 'w', encoding='utf-8') as f:
+        f.write(f"# {MY_CHANNEL}\n")
+        f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"# Mode: TCP-LITE-FIXED\n")
+        f.write(f"# Working: {len(all_results)}\n\n")
+
+        for r in all_results:
+            is_ru = any(x in (r.host or "").lower() for x in ['.ru', 'russia', 'moscow', 'm9', 'msk'])
+            reg = "RU" if is_ru else "EU"
+            q = r.quality.value.upper() if r.quality else "UNK"
+            comment = f"{reg} {q} {r.latency:.0f}ms {r.protocol} {MY_CHANNEL}"
+            f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
+
+    log(f"[SAVE] All: {len(all_results)} -> {verified_file.name}")
+
+    stats_data = {
+        "timestamp": datetime.now().isoformat(),
+        "region": region,
+        "mode": "TCP-LITE-FIXED",
+        "total_checked": stats.tcp_checked,
+        "total_working": len(all_results),
+        "by_quality": {q.value: len(by_quality.get(q, [])) for q in Quality},
+        "by_protocol": dict(stats.by_protocol),
+        "errors": dict(stats.errors),
+        "processing_time": time.time() - stats.start_time
+    }
+
+    with open(STATS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(stats_data, f, indent=2)
+
+    log(f"[SAVE] Stats -> {STATS_FILE.name}")
+
+    try:
+        with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
+            for r in results:
+                record = {
+                    'timestamp': time.time(),
+                    'alive': r.alive,
+                    'protocol': r.protocol,
+                    'latency': r.latency,
+                    'jitter': r.jitter,
+                    'tcp_success_rate': r.tcp_success_rate,
+                    'quality': r.quality.value if r.quality else None,
+                    'host': r.host,
+                    'port': r.port,
+                    'country': r.country,
+                    'p50': r.p50,
+                    'p90': r.p90,
+                    'packet_loss': r.packet_loss,
+                    'error': r.error
+                }
+                f.write(json.dumps(record) + '\n')
+    except Exception as e:
+        log(f"[WARN] Failed to save history: {e}")
+
+    return stats_data
 
 # ==================== MAIN ====================
 
@@ -608,6 +699,9 @@ def main():
                 stats.tcp_dead += 1
                 record_error("future_exception")
 
+    # NEW: save results like in the previous LITE version
+    save_results(results, region="Verified")
+
     print("Finished check")
     return 0
 
@@ -628,3 +722,4 @@ if __name__ == "__main__":
         exit_code = 1
 
     sys.exit(exit_code)
+
