@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker v5.2 LITE (Fixed)
+AI Proxy Checker v5.3 LITE (TCP+HTTP-deep)
 
-Fixes applied:
-- Removed dead code after return in classify_quality()
-- geo_lookup now uses a per-IP cache to avoid redundant HTTP requests
-- All bare except replaced with except Exception
-- TLS validation moved before latency measurement
-- dns_lookup subtraction only applied on first attempt (DNS is OS-cached after that)
-- p50 calculation fixed to use proper index
-- ip-api.com rate limit respected via geo cache
+Изменения:
+- Оставлен быстрый TCP-чекер как первая ступень.
+- Добавлена "вторая ступень": лёгкий HTTP(S)-тест для топ-N по latency.
+- Жёстче фильтруются сомнительные TLS-коннекты.
+- Сохранён формат вывода (premium/*.txt, verified_*.txt, stats/history).
 """
 
 import os
@@ -55,7 +52,6 @@ host_port_cache: Dict[Tuple[str, int], dict] = {}
 host_cache_lock = threading.Lock()
 
 # ==================== GEO CACHE ====================
-# FIX: cache geo results per IP to avoid hammering ip-api.com (45 req/min free limit)
 geo_cache: Dict[str, str] = {}
 geo_cache_lock = threading.Lock()
 
@@ -80,6 +76,12 @@ def read_source_text(url: str) -> str:
             time.sleep(2)
 
 # ==================== SOURCES ====================
+# Если хочешь читать локальный файл из первого скрипта:
+# KEYSOURCES = {
+#     "Verified": [
+#         str(RESULTS_FOLDER / "verified_2026-03-11_12-00-00.txt"),
+#     ],
+# }
 KEYSOURCES = {
     "Verified": [
         "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/checked/latest/verified.txt",
@@ -110,21 +112,26 @@ class Config:
 
     GC_EVERY: int = 100
 
+    # Вторая ступень: глубокий HTTP(S)-чек
+    SECOND_STAGE_TOP_N: int = 200           # сколько лучших по latency добивать
+    SECOND_STAGE_WORKERS: int = 40
+    HTTP_TEST_TIMEOUT: float = 4.0
+    HTTP_TEST_URLS: Tuple[str, ...] = (
+        "/",                 # просто корень
+        "/generate_204",     # иногда прокидывается
+    )
+
 CONFIG = Config()
 
 # ==================== SMART SERVER SCORING ====================
 
 def compute_server_score(latency: float, jitter: float, success_rate: float, packet_loss: float) -> float:
-    """Composite quality score used internally for smarter filtering."""
-
     latency_score = max(0, 100 - latency * 0.2)
     jitter_penalty = jitter * 0.1
     reliability_score = success_rate * 100
     loss_penalty = packet_loss * 120
-
     score = latency_score + reliability_score - jitter_penalty - loss_penalty
     return max(0, score)
-
 
 # ==================== QUALITY ====================
 class Quality(Enum):
@@ -134,7 +141,6 @@ class Quality(Enum):
 
 @dataclass
 class CheckResult:
-
     key: str
     alive: bool
     latency: float = 0.0
@@ -196,7 +202,6 @@ def cleanup_memory():
 # ==================== PARSERS ====================
 
 def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
-
     try:
         key = key.strip()
 
@@ -217,10 +222,10 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
             key = key.split("@", 1)[1]
 
         if "?" in key:
-            key = key.split("?")[0]
+            key = key.split("?", 1)[0]
 
         if "#" in key:
-            key = key.split("#")[0]
+            key = key.split("#", 1)[0]
 
         if ":" in key:
             host, port = key.rsplit(":", 1)
@@ -229,12 +234,10 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
         return None, None
 
     except Exception:
-        # FIX: was bare except — replaced with except Exception
         return None, None
 
 
 def detect_protocol(key: str) -> Tuple[str, str]:
-
     key_lower = key.lower()
     security = "none"
 
@@ -262,7 +265,6 @@ def dns_lookup(host: str) -> Optional[float]:
         socket.getaddrinfo(host, None)
         return (time.time() - start) * 1000
     except Exception:
-        # FIX: was bare except
         return None
 
 
@@ -270,15 +272,27 @@ def tls_handshake(host: str, port: int, timeout: float) -> bool:
     try:
         ctx = ssl.create_default_context()
         with socket.create_connection((host, port), timeout=timeout) as sock:
-            with ctx.wrap_socket(sock, server_hostname=host):
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert = ssock.getpeercert()
+                # Простая проверка: CN/SAN содержит host
+                names = []
+                subject = cert.get("subject", [])
+                for tup in subject:
+                    for k, v in tup:
+                        if k.lower() == "commonname":
+                            names.append(v.lower())
+                for san in cert.get("subjectAltName", []):
+                    if san[0].lower() in ("dns",):
+                        names.append(san[1].lower())
+                host_l = host.lower()
+                if names and not any(host_l in n or n in host_l for n in names):
+                    return False
                 return True
     except Exception:
-        # FIX: was bare except
         return False
 
 
 def geo_lookup(host: str) -> str:
-    # FIX: check cache first to avoid redundant requests and respect rate limit
     with geo_cache_lock:
         if host in geo_cache:
             return geo_cache[host]
@@ -287,7 +301,6 @@ def geo_lookup(host: str) -> str:
         r = requests.get(f"http://ip-api.com/json/{host}", timeout=3)
         country = r.json().get("countryCode", "??")
     except Exception:
-        # FIX: was bare except
         country = "??"
 
     with geo_cache_lock:
@@ -298,7 +311,6 @@ def geo_lookup(host: str) -> str:
 # ==================== DOWNLOAD ====================
 
 def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
-
     if sources is None:
         sources = KEYSOURCES
 
@@ -309,21 +321,18 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
     log("[DL] Downloading keys...")
 
     for region, urls in sources.items():
-
         log(f"  Region: {region}")
 
         for url in urls:
-
             try:
                 content = read_source_text(url).strip()
             except Exception as e:
-                log(f"    FAIL {url.split('/')[-1]}: {e}")
+                log(f"    FAIL {url}: {e}")
                 continue
 
             count = 0
 
             for line in content.split('\n'):
-
                 line = html.unescape(line.strip())
 
                 if not line or not line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
@@ -340,7 +349,7 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
                 count += 1
 
             stats.total_downloaded += count
-            log(f"    {url.split('/')[-1]}: {count}")
+            log(f"    {url}: {count}")
 
     stats.duplicates = duplicates
     stats.unique = len(all_keys)
@@ -352,11 +361,6 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
 # ==================== QUALITY ====================
 
 def classify_quality(latency: float, jitter: float, success_rate: float) -> Optional[Quality]:
-    """
-    Classify server quality based on latency, jitter, success rate and composite score.
-    FIX: removed dead code that was unreachable after the original early return.
-    """
-
     score = compute_server_score(latency, jitter, success_rate, 1 - success_rate)
 
     if (latency <= CONFIG.ELITE_MAX_LATENCY and
@@ -380,7 +384,6 @@ def classify_quality(latency: float, jitter: float, success_rate: float) -> Opti
 # ==================== TCP CHECK ====================
 
 def check_key_simple(key: str) -> CheckResult:
-
     host, port = extract_host_port(key)
     protocol, security = detect_protocol(key)
 
@@ -414,7 +417,6 @@ def check_key_simple(key: str) -> CheckResult:
                 security=security
             )
 
-    # FIX: TLS validation moved BEFORE latency measurement.
     if security == "tls":
         if not tls_handshake(host, port, CONFIG.TCP_TIMEOUT):
             record_error("tls_fail")
@@ -439,7 +441,6 @@ def check_key_simple(key: str) -> CheckResult:
     dns_latency = dns_lookup(host)
 
     for attempt in range(CONFIG.TCP_ATTEMPTS):
-
         try:
             start = time.time()
             with socket.create_connection((host, port), timeout=CONFIG.TCP_TIMEOUT):
@@ -530,7 +531,72 @@ def check_key_simple(key: str) -> CheckResult:
 
     return result
 
-# ==================== SAVE RESULTS (added back) ====================
+# ==================== SECOND STAGE: SIMPLE HTTP(S) TEST ====================
+
+def deep_http_test_one(r: CheckResult) -> bool:
+    """
+    Вторая ступень: делаем реальный HTTP(S) запрос на host:port.
+    Не Xray, но отсекает кучу ложных "живых" портов.
+    """
+    if not r.host or not r.port:
+        return False
+
+    scheme = "https" if r.security in ("tls", "reality") else "http"
+    base = f"{scheme}://{r.host}:{r.port}"
+
+    for path in CONFIG.HTTP_TEST_URLS:
+        url = base + path
+        try:
+            resp = requests.get(
+                url,
+                timeout=CONFIG.HTTP_TEST_TIMEOUT,
+                allow_redirects=False,
+                verify=(scheme == "https"),
+            )
+            if resp.status_code in (200, 204, 301, 302):
+                return True
+        except Exception:
+            continue
+
+    return False
+
+def second_stage_filter(results: List[CheckResult]) -> None:
+    """
+    Модифицирует список results IN-PLACE:
+    для топ-N по latency подтверждает работу через deep_http_test_one,
+    остальные alive остаются как есть или (опционально) тоже режутся.
+    """
+    alive_results = [r for r in results if r.alive and r.host and r.port]
+    if not alive_results:
+        return
+
+    alive_results.sort(key=lambda x: x.latency)
+    top_n = alive_results[:CONFIG.SECOND_STAGE_TOP_N]
+
+    log(f"[DEEP] Second stage HTTP-check for top {len(top_n)} of {len(alive_results)} alive")
+
+    lock = threading.Lock()
+
+    def worker(r: CheckResult):
+        ok = deep_http_test_one(r)
+        if not ok:
+            with lock:
+                r.alive = False
+                r.error = (r.error or "") + "|deep_http_fail"
+        else:
+            with lock:
+                # можно при желании поднять quality до PREMIUM/ELITE, но не трогаю
+                pass
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.SECOND_STAGE_WORKERS) as ex:
+        futures = [ex.submit(worker, r) for r in top_n]
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                f.result()
+            except Exception:
+                record_error("deep_http_exception")
+
+# ==================== SAVE RESULTS ====================
 
 def save_results(results: List[CheckResult], region: str = "Verified"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -552,7 +618,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
             f.write(f"# {quality.value.upper()}\n")
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"# Mode: TCP-LITE-FIXED\n")
+            f.write(f"# Mode: TCP+HTTP-LITE\n")
             f.write(f"# Keys: {len(items)}\n\n")
 
             for r in items:
@@ -575,7 +641,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
     with open(verified_file, 'w', encoding='utf-8') as f:
         f.write(f"# {MY_CHANNEL}\n")
         f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"# Mode: TCP-LITE-FIXED\n")
+        f.write(f"# Mode: TCP+HTTP-LITE\n")
         f.write(f"# Working: {len(all_results)}\n\n")
 
         for r in all_results:
@@ -590,7 +656,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
-        "mode": "TCP-LITE-FIXED",
+        "mode": "TCP+HTTP-LITE",
         "total_checked": stats.tcp_checked,
         "total_working": len(all_results),
         "by_quality": {q.value: len(by_quality.get(q, [])) for q in Quality},
@@ -632,29 +698,27 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
 # ==================== MAIN ====================
 
 def parse_arguments():
-
-    parser = argparse.ArgumentParser(description="AI Proxy Checker v5.2 LITE (Fixed)")
-
+    parser = argparse.ArgumentParser(description="AI Proxy Checker v5.3 LITE (TCP+HTTP)")
     parser.add_argument('--region', choices=['ALL', 'Verified'], default='Verified')
     parser.add_argument('--workers', type=int, default=CONFIG.TCP_WORKERS)
     parser.add_argument('--tcp-workers', type=int, default=CONFIG.TCP_WORKERS)
     parser.add_argument('--timeout', type=float, default=CONFIG.TCP_TIMEOUT)
     parser.add_argument('--attempts', type=int, default=CONFIG.TCP_ATTEMPTS)
-
+    parser.add_argument('--second-top', type=int, default=CONFIG.SECOND_STAGE_TOP_N)
     return parser.parse_args()
 
 
 def main():
-
     args = parse_arguments()
 
     CONFIG.TCP_WORKERS = args.tcp_workers
     CONFIG.TCP_TIMEOUT = args.timeout
     CONFIG.TCP_ATTEMPTS = args.attempts
+    CONFIG.SECOND_STAGE_TOP_N = args.second_top
 
     print("\n" + "=" * 60)
-    print(" AI Proxy Checker v5.2 LITE (Fixed)")
-    print(" Improved TCP mode")
+    print(" AI Proxy Checker v5.3 LITE (TCP+HTTP)")
+    print(" Two-stage: TCP first, HTTP deep on top-N")
     print(f" Channel: {MY_CHANNEL}")
     print("=" * 60)
 
@@ -669,13 +733,11 @@ def main():
     results: List[CheckResult] = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.TCP_WORKERS) as executor:
-
         futures = {executor.submit(check_key_simple, key): key for key in all_keys}
 
         done = 0
 
         for future in concurrent.futures.as_completed(futures):
-
             done += 1
 
             if done % CONFIG.GC_EVERY == 0:
@@ -699,7 +761,9 @@ def main():
                 stats.tcp_dead += 1
                 record_error("future_exception")
 
-    # NEW: save results like in the previous LITE version
+    # ВТОРАЯ СТУПЕНЬ: HTTP(S)-проверка топ-N по latency
+    second_stage_filter(results)
+
     save_results(results, region="Verified")
 
     print("Finished check")
@@ -707,14 +771,11 @@ def main():
 
 
 if __name__ == "__main__":
-
     try:
         exit_code = main()
-
     except KeyboardInterrupt:
         print("\n[STOP] Interrupted")
         exit_code = 1
-
     except Exception as e:
         print(f"\n[ERR] {e}")
         import traceback
@@ -722,4 +783,5 @@ if __name__ == "__main__":
         exit_code = 1
 
     sys.exit(exit_code)
+
 
