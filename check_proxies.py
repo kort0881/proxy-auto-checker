@@ -45,6 +45,9 @@ KEY_SOURCES = {
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part1.txt",
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part2.txt",
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/My_Euro/my_euro_part3.txt",
+        # argh_v2rayauto_vless / "🚀 VIP - by M.Shojaei"
+        # общий микс VLESS/VMess/Trojan/SS из v2rayAuto
+        "https://raw.githubusercontent.com/mshojaei77/v2rayAuto/main/mix",
     ]
 }
 
