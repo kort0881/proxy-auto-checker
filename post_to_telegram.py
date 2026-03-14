@@ -44,21 +44,6 @@ SUBSCRIPTIONS_URL = (
     "kort0881/vpn-checker-backend/refs/heads/main/checked/subscriptions_list.txt"
 )
 
-# Ссылка Минюста на перечень нежелательных организаций
-UNWANTED_REGISTRY_URL = (
-    "https://minjust.gov.ru/ru/pages/"
-    "perechen-inostrannyh-i-mezhdunarodnyh-organizacij-deyatelnost-kotoryh-"
-    "priznana-nezhelatelnoj-na-territorii-rossiyskoy-federatsii/"
-)
-
-UNWANTED_DISCLAIMER = (
-    "⚠️ Отдельные организации, упомянутые в данном материале, "
-    "могут иметь статус «нежелательных» на территории РФ.\n"
-    "Актуальный перечень размещён на официальном сайте Минюста РФ:\n"
-    f"{UNWANTED_REGISTRY_URL}\n"
-    "Информация приведена исключительно в ознакомительных целях."
-)
-
 
 def load_subscriptions():
     try:
@@ -363,14 +348,6 @@ def safe_remove(filepath: str):
         print(f"⚠️ Не удалось удалить {filepath}: {e}")
 
 
-def build_unwanted_button():
-    # Кнопка на реестр Минюста (inline keyboard)
-    return {
-        "text": "📄 Перечень нежелательных организаций (Минюст РФ)",
-        "url": UNWANTED_REGISTRY_URL,
-    }
-
-
 def main():
     if not BOT_TOKEN_PUBLIC:
         print("❌ TELEGRAM_BOT_TOKEN_PUBLIC не установлен")
@@ -455,7 +432,6 @@ def main():
     caption += "📡 VLESS | VMess | Trojan | SS\n\n"
     caption += f"💬 {PUBLIC_CHANNEL}\n\n"
     caption += REACTIONS_TEXT
-    caption += "\n\n" + UNWANTED_DISCLAIMER  # Дисклеймер с ссылкой Минюста
 
     if os.path.exists(COVER_PUBLIC):
         result = send_photo_with_file(
@@ -479,7 +455,6 @@ def main():
     if subscriptions_formatted and subscriptions_buttons:
         keyboard = []
         row = []
-
         for btn in subscriptions_buttons:
             row.append(
                 {
@@ -493,23 +468,9 @@ def main():
         if row:
             keyboard.append(row)
 
-        # Добавляем кнопку на реестр Минюста отдельной строкой
-        keyboard.append(
-            [
-                {
-                    "text": "📄 Перечень нежелательных организаций (Минюст РФ)",
-                    "url": UNWANTED_REGISTRY_URL,
-                }
-            ]
-        )
-
         subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
         subs_text += subscriptions_formatted
-        subs_text += (
-            "\n\n💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash.\n\n"
-            "⚠️ Отдельные организации, упомянутые в данном материале, могут иметь статус "
-            "«нежелательных» на территории РФ. Актуальный перечень доступен на сайте Минюста РФ."
-        )
+        subs_text += "\n\n💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash"
 
         try:
             resp = requests.post(
@@ -575,8 +536,7 @@ def main():
             )
 
         caption += "🔍 Тройная проверка: TCP + XRAY + Categories\n"
-        caption += "📡 VLESS | VMess | Trojan | SS\n\n"
-        caption += UNWANTED_DISCLAIMER  # Дисклеймер и в приват тоже
+        caption += "📡 VLESS | VMess | Trojan | SS"
 
         if os.path.exists(COVER_PRIVATE):
             result = send_photo_with_file(
@@ -613,23 +573,9 @@ def main():
             if row:
                 keyboard.append(row)
 
-            # Кнопка на реестр Минюста
-            keyboard.append(
-                [
-                    {
-                        "text": "📄 Перечень нежелательных организаций (Минюст РФ)",
-                        "url": UNWANTED_REGISTRY_URL,
-                    }
-                ]
-            )
-
             subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
             subs_text += subscriptions_formatted
-            subs_text += (
-                "\n\n🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент.\n\n"
-                "⚠️ Отдельные организации, упомянутые в данном материале, могут иметь статус "
-                "«нежелательных» на территории РФ. Актуальный перечень доступен на сайте Минюста РФ."
-            )
+            subs_text += "\n\n🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
 
             try:
                 resp = requests.post(
@@ -690,6 +636,9 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+
 
 
 
