@@ -2,8 +2,7 @@ name: AI Checker ALL
 
 on:
   schedule:
-    # Запуск каждые 6 часов в 02:10 / 08:10 / 14:10 / 20:10 UTC
-    # (подстрой время под свой конвейер)
+    # Запуск каждые 6 часов
     - cron: '10 */6 * * *'
   workflow_dispatch:
 
@@ -20,9 +19,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
 
       - name: Run AI Checker ALL
         env:
