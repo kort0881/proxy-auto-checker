@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 PRIMARY PREFILTER v2 (ALL) - Быстрая фильтрация мусора перед тяжёлым RF-чекером
-Источники: чанки из checked/ALL второго репо (vpn-checker-backend)
+Источники: чанк из checked/ALL второго репо (vpn-checker-backend)
 """
 
 import os
@@ -34,14 +34,10 @@ RESULTS_FOLDER = WORK_DIR / "results"
 XRAY_FOLDER.mkdir(parents=True, exist_ok=True)
 RESULTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# БЕРЁМ ТОЛЬКО ЧАНКИ ИЗ checked/ALL
+# БЕРЁМ ТОЛЬКО ЧАНК ИЗ checked/ALL
 KEY_SOURCES = {
     "ALL": [
         "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/ALL/ALL_all_part1.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/ALL/ALL_all_part2.txt",
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/ALL/ALL_all_part3.txt",
-        # при появлении новых чанков просто добавляешь сюда:
-        # "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/ALL/ALL_all_part4.txt",
     ]
 }
 
@@ -195,7 +191,7 @@ def setup_xray():
 
 # ==================== UTILS ====================
 def normalize_key(line):
-    line = html.unescape(line.strip())
+    line = line.strip()
     if not line:
         return ""
     if not line.lower().startswith(("vless://", "vmess://", "trojan://", "ss://")):
@@ -551,15 +547,20 @@ def download_keys():
                 r = requests.get(url, timeout=30)
                 r.raise_for_status()
                 count = 0
-                for line in r.text.splitlines():
-                    n = normalize_key(line)
-                    if not n:
-                        continue
-                    if n in seen:
-                        continue
-                    seen.add(n)
-                    all_keys.append(n)
-                    count += 1
+
+                # HTML-чанк -> строки -> unescape -> split("<br>")
+                for raw_line in r.text.splitlines():
+                    raw_line = html.unescape(raw_line)
+                    for part in raw_line.split("<br>"):
+                        n = normalize_key(part)
+                        if not n:
+                            continue
+                        if n in seen:
+                            continue
+                        seen.add(n)
+                        all_keys.append(n)
+                        count += 1
+
                 log(f"    ✅ {url.split('/')[-1]}: {count}")
             except Exception as e:
                 log(f"    ❌ {url.split('/')[-1]}: {e}")
@@ -709,6 +710,19 @@ def save_results(results, ts):
     log(f"\n💾 Saved: {out_file}")
     log(f"💾 Meta: {meta_file}")
 
+    # стабильный файл для ai_checker_all.py
+    latest = RESULTS_FOLDER / "verified_all_latest.txt"
+    try:
+        latest.unlink(missing_ok=True)
+    except Exception:
+        pass
+    try:
+        latest.symlink_to(out_file.name)
+    except Exception:
+        import shutil
+        shutil.copy2(out_file, latest)
+    log(f"💾 Latest: {latest}")
+
 # ==================== MAIN ====================
 def main():
     global _start_time
@@ -720,7 +734,7 @@ def main():
     print(" " * 20 + "🔥 PRIMARY PREFILTER v2 (ALL) 🔥")
     print(" " * 25 + f"{MY_CHANNEL}")
     print("=" * 70)
-    print(f"\n⚙️  Config:")
+    print("\n⚙️  Config:")
     print(f"   Max time: {CONFIG.MAX_RUNTIME_MINUTES} min")
     print(f"   Max keys: {CONFIG.MAX_KEYS_TO_CHECK}")
     print(f"   TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
