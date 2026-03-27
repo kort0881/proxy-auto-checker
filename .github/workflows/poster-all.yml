@@ -1,0 +1,33 @@
+name: Telegram Poster ALL
+
+on:
+  schedule:
+    # ВРЕМЯ ПРИМЕРНОЕ: запусти на +2 часа после ai-checker-all.yml
+    # если ai-checker-all.yml: '10 */6 * * *' (каждые 6 часов),
+    # то здесь, например, '10 2,8,14,20 * * *' (UTC) или подстрой под свой МСК
+    - cron: '10 2,8,14,20 * * *'
+  workflow_dispatch:
+
+jobs:
+  post-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run ALL poster
+        env:
+          TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
+        run: python post_to_telegram_all.py
