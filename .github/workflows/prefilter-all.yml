@@ -1,0 +1,38 @@
+name: Prefilter ALL
+
+on:
+  schedule:
+    # Запускается каждые 6 часов, за несколько минут до AI Checker ALL
+    - cron: '5 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  prefilter-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install requests
+        run: python -m pip install requests
+
+      - name: Run PREFILTER ALL
+        env:
+          PYTHONUNBUFFERED: 1
+        run: python prefilter_all.py
+
+      - name: Commit results
+        if: success()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add results/
+          git commit -m "Update prefilter ALL results" || echo "No changes"
+          git push
