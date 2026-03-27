@@ -4,7 +4,7 @@
 AI Proxy Checker v5.3 LITE (TCP+HTTP-deep) — ALL pipeline
 
 Этот вариант берёт ключи из префильтра ALL:
-results/verified_all_*.txt в отдельном репозитории.
+results/verified_all_*.txt в этом же репозитории (proxy-auto-checker).
 """
 
 import os
@@ -74,13 +74,10 @@ def read_source_text(url: str) -> str:
 
 # ==================== SOURCES ====================
 # ВХОД ДЛЯ ALL-ПАЙПЛАЙНА:
-# сюда укажи репо с префильтром ALL (verified_all_*).
+# здесь берём verified_all_latest.txt из ЭТОГО репозитория (proxy-auto-checker).
 KEYSOURCES = {
     "VerifiedALL": [
-        # пример: "latest" файл, который ты делаешь в репо префильтра
-        "https://raw.githubusercontent.com/kort0881/proxy-prefilter-all/main/results/verified_all_latest.txt",
-        # или можно добавить несколько временных файлов:
-        # "https://raw.githubusercontent.com/kort0881/proxy-prefilter-all/main/results/verified_all_2026-03-27_12-00-00.txt",
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/results/verified_all_latest.txt",
     ],
 }
 
@@ -129,6 +126,7 @@ def compute_server_score(latency: float, jitter: float, success_rate: float, pac
     return max(0, score)
 
 # ==================== QUALITY ====================
+
 class Quality(Enum):
     ELITE = "elite"
     PREMIUM = "premium"
@@ -606,8 +604,8 @@ def save_results(results: List[CheckResult], region: str = "VerifiedALL"):
                 reg = "RU" if is_ru else "EU"
 
                 comment = (
-                    f"[{r.latency:.0f}ms|{reg}|j{r.jitter:.0f}|"
-                    f"tcp{r.tcp_success_rate:.0%}|{r.protocol}|{MY_CHANNEL}]"
+                    f"[{r.latency:.0f}ms {reg} j{r.jitter:.0f} "
+                    f"tcp{r.tcp_success_rate:.0%} {r.protocol} {MY_CHANNEL}]"
                 )
                 base_key = r.key.split('#')[0]
                 f.write(f"{base_key}#{quote(comment)}\n")
