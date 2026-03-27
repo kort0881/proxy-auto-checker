@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 PRIMARY PREFILTER v2 (ALL) - Быстрая фильтрация мусора перед тяжёлым RF-чекером
-Источники: чанк из checked/ALL второго репо (vpn-checker-backend)
+Источники: чанки из checked/ALL второго репо (vpn-checker-backend)
 """
 
 import os
@@ -34,10 +34,14 @@ RESULTS_FOLDER = WORK_DIR / "results"
 XRAY_FOLDER.mkdir(parents=True, exist_ok=True)
 RESULTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# БЕРЁМ ТОЛЬКО ЧАНК ИЗ checked/ALL
+# Все чанки из checked/ALL второго репо (ALL_all_part*.txt)
+BASE_ALL_URL = "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/ALL"
+MAX_PART = 1000  # верхний предел, лишние просто дадут 404 в логах
+
 KEY_SOURCES = {
     "ALL": [
-        "https://raw.githubusercontent.com/kort0881/vpn-checker-backend/main/checked/ALL/ALL_all_part1.txt",
+        f"{BASE_ALL_URL}/ALL_all_part{i}.txt"
+        for i in range(1, MAX_PART + 1)
     ]
 }
 
