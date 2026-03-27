@@ -1,0 +1,30 @@
+name: AI Checker ALL
+
+on:
+  schedule:
+    # Запуск каждые 6 часов в 02:10 / 08:10 / 14:10 / 20:10 UTC
+    # (подстрой время под свой конвейер)
+    - cron: '10 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  ai-check-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run AI Checker ALL
+        env:
+          PYTHONUNBUFFERED: 1
+        run: python ai_checker_all.py
