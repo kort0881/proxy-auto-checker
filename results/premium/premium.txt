@@ -1,17 +1,19 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-03-28 10:54
+# 2026-03-28 12:59
 # Mode: TCP+HTTP-LITE
-# Keys: 11
+# Keys: 13
 
-vless://40cc9b52-25b8-4cd5-8b45-715ae26e6baf@sc-thenetherlands1.09vpn.com:80?encryption=none&type=ws&path=%2Fvless%2F&security=none#%5B163ms%7CEU%7Cj187%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://c67f81df-34e8-4cb3-ab43-599585775fa9@der.jojack.ru:443?flow=xtls-rprx-vision&fp=qq&pbk=xpv3OgIQ4ND_ZaiLxjHk1JsykVAVUY73UkyxPlU8Clc&security=reality&sid=695f0df252f9889d&sni=der.jojack.ru&type=tcp#%5B195ms%7CRU%7Cj180%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a47fb050-8477-4d86-9332-5f687f572d94@de.faceppm.ru:1888?type=tcp&security=reality&flow=xtls-rprx-vision&fp=&pbk=GaVpyGU5Xqyd5SYmchrCIajjTiXF69bmCnUdftmrwTM&sid=6b&sni=www.kernel.org&path=&host=#%5B210ms%7CRU%7Cj214%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a47fb050-8477-4d86-9332-5f687f572d94@de.faceppm.ru:1888?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=GaVpyGU5Xqyd5SYmchrCIajjTiXF69bmCnUdftmrwTM&sid=6b&sni=www.kernel.org#%5B218ms%7CRU%7Cj193%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpGamdHTk5IUWlFTHp4WG1hSFJ4eHRRYnhERHZHWEZ4WWRUYlllOTFKS1pzanZLTEhvWTlybjlydVlFNDUzNzdXanRVM200a21YUVpEWGlIQkpzZ1ZmaG1wYXdFb0d2cTk@mx2.drawnrisha.one:55988#%5B249ms%7CEU%7Cj192%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-trojan://M7v%25w11Se%2A@amanm.wsone.icu:443?security=tls&sni=amanm.wsone.icu&insecure=0&allowInsecure=0&type=tcp&headerType=none#%5B274ms%7CEU%7Cj137%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://M7v%25w11Se%2A@tttyder.wsone.icu:443?security=tls&sni=tttyder.wsone.icu&type=raw#%5B288ms%7CEU%7Cj143%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpiWjg3YW1QcGRHN0t1V002MmJLdG0xS0hvb3d1VmpuVjhDS3RxNjUzeW1IY2cyZFBZY1BKZm5hUTYxc3R1QWpyMlppTERhcUg1Nlhwa3hFWXV3RHp6UnJNV2llZWJXR3Q=@mx2.drawnrisha.one:55988#%5B296ms%7CEU%7Cj157%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-trojan://M7v%25w11Se%2A@tttyder.wsone.icu:443?security=tls&sni=tttyder.wsone.icu&type=tcp#%5B296ms%7CEU%7Cj219%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-vless://a47fb050-8477-4d86-9332-5f687f572d94@185.42.163.177:1888?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&fp=chrome&sni=www.kernel.org&pbk=GaVpyGU5Xqyd5SYmchrCIajjTiXF69bmCnUdftmrwTM&sid=16b7f8a207cda6e3#%5B504ms%7CEU%7Cj113%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a47fb050-8477-4d86-9332-5f687f572d94@185.42.163.177:1888?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=GaVpyGU5Xqyd5SYmchrCIajjTiXF69bmCnUdftmrwTM&sid=16b7f8a207cda6e3&sni=www.kernel.org#%5B537ms%7CEU%7Cj177%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://394f6981-a782-4779-9a85-e6cf22935d93@uk1.fromblancwithlove.com:8443?&security=tls&fp=chrome&type=tcp&headerType=none&host=uk1.fromblancwithlove.com&path=%2F#%5B107ms%7CEU%7Cj160%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://d1209ffb-c159-48d5-b40d-542ce11fc768@5rp8xz.maps-yandex.com:10121?security=reality&encryption=none&pbk=4DdA8dBVn5zB_UTbgBY45YqM0HU8zrjXYdzg3-wz5Rg&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=apple.com&sid=9c2a7d4e5f18b6a3#%5B122ms%7CEU%7Cj155%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://d1209ffb-c159-48d5-b40d-542ce11fc768@8tf3qy.by-api-yandex.com:10121?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=4DdA8dBVn5zB_UTbgBY45YqM0HU8zrjXYdzg3-wz5Rg&sid=9c2a7d4e5f18b6a3&sni=apple.com#%5B123ms%7CEU%7Cj155%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://d70415c7-b3fb-43e9-915a-df66b2274c32@e2.aurorix.net:25930?encryption=none&flow=xtls-rprx-vision&type=raw&headerType=none&security=reality&fp=chrome&pbk=iyV9M7K4Et9DgpzehijZ61ih3H1DnYCvjpSb-zC_qhk&sni=www.microsoft.com&sid=911451a18252bb5a#%5B127ms%7CEU%7Cj13%7Ctcp80%25%7CVLESS%7C%40vlesstrojan%5D
+vless://a774f61d-a518-4c61-902f-807797da6caf@7.uimobile3.shop:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=api.avito.ru&fp=qq&pbk=whYmACpNNY4B3Yv8iBJ9AmxokZL2Tb7O210utmzvGSo&sid=6ba85179e30d4fc2&type=tcp&headerType=none#%5B145ms%7CEU%7Cj137%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5952ea01-0669-4f5e-8010-61f8abee3600@fi2.grizzlyvpn.work:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=rPuuq2HGz8VfN9xjDjnjoi-HgTFi-ZvY5l8Ebktuqmc&security=reality&sid=7501ae7ef79c300d&sni=fi2.grizzlyvpn.work&type=tcp#%5B160ms%7CEU%7Cj247%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3cb9f2c2-cd60-4616-963e-6a1c5d1c8b02@in-pl-hn.ray-proxy.ru:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=kEhVzEXS_myQF6LPpKPWEI8Ha2-mmNMyLItXoVa8SD4&sni=eh.vk.com#%5B182ms%7CRU%7Cj137%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3cb9f2c2-cd60-4616-963e-6a1c5d1c8b02@in-pl-hn.ray-proxy.ru:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=safari&pbk=kEhVzEXS_myQF6LPpKPWEI8Ha2-mmNMyLItXoVa8SD4&sni=eh.vk.com#%5B204ms%7CRU%7Cj154%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTp5aHJITURnWjJlZ0tmdHZyZWN2a3BVUHFwVVR5YWM3cQ@scvad1.golden-cards.me:8388#%5B208ms%7CEU%7Cj169%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://a8da758c-510d-4827-83cf-2f2b51c49c5b@download.lastilhame.monster:443?security=reality&encryption=none&pbk=WOPZy8oOnvHN21pLYobZAGa7sVp7op3q575B5BaFxkU&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=www.techradar.com&sid=faa900664bad#%5B219ms%7CEU%7Cj212%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://7f37b28b-cfcb-4c2a-ae41-8f2ddc9325dd@est.vles.space:8443?encryption=none&flow=xtls-rprx-vision&type=raw&headerType=none&security=reality&fp=chrome&pbk=5Tz44GqhEgM6Q-kOX0WQ6voGySL5sOEeABSUsFDY8Uw&sni=sun2-16.userapi.com&sid=21c7fb5ed34c260c#%5B225ms%7CEU%7Cj194%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+trojan://M7v%25w11Se%2A@amanm.wsone.icu:443?security=tls&sni=amanm.wsone.icu&insecure=0&allowInsecure=0&type=tcp&headerType=none#%5B237ms%7CEU%7Cj164%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+vless://eada1d14-7f93-47e6-84dc-3c86f20e9370@95.163.209.106:8443?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&fp=random&sni=rbc.ru&pbk=ISa-DZOI4LRRb9DHMFYm5oFqBXDjYzz0hVWUfWvzLmo&sid=5be97fb85093a3a9#%5B384ms%7CEU%7Cj37%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
