@@ -23,6 +23,10 @@ LIGHT_VERIFIED = os.path.join(WORK_DIR, "checked", "latest", "verified.txt")
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
+# Локальные фразы
+QUOTES_FILE = os.path.join(WORK_DIR, "data", "quotes_ru.txt")
+QUOTES_INDEX_FILE = os.path.join(WORK_DIR, "data", "quotes_index.txt")
+
 EMOJIS = ["⚙️", "🔒", "🚀", "✨", "💎", "🔥", "🌐", "🔑"]
 
 WARNING_TEXT = (
@@ -106,7 +110,7 @@ def parse_subscriptions_for_buttons(subscriptions_text):
 
 def get_remote_quote():
     """
-    Тянем случайную цитату с внешнего API (русский).
+    Тянем случайную цитату с внешнего API (Forismatic, русский).
     Если не получилось — возвращаем None.
     """
     try:
@@ -122,8 +126,41 @@ def get_remote_quote():
         if len(text) > 120:
             text = text[:117] + "..."
         return text
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Forismatic error: {e}")
         return None
+
+
+def get_local_quote():
+    """
+    Берём следующую фразу из data/quotes_ru.txt по кругу, без повторов подряд.
+    """
+    if not os.path.exists(QUOTES_FILE):
+        return None
+
+    with open(QUOTES_FILE, "r", encoding="utf-8") as f:
+        quotes = [q.strip() for q in f if q.strip()]
+
+    if not quotes:
+        return None
+
+    idx = 0
+    if os.path.exists(QUOTES_INDEX_FILE):
+        try:
+            with open(QUOTES_INDEX_FILE, "r", encoding="utf-8") as f:
+                idx = int(f.read().strip() or "0")
+        except Exception:
+            idx = 0
+
+    quote = quotes[idx % len(quotes)]
+
+    try:
+        with open(QUOTES_INDEX_FILE, "w", encoding="utf-8") as f:
+            f.write(str((idx + 1) % len(quotes)))
+    except Exception as e:
+        print(f"⚠️ Не удалось сохранить индекс цитаты: {e}")
+
+    return quote
 
 
 def clean_key(k: str) -> str:
@@ -500,7 +537,7 @@ def main():
             keyboard.append(row)
 
         subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
-        quote = get_remote_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
+        quote = get_remote_quote() or get_local_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
         subs_text += f"💬 <i>{quote}</i>\n\n"
         subs_text += "💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash"
 
@@ -611,7 +648,7 @@ def main():
                 keyboard.append(row)
 
             subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
-            quote = get_remote_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
+            quote = get_remote_quote() or get_local_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
             subs_text += f"💬 <i>{quote}</i>\n\n"
             subs_text += "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
 
@@ -682,8 +719,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-if __name__ == "__main__":
-    sys.exit(main())
-
 
