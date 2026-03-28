@@ -5,6 +5,9 @@ from datetime import datetime
 import urllib.parse
 import random
 
+# Флаг сухого прогона: если TELEGRAM_DRY_RUN=1, то ничего не отправляем в ТГ
+DRY_RUN = os.environ.get("TELEGRAM_DRY_RUN", "0") == "1"
+
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
 BOT_TOKEN_PRIVATE = os.environ.get('TELEGRAM_BOT_TOKEN')
@@ -286,6 +289,12 @@ def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
     url = f"https://api.telegram.org/bot{bot_token}"
 
+    if DRY_RUN:
+        print(f"\n[DRY_RUN] sendPhoto + sendDocument -> {channel_id}")
+        print(f"[DRY_RUN] Caption:\n{caption}\n")
+        print(f"[DRY_RUN] File: {file_path}")
+        return {"ok": True}
+
     try:
         with open(photo_path, "rb") as photo:
             files = {"photo": photo}
@@ -388,6 +397,8 @@ def main():
     print(" " * 20 + "📤 TELEGRAM POSTER v2")
     print(" " * 10 + "(с поддержкой premium-ключей)")
     print("=" * 70 + "\n")
+    if DRY_RUN:
+        print("⚙️ Режим DRY_RUN: сообщения в Telegram отправляться не будут\n")
 
     if not os.path.exists(RESULTS_FOLDER):
         print(f"❌ Папка {RESULTS_FOLDER} не существует")
@@ -463,7 +474,7 @@ def main():
             bot_token=BOT_TOKEN_PUBLIC,
         )
         if result and result.get("ok"):
-            print(f"✅ Пост отправлен в {PUBLIC_CHANNEL}")
+            print(f"✅ Пост (паблик) сформирован")
         else:
             error_msg = result.get("description", "Unknown error") if result else "No response"
             print(f"❌ Ошибка: {error_msg}")
@@ -494,26 +505,30 @@ def main():
         subs_text += f"💬 <i>{quote}</i>\n\n"
         subs_text += "💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash"
 
-        try:
-            resp = requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
-                json={
-                    "chat_id": PUBLIC_CHANNEL,
-                    "text": subs_text,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                    "reply_markup": {"inline_keyboard": keyboard},
-                },
-                timeout=15,
-            )
-            if resp.json().get("ok"):
-                print("✅ Пост с подписками (public) отправлен")
-            else:
-                print(
-                    f"❌ Ошибка поста с подписками (public): {resp.json().get('description')}"
+        if DRY_RUN:
+            print("\n[DRY_RUN] sendMessage (public subscriptions)")
+            print("Text:\n", subs_text)
+        else:
+            try:
+                resp = requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
+                    json={
+                        "chat_id": PUBLIC_CHANNEL,
+                        "text": subs_text,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                        "reply_markup": {"inline_keyboard": keyboard},
+                    },
+                    timeout=15,
                 )
-        except Exception as e:
-            print(f"❌ Ошибка отправки подписок (public): {e}")
+                if resp.json().get("ok"):
+                    print("✅ Пост с подписками (public) отправлен")
+                else:
+                    print(
+                        f"❌ Ошибка поста с подписками (public): {resp.json().get('description')}"
+                    )
+            except Exception as e:
+                print(f"❌ Ошибка отправки подписок (public): {e}")
 
     # Донат-пост
     donate_text = (
@@ -522,21 +537,25 @@ def main():
         "Не указывайте за что перевод. ✨\n"
         "Спасибо за любую помощь! ❗️"
     )
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
-            json={
-                "chat_id": PUBLIC_CHANNEL,
-                "text": donate_text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            },
-            timeout=15,
-        )
-        if resp.json().get("ok"):
-            print("✅ Донат-пост отправлен")
-    except Exception as e:
-        print(f"❌ Ошибка отправки донат-поста: {e}")
+    if DRY_RUN:
+        print("\n[DRY_RUN] sendMessage (donate)")
+        print("Text:\n", donate_text)
+    else:
+        try:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN_PUBLIC}/sendMessage",
+                json={
+                    "chat_id": PUBLIC_CHANNEL,
+                    "text": donate_text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                },
+                timeout=15,
+            )
+            if resp.json().get("ok"):
+                print("✅ Донат-пост отправлен")
+        except Exception as e:
+            print(f"❌ Ошибка отправки донат-поста: {e}")
 
     # ========== ПРИВАТНЫЙ КАНАЛ ==========
     if PRIVATE_CHANNEL and total_keys > 10:
@@ -554,20 +573,24 @@ def main():
         caption += "📡 VLESS | VMess | Trojan | SS"
 
         if os.path.exists(COVER_PRIVATE):
-            result = send_photo_with_file(
-                PRIVATE_CHANNEL,
-                COVER_PRIVATE,
-                private_file,
-                caption,
-                bot_token=BOT_TOKEN_PRIVATE,
-            )
-            if result and result.get("ok"):
-                print(
-                    f"✅ Пост с файлом отправлен ({private_count} ключей в файле)"
-                )
+            if DRY_RUN:
+                print("\n[DRY_RUN] sendPhoto + sendDocument (private)")
+                print("Caption:\n", caption)
+                print("File:", private_file)
+                private_result_ok = True
             else:
-                error_msg = result.get("description", "Unknown error") if result else "No response"
-                print(f"❌ Ошибка: {error_msg}")
+                result = send_photo_with_file(
+                    PRIVATE_CHANNEL,
+                    COVER_PRIVATE,
+                    private_file,
+                    caption,
+                    bot_token=BOT_TOKEN_PRIVATE,
+                )
+                private_result_ok = bool(result and result.get("ok"))
+            if private_result_ok:
+                print(
+                    f"✅ Пост с файлом (приват) сформирован ({private_count} ключей в файле)"
+                )
         else:
             print("⚠️ Нет картинки для приватного канала")
 
@@ -593,51 +616,59 @@ def main():
             subs_text += f"💬 <i>{quote}</i>\n\n"
             subs_text += "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
 
-            try:
-                resp = requests.post(
-                    f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
-                    json={
-                        "chat_id": PRIVATE_CHANNEL,
-                        "text": subs_text,
-                        "parse_mode": "HTML",
-                        "disable_web_page_preview": True,
-                        "reply_markup": {"inline_keyboard": keyboard},
-                    },
-                    timeout=15,
-                )
-                if resp.json().get("ok"):
-                    print("✅ Пост с подписками (приват) отправлен")
-                else:
-                    print(
-                        f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}"
+            if DRY_RUN:
+                print("\n[DRY_RUN] sendMessage (private subscriptions)")
+                print("Text:\n", subs_text)
+            else:
+                try:
+                    resp = requests.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
+                        json={
+                            "chat_id": PRIVATE_CHANNEL,
+                            "text": subs_text,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True,
+                            "reply_markup": {"inline_keyboard": keyboard},
+                        },
+                        timeout=15,
                     )
-            except Exception as e:
-                print(f"❌ Ошибка отправки подписок (приват): {e}")
+                    if resp.json().get("ok"):
+                        print("✅ Пост с подписками (приват) отправлен")
+                    else:
+                        print(
+                            f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}"
+                        )
+                except Exception as e:
+                    print(f"❌ Ошибка отправки подписок (приват): {e}")
 
         # Посты с ключами (10 штук текстом)
         chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
         print(f"📝 Отправка {len(chunks)} постов с ключами...")
 
         for idx, text in enumerate(chunks, start=1):
-            try:
-                resp = requests.post(
-                    f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
-                    json={
-                        "chat_id": PRIVATE_CHANNEL,
-                        "text": text,
-                        "parse_mode": "Markdown",
-                        "disable_web_page_preview": True,
-                    },
-                    timeout=15,
-                )
-                if resp.json().get("ok"):
-                    print(f"✅ Пост {idx}/{len(chunks)} отправлен")
-                else:
-                    print(
-                        f"❌ Пост {idx} ошибка: {resp.json().get('description')}"
+            if DRY_RUN:
+                print(f"\n[DRY_RUN] sendMessage (private keys) {idx}/{len(chunks)}")
+                print("Text:\n", text[:500], "...\n")
+            else:
+                try:
+                    resp = requests.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN_PRIVATE}/sendMessage",
+                        json={
+                            "chat_id": PRIVATE_CHANNEL,
+                            "text": text,
+                            "parse_mode": "Markdown",
+                            "disable_web_page_preview": True,
+                        },
+                        timeout=15,
                     )
-            except Exception as e:
-                print(f"❌ Ошибка отправки поста {idx}: {e}")
+                    if resp.json().get("ok"):
+                        print(f"✅ Пост {idx}/{len(chunks)} отправлен")
+                    else:
+                        print(
+                            f"❌ Пост {idx} ошибка: {resp.json().get('description')}"
+                        )
+                except Exception as e:
+                    print(f"❌ Ошибка отправки поста {idx}: {e}")
 
         safe_remove(private_file)
 
@@ -652,6 +683,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 
