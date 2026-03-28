@@ -1,18 +1,15 @@
 # ELITE
 # @vlesstrojan
-# 2026-03-28 01:00
+# 2026-03-28 06:43
 # Mode: TCP+HTTP-LITE
-# Keys: 12
+# Keys: 9
 
-vless://b74bbaca-8bbe-41e1-9af9-18d467836282@017.electrocellco-cf-017.workers.dev:443?encryption=none&type=ws&host=017.electrocellco-cf-017.workers.dev&path=%2FeyJqdW5rIjoibnhUbllUVXY1OWIiLCJwcm90b2NvbCI6InZsIiwibW9kZSI6InByb3h5aXAiLCJwYW5lbElQcyI6W119&security=tls#%5B8ms%7CEU%7Cj8%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://e6c05419-9338-44fc-926d-918c55bacf44@secdn13.dramatorg.net:443?encryption=none&type=raw&headerType=none&security=tls&sni=secdn13.dramatorg.net#%5B158ms%7CEU%7Cj43%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://50b95deb-6394-46c5-b88a-583e5b3ca7ee@fastcon-tg.harknmav.fun:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=PGccrEdFmBaB1rQFJqM-a9jJ1pFsxhUP2sD9KTw5Oz4&security=reality&sid=f69d7af2d5fc5e0c&sni=max.ru&type=tcp#%5B163ms%7CEU%7Cj48%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo5dHFoTWRJclRrZ1E0NlB2aHlBdE1I@switcher-nick-croquet.freesocks.work:443#%5B167ms%7CEU%7Cj52%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo5dHFoTWRJclRrZ1E0NlB2aHlBdE1I@92.112.126.90:443#%5B172ms%7CEU%7Cj21%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://41808414-6496-4d3c-89d6-9442f76a155a@94.131.86.204:443?encryption=none&fp=chrome&pbk=pl0X8gUdDuJlCmJkPIgVL3HIbD8pL9LHGVUMgqQIlio&security=reality&sid=c6&sni=www.google.com&type=tcp#%5B175ms%7CEU%7Cj7%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://3f3ac168-b1e4-45c0-a87b-4446b9efb34f@82.202.159.129:8443?encryption=none&flow=xtls-rprx-vision&type=raw&headerType=none&security=reality&fp=random&pbk=8qHRGcCezzSu4S-Cz9l19BNRLWm4MkaSwZV3dNrLEwc&sni=rbc.ru&sid=445ab326fc7c90ac#%5B180ms%7CEU%7Cj18%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://4b9063e0-3288-44e9-9aac-80fbfce323a0@83.222.23.81:38065?encryption=none&security=reality&sni=yahoo.com&fp=chrome&pbk=dSSDPTK6AHfAdRAXD9i4rzqcNIY65RxlF25UyCKdiyo&sid=fa&type=tcp&headerType=none#%5B183ms%7CEU%7Cj8%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a00d89f6-ab7e-4e30-a5e5-54c701d62c93@178.236.16.98:35728?encryption=none&fp=chrome&pbk=vhUFNoFcvtZAVMo8y5K5eU2V43m5q6yjmWIhp5RkFng&security=reality&sid=69a2&sni=yahoo.com&type=tcp#%5B190ms%7CEU%7Cj9%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTphODIwMWJiZDc0MDQyMGJi@213.156.137.142:43659#%5B197ms%7CEU%7Cj10%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@109.61.39.28:990#%5B198ms%7CEU%7Cj5%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://40cc8de3-45f3-46d4-ac67-45b6d6d88a00@83.166.254.49:8443?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&fp=random&sni=rbc.ru&pbk=zr8_rtHm86s_G1gfRwNtunStGngYZSdYkA3PyBFXpDg&sid=04bf0403f96e5b4b#%5B223ms%7CEU%7Cj24%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b74bbaca-8bbe-41e1-9af9-18d467836282@017.electrocellco-cf-017.workers.dev:443?encryption=none&type=ws&host=017.electrocellco-cf-017.workers.dev&path=%2FeyJqdW5rIjoibnhUbllUVXY1OWIiLCJwcm90b2NvbCI6InZsIiwibW9kZSI6InByb3h5aXAiLCJwYW5lbElQcyI6W119&security=tls#%5B14ms%7CEU%7Cj3%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://50b95deb-6394-46c5-b88a-583e5b3ca7ee@fastcon-tg.harknmav.fun:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=PGccrEdFmBaB1rQFJqM-a9jJ1pFsxhUP2sD9KTw5Oz4&security=reality&sid=f69d7af2d5fc5e0c&sni=max.ru&type=tcp#%5B166ms%7CEU%7Cj64%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://41808414-6496-4d3c-89d6-9442f76a155a@94.131.86.204:443?encryption=none&fp=chrome&pbk=pl0X8gUdDuJlCmJkPIgVL3HIbD8pL9LHGVUMgqQIlio&security=reality&sid=c6&sni=www.google.com&type=tcp#%5B186ms%7CEU%7Cj9%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3f3ac168-b1e4-45c0-a87b-4446b9efb34f@82.202.159.129:8443?encryption=none&flow=xtls-rprx-vision&type=raw&headerType=none&security=reality&fp=random&pbk=8qHRGcCezzSu4S-Cz9l19BNRLWm4MkaSwZV3dNrLEwc&sni=rbc.ru&sid=445ab326fc7c90ac#%5B187ms%7CEU%7Cj22%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://4b9063e0-3288-44e9-9aac-80fbfce323a0@83.222.23.81:38065?encryption=none&security=reality&sni=yahoo.com&fp=chrome&pbk=dSSDPTK6AHfAdRAXD9i4rzqcNIY65RxlF25UyCKdiyo&sid=fa&type=tcp&headerType=none#%5B194ms%7CEU%7Cj13%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://a00d89f6-ab7e-4e30-a5e5-54c701d62c93@178.236.16.98:35728?encryption=none&fp=chrome&pbk=vhUFNoFcvtZAVMo8y5K5eU2V43m5q6yjmWIhp5RkFng&security=reality&sid=69a2&sni=yahoo.com&type=tcp#%5B200ms%7CEU%7Cj5%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTphODIwMWJiZDc0MDQyMGJi@213.156.137.142:43659#%5B207ms%7CEU%7Cj9%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@109.61.39.28:990#%5B208ms%7CEU%7Cj8%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://e6c05419-9338-44fc-926d-918c55bacf44@secdn13.dramatorg.net:443?encryption=none&type=raw&headerType=none&security=tls&sni=secdn13.dramatorg.net#%5B223ms%7CEU%7Cj119%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
