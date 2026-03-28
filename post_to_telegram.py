@@ -395,7 +395,6 @@ def main():
 
     print("\n" + "=" * 70)
     print(" " * 20 + "📤 TELEGRAM POSTER v2")
-    print(" " * 10 + "(с поддержкой premium-ключей)")
     print("=" * 70 + "\n")
     if DRY_RUN:
         print("⚙️ Режим DRY_RUN: сообщения в Telegram отправляться не будут\n")
@@ -419,8 +418,8 @@ def main():
         print("📁 Ищем ключи в results/premium/...")
         all_keys, key_stats = load_premium_keys()
         if all_keys:
-            source_info = "premium (elite + premium + good)"
-            print(f"\n✅ Загружено из premium: {len(all_keys)} ключей")
+            source_info = "results/premium (elite + premium + good)"
+            print(f"\n✅ Загружено из results/premium: {len(all_keys)} ключей")
             print(
                 f"   Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}"
             )
@@ -676,10 +675,13 @@ def main():
         print("\n⚠️ Меньше 10 ключей — только публичный пост")
 
     print("\n" + "=" * 70)
-    print("✅ ГОТОВО")
+    print("✅ Скрипт завершил работу")
     print("=" * 70 + "\n")
     return 0
 
+
+if __name__ == "__main__":
+    sys.exit(main())
 
 if __name__ == "__main__":
     sys.exit(main())
