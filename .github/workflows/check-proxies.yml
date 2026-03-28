@@ -5,12 +5,10 @@ on:
     - cron: '0 */12 * * *'  # Каждые 12 часов (00:00 и 12:00 UTC)
   workflow_dispatch:  # Ручной запуск через Actions
 
-# ✅ Запрет параллельных запусков
 concurrency:
   group: proxy-checker-push
   cancel-in-progress: false
 
-# ✅ Permissions для git push
 permissions:
   contents: write
 
@@ -86,10 +84,9 @@ jobs:
           echo "⚠️ No verified files found"
         fi
     
-    - name: 📤 Post to Telegram (DRY RUN)
+    - name: 📤 Post to Telegram
       if: steps.checker.outputs.has_results == 'true'
       env:
-        TELEGRAM_DRY_RUN: "1"
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
         TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
@@ -114,13 +111,10 @@ jobs:
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
         
-        # Подтягиваем последние изменения
         git pull origin main --rebase --autostash || git pull origin main || echo "Nothing to pull"
         
-        # Добавляем изменения
         git add checked/latest/
         
-        # Коммитим если есть изменения
         if ! git diff --cached --quiet; then
           git commit -m "✨ Update verified keys: $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push origin main
@@ -138,9 +132,9 @@ jobs:
         echo "- **Results Found:** ${{ steps.checker.outputs.has_results }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Run Time:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
         
-        if [ -f "results/verified_"*.txt ]; then
+        if ls results/verified_*.txt 1> /dev/null 2>&1; then
           key_count=$(grep -v "^#" results/verified_*.txt | grep -v "^$" | wc -l)
           echo "- **Verified Keys:** $key_count" >> $GITHUB_STEP_SUMMARY
-        else:
+        else
           echo "- **Verified Keys:** 0" >> $GITHUB_STEP_SUMMARY
         fi
