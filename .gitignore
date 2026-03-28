@@ -5,5 +5,4 @@ cache/
 
 # Сохраняем только премиум ключи
 !checked/premium/
-
 venv/
