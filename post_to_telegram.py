@@ -3,6 +3,7 @@ import sys
 import requests
 from datetime import datetime
 import urllib.parse
+import random
 
 # ВАШИ СЕКРЕТЫ ИЗ GITHUB
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
@@ -63,24 +64,10 @@ def load_subscriptions():
 
 def format_subscriptions_for_telegram(subscriptions_text):
     """
-    Показываем только WHITE / обычные блоки.
-    Блоки, где в заголовке есть BLACK или ⚠️, скрываем.
+    Текстовые заголовки блоков типа === ... ===
+    больше не показываем вообще — весь текст идёт через цитату.
     """
-    if not subscriptions_text:
-        return ""
-    lines = subscriptions_text.strip().split("\n")
-    formatted_lines = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if not line.startswith("==="):
-            continue
-        # режем BLACK/⚠️ блоки
-        if "BLACK" in line or "⚠️" in line:
-            continue
-        formatted_lines.append(f"\n<b>{line}</b>")
-    return "\n".join(formatted_lines)
+    return ""
 
 
 def parse_subscriptions_for_buttons(subscriptions_text):
@@ -112,6 +99,28 @@ def parse_subscriptions_for_buttons(subscriptions_text):
             btn_text = btn_text[:32]
             buttons.append({"text": btn_text, "url": line})
     return buttons
+
+
+def get_remote_quote():
+    """
+    Тянем случайную цитату с внешнего API (русский).
+    Если не получилось — возвращаем None.
+    """
+    try:
+        resp = requests.get(
+            "http://api.forismatic.com/api/1.0/",
+            params={"method": "getQuote", "format": "json", "lang": "ru"},
+            timeout=5,
+        )
+        data = resp.json()
+        text = (data.get("quoteText") or "").strip()
+        if not text:
+            return None
+        if len(text) > 120:
+            text = text[:117] + "..."
+        return text
+    except Exception:
+        return None
 
 
 def clean_key(k: str) -> str:
@@ -329,10 +338,6 @@ def create_public_file(all_keys, stats=None):
         f.write("# Channel: @vlesstrojan\n")
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Triple-check (TCP + XRAY + Categories)\n")
-        if stats:
-            f.write(
-                f"# Elite: {stats.get('elite', 0)} | Premium: {stats.get('premium', 0)} | Good: {stats.get('good', 0)}\n"
-            )
         f.write(f"# Total: {len(top_keys)}\n\n")
         for key in top_keys:
             f.write(key + "\n")
@@ -354,10 +359,6 @@ def create_private_file(all_keys, stats=None):
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Triple-check (TCP + XRAY + Categories)\n")
-        if stats:
-            f.write(
-                f"# Elite: {stats.get('elite', 0)} | Premium: {stats.get('premium', 0)} | Good: {stats.get('good', 0)}\n"
-            )
         f.write(f"# Keys in file: {len(remaining_keys)}\n")
         f.write("# Keys in posts: 10\n")
         f.write(f"# Total: {len(all_keys)}\n\n")
@@ -447,15 +448,8 @@ def main():
 
     caption = "🔥 <b>Проверенные прокси-ключи</b>\n\n"
     caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-    caption += f"✅ Лучших: <b>{public_count}</b>\n"
-    caption += f"📊 Всего проверено: <b>{total_keys}</b>\n\n"
-
-    if key_stats and any(key_stats.values()):
-        caption += (
-            f"🏆 Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}\n\n"
-        )
-
-    caption += "🔍 Тройная проверка: TCP + XRAY + Categories\n"
+    caption += f"📦 В файле: <b>{public_count}</b>\n"
+    caption += f"📊 Всего ключей: <b>{total_keys}</b>\n\n"
     caption += "📡 VLESS | VMess | Trojan | SS\n\n"
     caption += f"💬 {PUBLIC_CHANNEL}\n\n"
     caption += REACTIONS_TEXT
@@ -479,7 +473,7 @@ def main():
     safe_remove(public_file)
 
     # Пост с подписками в публичный канал
-    if subscriptions_formatted and subscriptions_buttons:
+    if subscriptions_buttons:
         keyboard = []
         row = []
         for btn in subscriptions_buttons:
@@ -496,8 +490,9 @@ def main():
             keyboard.append(row)
 
         subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
-        subs_text += subscriptions_formatted
-        subs_text += "\n\n💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash"
+        quote = get_remote_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
+        subs_text += f"💬 <i>{quote}</i>\n\n"
+        subs_text += "💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash"
 
         try:
             resp = requests.post(
@@ -555,14 +550,7 @@ def main():
         caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
         caption += f"📦 В файле: <b>{private_count}</b> ключей\n"
         caption += "📝 В постах: <b>10</b> ключей\n"
-        caption += f"📊 Всего: <b>{total_keys}</b>\n\n"
-
-        if key_stats and any(key_stats.values()):
-            caption += (
-                f"🏆 Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}\n\n"
-            )
-
-        caption += "🔍 Тройная проверка: TCP + XRAY + Categories\n"
+        caption += f"📊 Всего ключей: <b>{total_keys}</b>\n\n"
         caption += "📡 VLESS | VMess | Trojan | SS"
 
         if os.path.exists(COVER_PRIVATE):
@@ -584,7 +572,7 @@ def main():
             print("⚠️ Нет картинки для приватного канала")
 
         # Пост с подписками (приват)
-        if subscriptions_formatted and subscriptions_buttons:
+        if subscriptions_buttons:
             keyboard = []
             row = []
             for btn in subscriptions_buttons:
@@ -601,8 +589,9 @@ def main():
                 keyboard.append(row)
 
             subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
-            subs_text += subscriptions_formatted
-            subs_text += "\n\n🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
+            quote = get_remote_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
+            subs_text += f"💬 <i>{quote}</i>\n\n"
+            subs_text += "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
 
             try:
                 resp = requests.post(
@@ -663,8 +652,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
 
 
 
