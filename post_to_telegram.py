@@ -123,8 +123,7 @@ def get_remote_quote():
         text = (data.get("quoteText") or "").strip()
         if not text:
             return None
-        if len(text) > 120:
-            text = text[:117] + "..."
+        # Не обрезаем — возвращаем полный текст
         return text
     except Exception as e:
         print(f"⚠️ Forismatic error: {e}")
@@ -719,4 +718,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
