@@ -62,6 +62,10 @@ def load_subscriptions():
 
 
 def format_subscriptions_for_telegram(subscriptions_text):
+    """
+    Показываем только WHITE / обычные блоки.
+    Блоки, где в заголовке есть BLACK или ⚠️, скрываем.
+    """
     if not subscriptions_text:
         return ""
     lines = subscriptions_text.strip().split("\n")
@@ -70,20 +74,38 @@ def format_subscriptions_for_telegram(subscriptions_text):
         line = line.strip()
         if not line:
             continue
-        if line.startswith("==="):
-            formatted_lines.append(f"\n<b>{line}</b>")
+        if not line.startswith("==="):
+            continue
+        # режем BLACK/⚠️ блоки
+        if "BLACK" in line or "⚠️" in line:
+            continue
+        formatted_lines.append(f"\n<b>{line}</b>")
     return "\n".join(formatted_lines)
 
 
 def parse_subscriptions_for_buttons(subscriptions_text):
+    """
+    Делаем кнопки только для неблэк-блоков.
+    Всё, что под заголовками с BLACK/⚠️, игнорируем.
+    """
     if not subscriptions_text:
         return []
     lines = subscriptions_text.strip().split("\n")
     buttons = []
+    in_black_block = False
+
     for line in lines:
         line = line.strip()
-        if not line or line.startswith("==="):
+        if not line:
             continue
+
+        if line.startswith("==="):
+            in_black_block = ("BLACK" in line) or ("⚠️" in line)
+            continue
+
+        if in_black_block:
+            continue
+
         if line.startswith("http"):
             filename = line.split("/")[-1].replace(".txt", "")
             btn_text = f"📥 {filename}"
@@ -300,6 +322,7 @@ def create_public_file(all_keys, stats=None):
     filename = f"public_top100_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
+    # строго первые 100 ключей в паблик-файл
     top_keys = all_keys[:100]
 
     with open(filepath, "w", encoding="utf-8") as f:
@@ -318,11 +341,15 @@ def create_public_file(all_keys, stats=None):
 
 
 def create_private_file(all_keys, stats=None):
+    """
+    В файл приватного канала кладём ВСЕ ключи.
+    В постах остаётся 10 (build_markdown_chunks).
+    """
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
-    filename = f"private_remaining_{date_str}.txt"
+    filename = f"private_all_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
-    remaining_keys = all_keys[10:]
+    remaining_keys = all_keys  # все ключи
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
@@ -598,7 +625,7 @@ def main():
             except Exception as e:
                 print(f"❌ Ошибка отправки подписок (приват): {e}")
 
-        # Посты с ключами
+        # Посты с ключами (10 штук текстом)
         chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
         print(f"📝 Отправка {len(chunks)} постов с ключами...")
 
@@ -636,7 +663,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 
 
