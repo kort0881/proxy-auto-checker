@@ -56,7 +56,7 @@ MY_CHANNEL = "@vlesstrojan"
 class Config:
     # Лимиты
     MAX_RUNTIME_MINUTES = 90
-    MAX_KEYS_TO_CHECK = 5000
+    MAX_KEYS_TO_CHECK = 5000  # сейчас не используется, просто оставлен на будущее
 
     # Stage 1: TCP
     TCP_WORKERS = 60
@@ -571,10 +571,6 @@ def download_keys():
             except Exception as e:
                 log(f"    ❌ {url.split('/')[-1]}: {e}")
 
-    if len(all_keys) > CONFIG.MAX_KEYS_TO_CHECK:
-        log(f"⚠️  Limited to {CONFIG.MAX_KEYS_TO_CHECK} keys (was {len(all_keys)})")
-        all_keys = all_keys[:CONFIG.MAX_KEYS_TO_CHECK]
-
     log(f"\n📦 Unique keys: {len(all_keys)}")
     return all_keys
 
@@ -728,9 +724,9 @@ def main():
     print(" " * 20 + "🔥 PRIMARY PREFILTER v2 🔥")
     print(" " * 25 + f"{MY_CHANNEL}")
     print("=" * 70)
-    print(f"\n⚙️  Config:")
+    print("\n⚙️  Config:")
     print(f"   Max time: {CONFIG.MAX_RUNTIME_MINUTES} min")
-    print(f"   Max keys: {CONFIG.MAX_KEYS_TO_CHECK}")
+    print(f"   Max keys: no limit (all from sources)")
     print(f"   TCP: {CONFIG.TCP_WORKERS} workers, {CONFIG.TCP_TIMEOUT}s timeout")
     print(f"   XRAY: {CONFIG.XRAY_WORKERS} workers, {CONFIG.XRAY_REQUEST_TIMEOUT}s timeout")
     print()
