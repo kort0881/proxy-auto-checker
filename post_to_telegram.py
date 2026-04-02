@@ -646,7 +646,7 @@ def main():
             if row:
                 keyboard.append(row)
 
-            subs_text = "📋 <b>Ссылки на подписки (VIP)</b>\n\n"
+            subs_text = "📋 <b>Ссылки на подписки ()</b>\n\n"
             quote = get_remote_quote() or get_local_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
             subs_text += f"💬 <i>{quote}</i>\n\n"
             subs_text += "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
