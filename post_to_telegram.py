@@ -123,7 +123,6 @@ def get_remote_quote():
         text = (data.get("quoteText") or "").strip()
         if not text:
             return None
-        # Не обрезаем — возвращаем полный текст
         return text
     except Exception as e:
         print(f"⚠️ Forismatic error: {e}")
@@ -373,11 +372,11 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
 
 def create_public_file(all_keys, stats=None):
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
-    filename = f"public_top100_{date_str}.txt"
+    filename = f"public_top200_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
-    # строго первые 100 ключей в паблик-файл
-    top_keys = all_keys[:100]
+    # строго первые 200 ключей в паблик-файл
+    top_keys = all_keys[:200]
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write("# Channel: @vlesstrojan\n")
