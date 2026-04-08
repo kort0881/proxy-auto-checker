@@ -2,18 +2,18 @@
 
 ![гифка.gif](гифка.gif)
 
-![Total](https://img.shields.io/badge/Total-503-brightgreen)
-![Elite](https://img.shields.io/badge/Elite-435-gold)
-![Premium](https://img.shields.io/badge/Premium-16-blue)
+![Total](https://img.shields.io/badge/Total-449-brightgreen)
+![Elite](https://img.shields.io/badge/Elite-360-gold)
+![Premium](https://img.shields.io/badge/Premium-11-blue)
 ![Updated](https://img.shields.io/badge/Updated-2026-04-08-orange)
 
 ## 📊 Statistics
 
 | Quality | Count | Link |
 |---------|-------|------|
-| **Elite** | 435 | [elite.txt](results/premium/elite.txt) |
-| **Premium** | 16 | [premium.txt](results/premium/premium.txt) |
-| **Total** | 503 | [All Files](results/premium/) |
+| **Elite** | 360 | [elite.txt](results/premium/elite.txt) |
+| **Premium** | 11 | [premium.txt](results/premium/premium.txt) |
+| **Total** | 449 | [All Files](results/premium/) |
 
 ## 📥 Quick Download
 
