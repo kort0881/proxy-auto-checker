@@ -38,21 +38,12 @@ WARNING_TEXT = (
 CLIENTS = "Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket\n"
 TAGS = "#прокси #v2ray #vmess #vless #shadowsocks #vpn"
 
-REACTIONS_TEXT = (
-    "Если формат зашел — жми 👍\n"
-    "Не согласен — выбери ⚡️\n"
-    "Хочешь продолжение — поставь 🔥\n"
-    "Конфиг рабочий? жми 🟢, лагает — тыкай 🧨\n"
-    "Протокол топ? ставь 🚀, если фейл — жми 💥\n"
-    "Юзаешь? отмечай 😎, если нет — выбирай 🤔"
-)
-
 SUBSCRIPTIONS_URL = (
     "https://raw.githubusercontent.com/"
     "kort0881/vpn-checker-backend/refs/heads/main/checked/subscriptions_list.txt"
 )
 
-
+# ---------- Функции для работы с подписками ----------
 def load_subscriptions():
     try:
         resp = requests.get(SUBSCRIPTIONS_URL, timeout=15)
@@ -68,20 +59,12 @@ def load_subscriptions():
         print(f"❌ Ошибка загрузки подписок: {e}")
         return None
 
-
 def format_subscriptions_for_telegram(subscriptions_text):
-    """
-    Текстовые заголовки блоков типа === ... ===
-    больше не показываем вообще — весь текст идёт через цитату.
-    """
+    """Текстовые заголовки блоков не показываем — весь текст через цитату."""
     return ""
 
-
 def parse_subscriptions_for_buttons(subscriptions_text):
-    """
-    Делаем кнопки только для неблэк-блоков.
-    Всё, что под заголовками с BLACK/⚠️, игнорируем.
-    """
+    """Делаем кнопки только для неблэк-блоков."""
     if not subscriptions_text:
         return []
     lines = subscriptions_text.strip().split("\n")
@@ -107,12 +90,8 @@ def parse_subscriptions_for_buttons(subscriptions_text):
             buttons.append({"text": btn_text, "url": line})
     return buttons
 
-
+# ---------- Цитаты ----------
 def get_remote_quote():
-    """
-    Тянем случайную цитату с внешнего API (Forismatic, русский).
-    Если не получилось — возвращаем None.
-    """
     try:
         resp = requests.get(
             "http://api.forismatic.com/api/1.0/",
@@ -128,11 +107,7 @@ def get_remote_quote():
         print(f"⚠️ Forismatic error: {e}")
         return None
 
-
 def get_local_quote():
-    """
-    Берём следующую фразу из data/quotes_ru.txt по кругу, без повторов подряд.
-    """
     if not os.path.exists(QUOTES_FILE):
         return None
 
@@ -160,13 +135,12 @@ def get_local_quote():
 
     return quote
 
-
+# ---------- Обработка ключей ----------
 def clean_key(k: str) -> str:
     k = k.strip()
     if " " in k:
         k = k.split(" ")[0]
     return k
-
 
 def fix_universal(key: str) -> str:
     key = key.strip()
@@ -190,7 +164,6 @@ def fix_universal(key: str) -> str:
         )
     except Exception:
         return key
-
 
 def load_premium_keys():
     all_keys = []
@@ -222,7 +195,6 @@ def load_premium_keys():
         print(f"  ✅ {filename}: {count} ключей")
 
     return all_keys, stats
-
 
 def load_fallback_keys():
     verified_files = [
@@ -262,12 +234,7 @@ def load_fallback_keys():
 
     return keys, latest, source
 
-
 def load_light_verified_keys():
-    """
-    Fallback №2: свежий TCP-список из checked/latest/verified.txt,
-    если premium и verified/semi_dead пустые.
-    """
     if not os.path.exists(LIGHT_VERIFIED):
         return []
     keys = []
@@ -280,47 +247,47 @@ def load_light_verified_keys():
                     keys.append(key)
     return keys
 
+# ---------- Активные прокси из GitHub ----------
+def load_active_proxies_from_github(url="https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/proxy_all_tme_verified.txt", limit=10):
+    """Загружает до `limit` прокси из указанного файла (каждая строка - прокси)."""
+    try:
+        resp = requests.get(url, timeout=15)
+        if resp.status_code != 200:
+            print(f"⚠️ Не удалось загрузить активные прокси: HTTP {resp.status_code}")
+            return []
+        lines = resp.text.strip().split('\n')
+        proxies = []
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                proxies.append(line)
+                if len(proxies) >= limit:
+                    break
+        print(f"✅ Загружено {len(proxies)} активных прокси из {url}")
+        return proxies
+    except Exception as e:
+        print(f"❌ Ошибка загрузки активных прокси: {e}")
+        return []
 
-def build_markdown_chunks(keys, per_chunk=5, max_total_keys=10, limit=3900):
-    keys = [clean_key(k) for k in keys[:max_total_keys]]
-    chunks = []
-    offset = 0
+def build_proxies_keyboard(proxies):
+    """Строит клавиатуру: 5 строк по 2 кнопки (копирование текста)."""
+    keyboard = []
+    row = []
+    for i, proxy in enumerate(proxies, start=1):
+        btn_text = f"🔑 Прокси {i}"
+        button = {
+            "text": btn_text,
+            "copy_text": {"text": proxy}
+        }
+        row.append(button)
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    return keyboard
 
-    while offset < len(keys):
-        added = False
-        for current_size in range(per_chunk, 0, -1):
-            part = keys[offset: offset + current_size]
-            if not part:
-                break
-
-            lines = [WARNING_TEXT]
-            for i, key in enumerate(part, start=offset + 1):
-                emoji = EMOJIS[(i - 1) % len(EMOJIS)]
-                safe_key = key.replace("```", "'''")
-                lines.append(f"{emoji} *Ключ {i}:*")
-                lines.append("```")
-                lines.append(f"{safe_key}")
-                lines.append("```")
-                lines.append("")
-
-            lines.append(CLIENTS)
-            lines.append(TAGS)
-            lines.append("— Peacedeath Bot")
-
-            text = "\n".join(lines)
-
-            if len(text) <= limit:
-                chunks.append(text)
-                offset += current_size
-                added = True
-                break
-
-        if not added:
-            offset += 1
-
-    return chunks
-
-
+# ---------- Отправка ----------
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
     url = f"https://api.telegram.org/bot{bot_token}"
 
@@ -369,13 +336,11 @@ def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_toke
         print(f"❌ Ошибка отправки: {e}")
         return None
 
-
 def create_public_file(all_keys, stats=None):
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"public_top200_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
-    # строго первые 200 ключей в паблик-файл
     top_keys = all_keys[:200]
 
     with open(filepath, "w", encoding="utf-8") as f:
@@ -388,29 +353,20 @@ def create_public_file(all_keys, stats=None):
 
     return filepath, len(top_keys)
 
-
 def create_private_file(all_keys, stats=None):
-    """
-    В файл приватного канала кладём ВСЕ ключи.
-    В постах остаётся 10 (build_markdown_chunks).
-    """
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"private_all_{date_str}.txt"
     filepath = os.path.join(RESULTS_FOLDER, filename)
 
-    remaining_keys = all_keys  # все ключи
-
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write("# Verified: Triple-check (TCP + XRAY + Categories)\n")
-        f.write(f"# Keys in file: {len(remaining_keys)}\n")
-        f.write("# Keys in posts: 10\n")
+        f.write(f"# Keys in file: {len(all_keys)}\n")
         f.write(f"# Total: {len(all_keys)}\n\n")
-        for key in remaining_keys:
+        for key in all_keys:
             f.write(key + "\n")
 
-    return filepath, len(remaining_keys)
-
+    return filepath, len(all_keys)
 
 def safe_remove(filepath: str):
     try:
@@ -419,7 +375,7 @@ def safe_remove(filepath: str):
     except OSError as e:
         print(f"⚠️ Не удалось удалить {filepath}: {e}")
 
-
+# ---------- MAIN ----------
 def main():
     if not BOT_TOKEN_PUBLIC:
         print("❌ TELEGRAM_BOT_TOKEN_PUBLIC не установлен")
@@ -438,12 +394,12 @@ def main():
         print(f"❌ Папка {RESULTS_FOLDER} не существует")
         return 1
 
-    # Подписки
+    # Подписки (общие для обоих каналов)
     subscriptions_raw = load_subscriptions()
     subscriptions_formatted = format_subscriptions_for_telegram(subscriptions_raw)
     subscriptions_buttons = parse_subscriptions_for_buttons(subscriptions_raw)
 
-    # ============== ЗАГРУЗКА КЛЮЧЕЙ ==============
+    # ============== ЗАГРУЗКА КЛЮЧЕЙ (для файлов и публичного канала) ==============
     all_keys = []
     key_stats = None
     source_info = ""
@@ -455,9 +411,7 @@ def main():
         if all_keys:
             source_info = "results/premium (elite + premium + good)"
             print(f"\n✅ Загружено из results/premium: {len(all_keys)} ключей")
-            print(
-                f"   Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}"
-            )
+            print(f"   Elite: {key_stats['elite']} | Premium: {key_stats['premium']} | Good: {key_stats['good']}")
 
     # 2) verified/semi_dead
     if not all_keys:
@@ -497,7 +451,7 @@ def main():
     caption += f"📊 Всего ключей: <b>{total_keys}</b>\n\n"
     caption += "📡 VLESS | VMess | Trojan | SS\n\n"
     caption += f"💬 {PUBLIC_CHANNEL}\n\n"
-    caption += REACTIONS_TEXT
+    # Раздел реакций УДАЛЁН
 
     if os.path.exists(COVER_PUBLIC):
         result = send_photo_with_file(
@@ -558,9 +512,7 @@ def main():
                 if resp.json().get("ok"):
                     print("✅ Пост с подписками (public) отправлен")
                 else:
-                    print(
-                        f"❌ Ошибка поста с подписками (public): {resp.json().get('description')}"
-                    )
+                    print(f"❌ Ошибка поста с подписками (public): {resp.json().get('description')}")
             except Exception as e:
                 print(f"❌ Ошибка отправки подписок (public): {e}")
 
@@ -592,43 +544,42 @@ def main():
             print(f"❌ Ошибка отправки донат-поста: {e}")
 
     # ========== ПРИВАТНЫЙ КАНАЛ ==========
-    if PRIVATE_CHANNEL and total_keys > 10:
+    if PRIVATE_CHANNEL:
         print("\n" + "=" * 70)
         print(f"🔒 ПРИВАТНЫЙ КАНАЛ: {PRIVATE_CHANNEL}")
         print("=" * 70 + "\n")
 
-        private_file, private_count = create_private_file(all_keys, key_stats)
+        # ---- Файл со всеми ключами (только если есть больше 10) ----
+        if total_keys > 10:
+            private_file, private_count = create_private_file(all_keys, key_stats)
 
-        caption = "🔐 <b>Полный список ключей</b>\n\n"
-        caption += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-        caption += f"📦 В файле: <b>{private_count}</b> ключей\n"
-        caption += "📝 В постах: <b>10</b> ключей\n"
-        caption += f"📊 Всего ключей: <b>{total_keys}</b>\n\n"
-        caption += "📡 VLESS | VMess | Trojan | SS"
+            caption_priv = "🔐 <b>Полный список ключей</b>\n\n"
+            caption_priv += f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
+            caption_priv += f"📦 В файле: <b>{private_count}</b> ключей\n"
+            caption_priv += f"📊 Всего ключей: <b>{total_keys}</b>\n\n"
+            caption_priv += "📡 VLESS | VMess | Trojan | SS"
 
-        if os.path.exists(COVER_PRIVATE):
-            if DRY_RUN:
-                print("\n[DRY_RUN] sendPhoto + sendDocument (private)")
-                print("Caption:\n", caption)
-                print("File:", private_file)
-                private_result_ok = True
+            if os.path.exists(COVER_PRIVATE):
+                if DRY_RUN:
+                    print("\n[DRY_RUN] sendPhoto + sendDocument (private)")
+                    print("Caption:\n", caption_priv)
+                    print("File:", private_file)
+                else:
+                    result = send_photo_with_file(
+                        PRIVATE_CHANNEL,
+                        COVER_PRIVATE,
+                        private_file,
+                        caption_priv,
+                        bot_token=BOT_TOKEN_PRIVATE,
+                    )
+                    if result and result.get("ok"):
+                        print(f"✅ Пост с файлом (приват) сформирован ({private_count} ключей в файле)")
             else:
-                result = send_photo_with_file(
-                    PRIVATE_CHANNEL,
-                    COVER_PRIVATE,
-                    private_file,
-                    caption,
-                    bot_token=BOT_TOKEN_PRIVATE,
-                )
-                private_result_ok = bool(result and result.get("ok"))
-            if private_result_ok:
-                print(
-                    f"✅ Пост с файлом (приват) сформирован ({private_count} ключей в файле)"
-                )
-        else:
-            print("⚠️ Нет картинки для приватного канала")
+                print("⚠️ Нет картинки для приватного канала")
 
-        # Пост с подписками (приват)
+            safe_remove(private_file)
+
+        # ---- Пост с подписками (приват) ----
         if subscriptions_buttons:
             keyboard = []
             row = []
@@ -645,7 +596,7 @@ def main():
             if row:
                 keyboard.append(row)
 
-            subs_text = "📋 <b>Ссылки на подписки ()</b>\n\n"
+            subs_text = "📋 <b>Ссылки на подписки</b>\n\n"
             quote = get_remote_quote() or get_local_quote() or "Лучше один рабочий ключ, чем сто мёртвых."
             subs_text += f"💬 <i>{quote}</i>\n\n"
             subs_text += "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент"
@@ -669,20 +620,22 @@ def main():
                     if resp.json().get("ok"):
                         print("✅ Пост с подписками (приват) отправлен")
                     else:
-                        print(
-                            f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}"
-                        )
+                        print(f"❌ Ошибка поста с подписками (приват): {resp.json().get('description')}")
                 except Exception as e:
                     print(f"❌ Ошибка отправки подписок (приват): {e}")
 
-        # Посты с ключами (10 штук текстом)
-        chunks = build_markdown_chunks(all_keys, per_chunk=5, max_total_keys=10, limit=3900)
-        print(f"📝 Отправка {len(chunks)} постов с ключами...")
-
-        for idx, text in enumerate(chunks, start=1):
+        # ---- ВМЕСТО 10 КЛЮЧЕЙ: Активные прокси кнопками ----
+        proxies = load_active_proxies_from_github(limit=10)
+        if proxies:
+            keyboard = build_proxies_keyboard(proxies)
+            text = (
+                "📋 <b>Активные прокси</b>\n\n"
+                "Выберите прокси и нажмите на кнопку, чтобы скопировать ссылку для импорта в ваш клиент.\n\n"
+                "Все прокси проверены и активны."
+            )
             if DRY_RUN:
-                print(f"\n[DRY_RUN] sendMessage (private keys) {idx}/{len(chunks)}")
-                print("Text:\n", text[:500], "...\n")
+                print("\n[DRY_RUN] sendMessage (active proxies)")
+                print("Text:\n", text)
             else:
                 try:
                     resp = requests.post(
@@ -690,30 +643,24 @@ def main():
                         json={
                             "chat_id": PRIVATE_CHANNEL,
                             "text": text,
-                            "parse_mode": "Markdown",
-                            "disable_web_page_preview": True,
+                            "parse_mode": "HTML",
+                            "reply_markup": {"inline_keyboard": keyboard}
                         },
-                        timeout=15,
+                        timeout=15
                     )
                     if resp.json().get("ok"):
-                        print(f"✅ Пост {idx}/{len(chunks)} отправлен")
+                        print("✅ Сообщение с активными прокси отправлено")
                     else:
-                        print(
-                            f"❌ Пост {idx} ошибка: {resp.json().get('description')}"
-                        )
+                        print(f"❌ Ошибка отправки активных прокси: {resp.json().get('description')}")
                 except Exception as e:
-                    print(f"❌ Ошибка отправки поста {idx}: {e}")
-
-        safe_remove(private_file)
-
-    elif total_keys <= 10:
-        print("\n⚠️ Меньше 10 ключей — только публичный пост")
+                    print(f"❌ Ошибка отправки активных прокси: {e}")
+        else:
+            print("⚠️ Нет активных прокси для отправки (файл пуст или недоступен)")
 
     print("\n" + "=" * 70)
     print("✅ Скрипт завершил работу")
     print("=" * 70 + "\n")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
