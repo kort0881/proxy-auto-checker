@@ -105,19 +105,35 @@ jobs:
         retention-days: 7
         if-no-files-found: warn
     
+    # 🔧 ИСПРАВЛЕННЫЙ ШАГ – теперь push не будет отвергнут
     - name: 🚀 Commit to repository
       if: steps.checker.outputs.has_results == 'true'
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
         
-        git pull origin main --rebase --autostash || git pull origin main || echo "Nothing to pull"
+        # Сначала обновляем локальную информацию о remote
+        git fetch origin main
         
-        git add checked/latest/
+        # Переключаемся на последнюю версию main из remote (без потери локальных изменений)
+        git checkout -B temp-branch origin/main
+        
+        # Копируем (или создаём) нужный файл
+        mkdir -p checked/latest
+        # Файл уже должен быть создан на шаге "Save to repository"
+        # Если его нет – выходим
+        if [ ! -f "checked/latest/verified.txt" ]; then
+          echo "⚠️ No checked/latest/verified.txt found, skipping commit"
+          exit 0
+        fi
+        
+        # Добавляем файл и коммитим
+        git add checked/latest/verified.txt
         
         if ! git diff --cached --quiet; then
           git commit -m "✨ Update verified keys: $(date -u +'%Y-%m-%d %H:%M UTC')"
-          git push origin main
+          # Теперь наш коммит лежит поверх origin/main → fast-forward push возможен
+          git push origin HEAD:main
           echo "✅ Changes committed and pushed"
         else
           echo "ℹ️ No changes to commit"
