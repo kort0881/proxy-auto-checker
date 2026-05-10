@@ -1,23 +1,23 @@
 {
-  "timestamp": "2026-05-10T13:22:36.383347",
+  "timestamp": "2026-05-10T19:07:48.036911",
   "region": "Verified",
   "mode": "TCP+HTTP-LITE",
-  "total_checked": 1263,
-  "total_working": 793,
+  "total_checked": 1329,
+  "total_working": 903,
   "by_quality": {
-    "elite": 640,
-    "premium": 55,
-    "good": 98
+    "elite": 708,
+    "premium": 75,
+    "good": 120
   },
   "by_protocol": {
-    "VLESS": 878,
+    "VLESS": 980,
     "SS": 88,
-    "Trojan": 24
+    "Trojan": 32
   },
   "errors": {
-    "tls_fail": 106,
-    "tcp_timeout": 73,
-    "tcp_refused": 10
+    "tls_fail": 100,
+    "tcp_timeout": 69,
+    "tcp_refused": 15
   },
-  "processing_time": 76.46640300750732
+  "processing_time": 65.15354752540588
 }
