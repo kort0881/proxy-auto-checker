@@ -1,24 +1,32 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-05-21 03:53
+# 2026-05-21 09:43
 # Mode: TCP+HTTP-LITE
-# Keys: 18
+# Keys: 26
 
-vless://fd2bfdd2-68eb-49b0-98ad-ed82f901edde@s6eba9cb4.fastvps-server.com:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=fGB5LO3Ixtez-N-VOqhgmz4KjVtRo9ZUhQVASC7cozI&sid=a33cab0467dcb2aa&sni=s6eba9cb4.fastvps-server.com&spx=/#%5B141ms%7CEU%7Cj182%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://d78c12c4-6927-40b8-8550-ed9be00334da@usacxc.chickenkiller.com:443?type=tcp&headerType=none&security=reality&encryption=none&sni=usacxc.chickenkiller.com&fp=chrome&pbk=ThmCg7PnzUKsjDoTtqddU2G1tPC8oRTeeN_Z46wJHAg&sid=bdc9b685646303f6&flow=xtls-rprx-vision#%5B150ms%7CEU%7Cj159%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206WWh6cU9lSnNmdVo5cmtrYw@149.102.132.186:80#%5B168ms%7CEU%7Cj128%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://256c5f48-4908-4255-83d1-c86cb58f22b4@fr.denditop.site:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=wgoLhL4pRP0y6fu6He4qW_ElohCM_ANWJF3HEoUhNz4&sid=9c2378562188c3cb&sni=fr.denditop.site&spx=/#%5B177ms%7CEU%7Cj138%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://256c5f48-4908-4255-83d1-c86cb58f22b4@fr.denditop.site:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=fr.denditop.site&fp=chrome&pbk=wgoLhL4pRP0y6fu6He4qW_ElohCM_ANWJF3HEoUhNz4&sid=9c2378562188c3cb&spx=%2F&type=tcp&headerType=none#%5B177ms%7CEU%7Cj138%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://49f3fec2-1a21-481e-ae65-7c32ae262582@msaac.whit3.net:17444?encryption=none&flow=xtls-rprx-vision&fp=&pbk=M37tHE0Kumacb4SUnU3PtzmcvrclLOHrWdPK3Zz1szc&security=reality&sid=378086fbdb7c61cd&sni=max.ru&type=tcp#%5B188ms%7CEU%7Cj124%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://256c5f48-4908-4255-83d1-c86cb58f22b4@austria.denditop.site:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=wgoLhL4pRP0y6fu6He4qW_ElohCM_ANWJF3HEoUhNz4&sid=9c2378562188c3cb&sni=austria.denditop.site#%5B201ms%7CEU%7Cj124%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://2bd9c075-e47a-46d8-a777-93baa759d8aa@hk1.ap221.com:443?host=hk1.ap221.com&sni=hk.ap221.com&security=tls&type=tcp&path=/&fp=chrome&headerType=none&flow=xtls-rprx-vision&nonce=v0L3j705#%5B216ms%7CEU%7Cj169%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://2d281503-7a0a-0021-8934-4c94585c87b1@us.musicperec.ru:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=ads.x5.ru&fp=chrome&pbk=b4n1pcO8ST3JkGtj8YymXVrW17LEe2EHec5wY7hMMR4&sid=0a4b7c3d&type=tcp&headerType=none#%5B218ms%7CRU%7Cj160%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@185.213.23.63:990#%5B236ms%7CEU%7Cj239%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://f9830277-753f-481b-bb35-15e15a92acb0@email.swiftraci.org:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.tradingview.com&fp=chrome&pbk=Cs45TZ-4YKa8fWZ72YJcIcQCKipWsoYNZHEqFvs-PTE&sid=83e0acf97a90&type=tcp&headerType=none#%5B255ms%7CEU%7Cj160%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://5bd36fef-18ac-4d69-8080-25df6c9b369e@shop.harddahir.cyou:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=SqNAL7L50tQTHhkvN4dT3O-DqdI1qan5iwg6ai4U_hY&sid=a3a5df265540&sni=www.hollywoodreporter.com#%5B261ms%7CEU%7Cj210%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f9830277-753f-481b-bb35-15e15a92acb0@email.swiftraci.org:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=Cs45TZ-4YKa8fWZ72YJcIcQCKipWsoYNZHEqFvs-PTE&sid=83e0acf97a90&sni=www.tradingview.com#%5B281ms%7CEU%7Cj144%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://acd3f06c-0543-498b-b5d3-f7a25fbde50b@email.swiftraci.org:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=Cs45TZ-4YKa8fWZ72YJcIcQCKipWsoYNZHEqFvs-PTE&sid=bc06a5b31009&sni=www.microsoft.com#%5B281ms%7CEU%7Cj177%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@154.205.146.153:990#%5B301ms%7CEU%7Cj44%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@154.205.146.153:990#%5B312ms%7CEU%7Cj47%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?type=tcp&fm={"quicParams":{"congestion":"brutal","brutalUp":"500+mbps","brutalDown":"500+mbps","initStreamReceiveWindow":8388608,"maxStreamReceiveWindow":8388608,"initConnectionReceiveWindow":20971520,"maxConnectionReceiveWindow":20971520,"maxIncomingStreams":1024}}&security=tls&fp=qq&alpn=h2,http/1.1&sni=yespaintstudio.rav-kraski.ru#%5B316ms%7CRU%7Cj199%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=1&fm={#%5B379ms%7CRU%7Cj202%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@london1.ap221.com:443?type=tcp&security=tls&flow=xtls-rprx-vision&seq=you_are_beautiful4558#%5B114ms%7CEU%7Cj202%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b43a13be-150c-4a6a-8501-b71c1b6476fb@srv174.towersflowerss.com:65000?type=ws&headerType=none&security=none&encryption=none&fp=randomized&path=%2F#%5B114ms%7CEU%7Cj138%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@38.60.250.107:990#%5B127ms%7CEU%7Cj157%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@38.60.250.107:990#%5B127ms%7CEU%7Cj157%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@london1.ap221.com:443?type=tcp&security=tls&flow=xtls-rprx-vision&burmalda=e27fe9b6#%5B133ms%7CEU%7Cj225%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=1&fm={#%5B147ms%7CRU%7Cj158%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=0#%5B147ms%7CRU%7Cj158%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+vless://33db4dff-b9aa-4910-ad71-fe36ce0790fc@ohio1.ap221.com:443?type=tcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=tls&flow=xtls-rprx-vision-udp443&fp=chrome&insecure=1&sni=ohio.ap221.com#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@ohio1.ap221.com:443?&security=tls&flow=xtls-rprx-vision&fp=chrome&sni=ohio.ap221.com&type=tcp&headerType=none&host=ohio.ap221.com&path=%2F&seq=you_are_beautiful0393#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@ohio1.ap221.com:443?&security=tls&flow=xtls-rprx-vision&fp=chrome&sni=ohio.ap221.com&type=tcp&headerType=none&host=ohio.ap221.com&path=%2F&seq=you_are_beautiful6118#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@ohio1.ap221.com:443?host=ohio.ap221.com&security=tls&fp=chrome&path=%2F&sni=ohio.ap221.com&headerType=none&flow=xtls-rprx-vision&type=tcp#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@ohio1.ap221.com:443?flow=xtls-rprx-vision&host=ohio.ap221.com&security=tls&path=%2F&sni=ohio.ap221.com&headerType=none&type=tcp&fp=chrome#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@ohio1.ap221.com:443?path=%2F&headerType=none&flow=xtls-rprx-vision&type=tcp&host=ohio.ap221.com&security=tls&fp=chrome&sni=ohio.ap221.com#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://3a1d7c1d-09c6-4c81-8e11-75dd4ab1ac07@ohio1.ap221.com:443?host=ohio.ap221.com&headerType=none&type=tcp&path=%2F&flow=xtls-rprx-vision&fp=chrome&security=tls&sni=ohio.ap221.com&descriptions=люби_себяb67fef#%5B150ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://YWVzLTI1Ni1nY206bktlRTJaRldWYUU0RHlqUg@154.38.176.7:80#%5B156ms%7CEU%7Cj189%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://YWVzLTEyOC1nY206Njc4NGFlZTItMGRmZS00NzRmLTg0NDYtNDgwMjU5ZmY5OTE4@ru.safepass.click:442#%5B162ms%7CEU%7Cj121%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://b43a13be-150c-4a6a-8501-b71c1b6476fb@tr1.datatowers.net:64534?security=&encryption=none&headerType=none&fp=qq&type=tcp#%5B163ms%7CEU%7Cj168%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b43a13be-150c-4a6a-8501-b71c1b6476fb@tr1.datatowers.net:64534?type=tcp&headerType=none&security=none&encryption=none&fp=qq#%5B190ms%7CEU%7Cj125%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3ZTczMWVjMy1mOGUxLTQzZjYtOTJjZi0zOTc4ZDE0NzA1YzQ=@r3mrcg001286ek2.cybervena.com:50099#%5B199ms%7CEU%7Cj14%7Ctcp80%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3YjU2YWVhYS04ZTJkLTRiZGYtYjFkNy0yMzNlY2NhMTVmNTY=@r3mrcg0011499tl.cybervena.com:50099#%5B210ms%7CEU%7Cj127%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3ZTczMWVjMy1mOGUxLTQzZjYtOTJjZi0zOTc4ZDE0NzA1YzQ=@nbmrcg0034686rw.cybervena.com:50099#%5B210ms%7CEU%7Cj12%7Ctcp80%25%7CSS%7C%40vlesstrojan%5D
+vless://5bd36fef-18ac-4d69-8080-25df6c9b369e@shop.harddahir.cyou:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=SqNAL7L50tQTHhkvN4dT3O-DqdI1qan5iwg6ai4U_hY&sid=a3a5df265540&sni=www.hollywoodreporter.com#%5B218ms%7CEU%7Cj170%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://YWVzLTI1Ni1nY206UmV4bkJnVTdFVjVBRHhH@141.164.45.187:7001#%5B267ms%7CEU%7Cj147%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@38.60.171.254:990#%5B275ms%7CEU%7Cj130%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@154.223.20.79:990#%5B334ms%7CEU%7Cj29%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://49f3fec2-1a21-481e-ae65-7c32ae262582@msaac.whit3.net:17444?type=tcp&security=reality&sni=max.ru&flow=xtls-rprx-vision&pbk=M37tHE0Kumacb4SUnU3PtzmcvrclLOHrWdPK3Zz1szc&sid=378086fbdb7c61cd#%5B417ms%7CEU%7Cj116%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
