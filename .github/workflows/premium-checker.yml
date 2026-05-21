@@ -49,7 +49,6 @@ jobs:
         REGION="${{ github.event.inputs.region || 'ALL' }}"
         python advanced_checker.py --region "$REGION" --workers 16 --tcp-workers 50
 
-        # Берём статистику из JSON, без арифметики в bash
         TOTAL=$(python -c "import json; d=json.load(open('results/stats_latest.json')); print(d.get('total_working', 0))" 2>/dev/null || echo "0")
         ELITE=$(python -c "import json; d=json.load(open('results/stats_latest.json')); print(d.get('by_quality', {}).get('elite', 0))" 2>/dev/null || echo "0")
         PREMIUM=$(python -c "import json; d=json.load(open('results/stats_latest.json')); print(d.get('by_quality', {}).get('premium', 0))" 2>/dev/null || echo "0")
@@ -128,7 +127,6 @@ jobs:
         git config user.name "AI Proxy Bot"
         git config user.email "bot@github.actions"
         
-        # Robust pull/push loop
         for i in 1 2 3 4 5; do
           git pull origin main --rebase --autostash || { sleep 5; continue; }
           break
@@ -155,3 +153,18 @@ jobs:
           sleep $((i * 5))
         done
 
+    # ========== НОВЫЕ ШАГИ ДЛЯ ПЛАТНЫХ КЛЮЧЕЙ ==========
+    - name: Download paid keys artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: paid-keys
+        repository: kort0881/paid-keys-fetcher
+        path: results/          # файл paid.txt появится в results/paid.txt
+        github-token: ${{ secrets.FETCH_PAID_KEYS_TOKEN }}
+
+    - name: Run Telegram poster
+      run: python post_to_telegram.py
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
+        TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
