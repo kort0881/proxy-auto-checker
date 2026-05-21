@@ -153,14 +153,11 @@ jobs:
           sleep $((i * 5))
         done
 
-    # ========== НОВЫЕ ШАГИ ДЛЯ ПЛАТНЫХ КЛЮЧЕЙ ==========
-    - name: Download paid keys artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: paid-keys
-        repository: kort0881/paid-keys-fetcher
-        path: results/          # файл paid.txt появится в results/paid.txt
-        github-token: ${{ secrets.FETCH_PAID_KEYS_TOKEN }}
+    # ========== СКАЧИВАНИЕ ПЛАТНЫХ КЛЮЧЕЙ ЧЕРЕЗ API ==========
+    - name: Download paid keys via GitHub API
+      run: python download_paid_keys.py
+      env:
+        GH_TOKEN: ${{ secrets.FETCH_PAID_KEYS_TOKEN }}
 
     - name: Run Telegram poster
       run: python post_to_telegram.py
