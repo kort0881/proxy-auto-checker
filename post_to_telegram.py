@@ -505,39 +505,43 @@ def main():
                 send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, private_file, caption_priv, BOT_TOKEN_PRIVATE)
             safe_remove(private_file)
 
-        # ---- КЛЮЧИ ОТ ALEKSCLOUD ----
+                # ---- КЛЮЧИ ОТ ALEKSCLOUD (до 3 – текстом, больше – файл) ----
         paid_keys = load_paid_keys()
         if paid_keys:
-            all_keys_text = "\n".join(paid_keys)
-            if len(paid_keys) > 30:
-                display_text = "\n".join(paid_keys[:10]) + f"\n... и ещё {len(paid_keys)-10} ключей. Нажмите кнопку, чтобы скопировать все."
+            count = len(paid_keys)
+            if count <= 3:
+                # Текстовое сообщение со всеми ключами
+                keys_text = "\n".join(paid_keys)
+                caption = (
+                    f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
+                    f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
+                    f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                    f"📦 Ключей: {count}\n\n"
+                    f"<code>{keys_text}</code>\n\n"
+                    f"Спасибо alekscloud!"
+                )
+                send_message(PRIVATE_CHANNEL, caption, BOT_TOKEN_PRIVATE)
             else:
-                display_text = all_keys_text
+                # Первые 3 ключа – текстом
+                first_three = "\n".join(paid_keys[:3])
+                caption_part = (
+                    f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
+                    f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
+                    f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                    f"📦 Всего ключей: {count}\n\n"
+                    f"<b>Первые 3 ключа:</b>\n<code>{first_three}</code>\n\n"
+                    f"🔽 Полный список – в приложенном файле."
+                )
+                send_message(PRIVATE_CHANNEL, caption_part, BOT_TOKEN_PRIVATE)
 
-            caption_paid = (
-                f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
-                f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
-                f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-                f"📦 Всего ключей: <b>{len(paid_keys)}</b>\n"
-                f"📡 Протоколы: VLESS | Reality\n\n"
-                f"<pre>{display_text}</pre>\n\n"
-                f"🔁 Обновление: ежедневное\n"
-                f"🙏 Спасибо alekscloud!"
-            )
-            keyboard = {
-                "inline_keyboard": [[
-                    {"text": "📋 Скопировать все ключи", "copy_text": {"text": all_keys_text}}
-                ]]
-            }
-            send_message(PRIVATE_CHANNEL, caption_paid, BOT_TOKEN_PRIVATE, reply_markup=keyboard)
-
-            paid_file, paid_count = create_paid_file(paid_keys)
-            caption_file = f"📎 Файл с ключами от alekscloud (все {paid_count})"
-            if os.path.exists(COVER_PRIVATE):
-                send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-            else:
-                send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-            safe_remove(paid_file)
+                # Весь список – в файл
+                paid_file, paid_count = create_paid_file(paid_keys)
+                caption_file = f"📎 Все {count} ключей от alekscloud"
+                if os.path.exists(COVER_PRIVATE):
+                    send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, paid_file, caption_file, BOT_TOKEN_PRIVATE)
+                else:
+                    send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
+                safe_remove(paid_file))
 
         # Подписки (приват)
         if subscriptions_buttons:
