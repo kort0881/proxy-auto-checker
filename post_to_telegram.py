@@ -475,7 +475,7 @@ def main():
                 send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, private_file, caption_priv, BOT_TOKEN_PRIVATE)
             safe_remove(private_file)
 
-        # ---- КЛЮЧИ ОТ ALEKSCLOUD (до 3 – текстом, больше – файл) ----
+                # ---- КЛЮЧИ ОТ ALEKSCLOUD (до 3 – текстом, больше – файл) ----
         paid_keys = load_paid_keys()
         if paid_keys:
             count = len(paid_keys)
@@ -486,7 +486,7 @@ def main():
                     f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
                     f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                     f"📦 Ключей: {count}\n\n"
-                    f"<code>{keys_text}</code>\n\n"
+                    f"{keys_text}\n\n"
                     f"Спасибо alekscloud!"
                 )
                 send_message(PRIVATE_CHANNEL, caption, BOT_TOKEN_PRIVATE)
@@ -497,10 +497,18 @@ def main():
                     f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
                     f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                     f"📦 Всего ключей: {count}\n\n"
-                    f"<b>Первые 3 ключа:</b>\n<code>{first_three}</code>\n\n"
+                    f"<b>Первые 3 ключа:</b>\n{first_three}\n\n"
                     f"🔽 Полный список – в приложенном файле."
                 )
                 send_message(PRIVATE_CHANNEL, caption_part, BOT_TOKEN_PRIVATE)
+
+                paid_file, paid_count = create_paid_file(paid_keys)
+                caption_file = f"📎 Все {count} ключей от alekscloud"
+                if os.path.exists(COVER_PRIVATE):
+                    send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, paid_file, caption_file, BOT_TOKEN_PRIVATE)
+                else:
+                    send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
+                safe_remove(paid_file)
 
                 paid_file, paid_count = create_paid_file(paid_keys)
                 caption_file = f"📎 Все {count} ключей от alekscloud"
