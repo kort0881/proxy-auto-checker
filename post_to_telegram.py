@@ -505,12 +505,11 @@ def main():
                 send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, private_file, caption_priv, BOT_TOKEN_PRIVATE)
             safe_remove(private_file)
 
-                # ---- КЛЮЧИ ОТ ALEKSCLOUD (до 3 – текстом, больше – файл) ----
+        # ---- КЛЮЧИ ОТ ALEKSCLOUD (до 3 – текстом, больше – файл) ----
         paid_keys = load_paid_keys()
         if paid_keys:
             count = len(paid_keys)
             if count <= 3:
-                # Текстовое сообщение со всеми ключами
                 keys_text = "\n".join(paid_keys)
                 caption = (
                     f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
@@ -522,7 +521,6 @@ def main():
                 )
                 send_message(PRIVATE_CHANNEL, caption, BOT_TOKEN_PRIVATE)
             else:
-                # Первые 3 ключа – текстом
                 first_three = "\n".join(paid_keys[:3])
                 caption_part = (
                     f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
@@ -534,14 +532,13 @@ def main():
                 )
                 send_message(PRIVATE_CHANNEL, caption_part, BOT_TOKEN_PRIVATE)
 
-                # Весь список – в файл
                 paid_file, paid_count = create_paid_file(paid_keys)
                 caption_file = f"📎 Все {count} ключей от alekscloud"
                 if os.path.exists(COVER_PRIVATE):
                     send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, paid_file, caption_file, BOT_TOKEN_PRIVATE)
                 else:
                     send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-                safe_remove(paid_file))
+                safe_remove(paid_file)
 
         # Подписки (приват)
         if subscriptions_buttons:
@@ -563,7 +560,7 @@ def main():
         if proxies_keyboard:
             text = ("📋 <b>Активные прокси для Telegram</b>\n\n"
                     "Нажмите на кнопку, чтобы скопировать ссылку на прокси и вставить её в настройках Telegram.\n\n"
-                    "Все прокси .")
+                    "Все прокси проверены и активны.")
             send_message(PRIVATE_CHANNEL, text, BOT_TOKEN_PRIVATE, {"inline_keyboard": proxies_keyboard})
 
     print("\n✅ Скрипт завершил работу")
