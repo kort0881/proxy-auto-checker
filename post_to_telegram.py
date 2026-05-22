@@ -43,7 +43,6 @@ COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
 # Локальные цитаты
 QUOTES_FILE = os.path.join(WORK_DIR, "data", "quotes_ru.txt")
-QUOTES_INDEX_FILE = os.path.join(WORK_DIR, "data", "quotes_index.txt")
 
 SUBSCRIPTIONS_URL = (
     "https://raw.githubusercontent.com/"
@@ -212,23 +211,7 @@ def safe_remove(filepath: str):
     except OSError as e:
         print(f"⚠️ Не удалось удалить {filepath}: {e}")
 
-# ---------- ЦИТАТЫ ----------
-def get_remote_quote():
-    try:
-        resp = robust_session.get(
-            "http://api.forismatic.com/api/1.0/",
-            params={"method": "getQuote", "format": "json", "lang": "ru"},
-            timeout=5,
-        )
-        data = resp.json()
-        text = (data.get("quoteText") or "").strip()
-        if not text:
-            return None
-        return text
-    except Exception as e:
-        print(f"⚠️ Forismatic error: {e}")
-        return None
-
+# ---------- НОВАЯ ФУНКЦИЯ ДЛЯ ЦИТАТ (случайная из файла) ----------
 def get_local_quote():
     if not os.path.exists(QUOTES_FILE):
         return None
@@ -236,20 +219,7 @@ def get_local_quote():
         quotes = [q.strip() for q in f if q.strip()]
     if not quotes:
         return None
-    idx = 0
-    if os.path.exists(QUOTES_INDEX_FILE):
-        try:
-            with open(QUOTES_INDEX_FILE, "r", encoding="utf-8") as f:
-                idx = int(f.read().strip() or "0")
-        except Exception:
-            idx = 0
-    quote = quotes[idx % len(quotes)]
-    try:
-        with open(QUOTES_INDEX_FILE, "w", encoding="utf-8") as f:
-            f.write(str((idx + 1) % len(quotes)))
-    except Exception as e:
-        print(f"⚠️ Не удалось сохранить индекс цитаты: {e}")
-    return quote
+    return random.choice(quotes)
 
 # ---------- ПОДПИСКИ ----------
 def load_subscriptions():
@@ -465,7 +435,7 @@ def main():
         print("⚠️ Нет картинки для публичного канала")
     safe_remove(public_file)
 
-    # Пост с подписками (публичный)
+    # Пост с подписками (публичный) – теперь только локальная цитата
     if subscriptions_buttons:
         keyboard = []
         row = []
@@ -477,7 +447,7 @@ def main():
         if row:
             keyboard.append(row)
         subs_text = ("📋 <b>Ссылки на подписки</b>\n\n"
-                     f"💬 <i>{get_remote_quote() or get_local_quote() or 'Лучше один рабочий ключ, чем сто мёртвых.'}</i>\n\n"
+                     f"💬 <i>{get_local_quote() or 'Лучше один рабочий ключ, чем сто мёртвых.'}</i>\n\n"
                      "💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash")
         send_message(PUBLIC_CHANNEL, subs_text, BOT_TOKEN_PUBLIC, {"inline_keyboard": keyboard})
 
@@ -540,7 +510,7 @@ def main():
                     send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
                 safe_remove(paid_file)
 
-        # Подписки (приват)
+        # Подписки (приват) – тоже локальная цитата
         if subscriptions_buttons:
             keyboard = []
             row = []
@@ -552,7 +522,7 @@ def main():
             if row:
                 keyboard.append(row)
             subs_text = ("📋 <b>Ссылки на подписки</b>\n\n"
-                         f"💬 <i>{get_remote_quote() or get_local_quote() or 'Лучше один рабочий ключ, чем сто мёртвых.'}</i>\n\n"
+                         f"💬 <i>{get_local_quote() or 'Лучше один рабочий ключ, чем сто мёртвых.'}</i>\n\n"
                          "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент")
             send_message(PRIVATE_CHANNEL, subs_text, BOT_TOKEN_PRIVATE, {"inline_keyboard": keyboard})
 
