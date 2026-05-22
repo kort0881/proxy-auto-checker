@@ -475,29 +475,31 @@ def main():
                 send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, private_file, caption_priv, BOT_TOKEN_PRIVATE)
             safe_remove(private_file)
 
-                # ---- КЛЮЧИ ОТ ALEKSCLOUD (до 3 – текстом, больше – файл) ----
+        # ---- КЛЮЧИ ОТ ALEKSCLOUD (каждый ключ в отдельном блоке code) ----
         paid_keys = load_paid_keys()
         if paid_keys:
             count = len(paid_keys)
             if count <= 3:
-                keys_text = "\n".join(paid_keys)
+                # Формируем каждый ключ в отдельном <code> блоке
+                keys_html = "\n\n".join(f"<code>{k}</code>" for k in paid_keys)
                 caption = (
                     f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
                     f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
                     f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                     f"📦 Ключей: {count}\n\n"
-                    f"{keys_text}\n\n"
+                    f"{keys_html}\n\n"
                     f"Спасибо alekscloud!"
                 )
                 send_message(PRIVATE_CHANNEL, caption, BOT_TOKEN_PRIVATE)
             else:
-                first_three = "\n".join(paid_keys[:3])
+                # Первые 3 ключа – каждый в отдельном блоке code
+                first_three_html = "\n\n".join(f"<code>{k}</code>" for k in paid_keys[:3])
                 caption_part = (
                     f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
                     f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
                     f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                     f"📦 Всего ключей: {count}\n\n"
-                    f"<b>Первые 3 ключа:</b>\n{first_three}\n\n"
+                    f"<b>Первые 3 ключа:</b>\n\n{first_three_html}\n\n"
                     f"🔽 Полный список – в приложенном файле."
                 )
                 send_message(PRIVATE_CHANNEL, caption_part, BOT_TOKEN_PRIVATE)
