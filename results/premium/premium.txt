@@ -1,26 +1,28 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-05-23 03:24
+# 2026-05-23 08:22
 # Mode: TCP+HTTP-LITE
-# Keys: 20
+# Keys: 22
 
-vless://37253a6a-2a9b-42bb-992c-b5f1b1ef1791@vltch.mostserv.xyz:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=3WzSgL8uXA3vE3IHrfdBpJmOO4MYrsWpczDSY_jJRjI&sid=226509f017e4c36d&sni=vltch.mostserv.xyz&mode=multi&spx=/&servername=vltch.mostserv.xyz#%5B102ms%7CEU%7Cj131%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://1cb91b20-49cc-59ff-8393-91808a4deede@v546965.hosted-by-vdsina.com:8443?type=tcp&security=reality&fp=chrome&pbk=bVhVy1hZY_iw-sljlaeVbTBBa6SPvMm0Kg0tCC8CKHM&sid=ffffffffff&sni=www.ozon.ru&alpn=http/1.1&headerType=none,#%5B104ms%7CEU%7Cj167%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://1cb91b20-49cc-59ff-8393-91808a4deede@v546965.hosted-by-vdsina.com:8443?type=tcp&security=reality&fp=chrome&pbk=bVhVy1hZY_iw-sljlaeVbTBBa6SPvMm0Kg0tCC8CKHM&sid=ffffffffff&sni=www.ozon.ru&alpn=http/1.1&headerType=none:#%5B104ms%7CEU%7Cj167%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?sni=🔒#%5B113ms%7CRU%7Cj226%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?type=tcp&fm={"quicParams":{"congestion":"brutal","brutalUp":"500+mbps","brutalDown":"500+mbps","initStreamReceiveWindow":8388608,"maxStreamReceiveWindow":8388608,"initConnectionReceiveWindow":20971520,"maxConnectionReceiveWindow":20971520,"maxIncomingStreams":1024}}&security=tls&fp=qq&alpn=h2,http/1.1&sni=yespaintstudio.rav-kraski.ru#%5B113ms%7CRU%7Cj226%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=0#%5B116ms%7CRU%7Cj202%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=1#%5B116ms%7CRU%7Cj202%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?sni=yespaintstudio.rav-kraski.ru#%5B116ms%7CRU%7Cj202%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=1&fm={"quicParams":{"congestion":"brutal","brutalUp":"500 mbps","brutalDown":"500 mbps","initStreamReceiveWindow":8388608,"maxStreamReceiveWindow":8388608,"initConnectionReceiveWindow":20971520,"maxConnectionReceiveWindow":20971520,"maxIncomingStreams":1024}}&type=tcp&security=tls&sni=yespaintstudio.rav-kraski.ru&fp=qq&alpn=h2#%5B124ms%7CRU%7Cj134%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allow_insecure=0&security=tls&sni=yespaintstudio.rav-kraski.ru#%5B128ms%7CRU%7Cj155%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=1&fm={#%5B128ms%7CRU%7Cj155%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-vless://40cc9b52-25b8-4cd5-8b45-715ae26e6baf@SC-TheNetherlands1.09vpn.com:80?path=%2Fvless%2F&security=none&encryption=none&type=ws#%5B135ms%7CEU%7Cj173%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?security=tls&sni=🔒#%5B142ms%7CRU%7Cj206%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=0&sni=🔒#%5B146ms%7CRU%7Cj236%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-vless://37253a6a-2a9b-42bb-992c-b5f1b1ef1791@vltch.mostserv.xyz:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=3WzSgL8uXA3vE3IHrfdBpJmOO4MYrsWpczDSY_jJRjI&sid=226509f017e4c36d&sni=vltch.mostserv.xyz#%5B152ms%7CEU%7Cj190%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://106d20f6-d70a-40e2-b69b-8e82baf8d117@staging.lastilhame.monster:443?type=raw&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=FjcEZNQ8t5E4R04_11T6ghsOutdqwKKrelkuadakoQg&sid=60500a63ad12&sni=www.microsoft.com#%5B154ms%7CEU%7Cj234%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?security=tls&alpn=h2,http/1.1&type=tcp#%5B161ms%7CRU%7Cj191%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3ZTczMWVjMy1mOGUxLTQzZjYtOTJjZi0zOTc4ZDE0NzA1YzQ=@r3mrcg001286ek2.cybervena.com:50099#%5B195ms%7CEU%7Cj177%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://1ebb7caf-8704-48de-adbb-30b0b821c650@dns.dressforida.monster:443?type=raw&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=4YLfHf90V012Oyd2wHbwAXaJNvNUGrKWmatTKc165U8&sid=9eff19e0405a&sni=www.microsoft.com#%5B207ms%7CEU%7Cj241%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://1cb91b20-49cc-59ff-8393-91808a4deede@v546965.hosted-by-vdsina.com:8443?type=raw&security=reality&pbk=bVhVy1hZY_iw-sljlaeVbTBBa6SPvMm0Kg0tCC8CKHM&sid=ffffffffff&sni=www.ozon.ru#%5B242ms%7CEU%7Cj152%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3ZTczMWVjMy1mOGUxLTQzZjYtOTJjZi0zOTc4ZDE0NzA1YzQ=@nbmrcg0034686rw.cybervena.com:50099#%5B128ms%7CEU%7Cj127%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://1cb91b20-49cc-59ff-8393-91808a4deede@v546965.hosted-by-vdsina.com:8443?type=raw&security=reality&pbk=bVhVy1hZY_iw-sljlaeVbTBBa6SPvMm0Kg0tCC8CKHM&sid=ffffffffff&sni=www.ozon.ru#%5B128ms%7CEU%7Cj242%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@185.213.23.63:990#%5B134ms%7CEU%7Cj4%7Ctcp80%25%7CSS%7C%40vlesstrojan%5D
+trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=0#%5B136ms%7CRU%7Cj192%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+vless://be0e7d89-9c35-4950-a460-d3bf5aae5f91@de.locklance.lol:443?security=reality&encryption=none&pbk=0k2aDh6JSsLCZsO7QUYepYnS_kHAnfmXX18WQBkgxEc&headerType=none&fp=chrome&spx=%2F&type=tcp&flow=xtls-rprx-vision&sni=de.locklance.lol&sid=b531f9a8f53b802e#%5B144ms%7CEU%7Cj122%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?sni=🔒#%5B145ms%7CRU%7Cj218%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+vless://394f6981-a782-4779-9a85-e6cf22935d93@uk1.fromblancwithlove.com:8443?type=tcp&security=tls#%5B153ms%7CEU%7Cj145%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?alpn=h2,http/1.1#%5B157ms%7CRU%7Cj209%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+vless://31fb98b7-e7a1-4b56-8c6a-3f060f06393c@freetg.strettenvpn.com:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=yhUfTGgu5PYRlFqMnRZkxffH_aU05AFUToGI8_EKF28&sid=8248954896&sni=eh.vk.com&spx=/o7Aaf6fjwgbitolAe:#%5B164ms%7CEU%7Cj149%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://49a74c22-64e6-4799-aeb7-ae6f51bc1ddf@de.nodes.rocketnetwork.ru:443?security=reality&encryption=none&echfq=none&pbk=Mn0DIMKW6zu0_D3E1qKO7xMlIVZvB-rqO_-f7Le2vAs&headerType=none&fp=chrome&allowinsecure=0&type=tcp&flow=xtls-rprx-vision&sni=de.nodes.rocketnetwork.ru&sid=428ef87fd47a3a32#%5B164ms%7CRU%7Cj121%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b6ce8a51-19b9-4979-91ba-b4298c26d5fc@n3th3ryt.gxcore.net:443?type=grpc&security=reality&fp=chrome&pbk=KzSy2i45DrsFOfXXQ7ConynwqKOaH70pvpoMR4joMWU&sid=d45feecd265c116d&sni=n3th3ryt.gxcore.net&mode=gun&serviceName=grpc&authority=#%5B170ms%7CEU%7Cj134%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b25d866f-1391-41d3-9509-4efd2215258d@185.120.16.208:443?encryption=none&flow=xtls-rprx-vision&fp=&pbk=rH0vZkY3Wyc8Ol-pLWEPx22hpg6ovrLFK9Sp0aQLcT0&security=reality&sid=7a3f5c8e2b4d1a69&sni=valorant.secure.dyn.riotcdn.net&type=tcp#%5B176ms%7CEU%7Cj132%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://f9830277-753f-481b-bb35-15e15a92acb0@email.swiftraci.org:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.tradingview.com&fp=chrome&pbk=Cs45TZ-4YKa8fWZ72YJcIcQCKipWsoYNZHEqFvs-PTE&sid=83e0acf97a90&type=tcp&headerType=none#%5B183ms%7CEU%7Cj167%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3ZTczMWVjMy1mOGUxLTQzZjYtOTJjZi0zOTc4ZDE0NzA1YzQ@r3mrcg001269pz2.cybervena.com:50099#%5B183ms%7CEU%7Cj126%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+trojan://7aXwJPnpAJ@yespaintstudio.rav-kraski.ru:50824?allowInsecure=0&sni=🔒#%5B190ms%7CRU%7Cj242%7Ctcp100%25%7CTrojan%7C%40vlesstrojan%5D
+ss://YWVzLTI1Ni1nY206Y2RCSURWNDJEQ3duZklO@38.180.161.123:8119#%5B191ms%7CEU%7Cj152%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://b6ce8a51-19b9-4979-91ba-b4298c26d5fc@n3th3ryt.gxcore.net:443?type=grpc&security=reality&encryption=none&pbk=KzSy2i45DrsFOfXXQ7ConynwqKOaH70pvpoMR4joMWU&sid=d45feecd265c116d&sni=n3th3ryt.gxcore.net&mode=gun&serviceName=grpc&authority=#%5B197ms%7CEU%7Cj130%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpGamdHTk5IUWlFTHp4WG1hSFJ4eHRRYnhERHZHWEZ4WWRUYlllOTFKS1pzanZLTEhvWTlybjlydVlFNDUzNzdXanRVM200a21YUVpEWGlIQkpzZ1ZmaG1wYXdFb0d2cTk@mx2.drawnrisha.one:55988#%5B197ms%7CEU%7Cj183%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://2f6e2b17-4d5e-4a12-8979-f53fdd347580@staging.lastilhame.monster:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=FjcEZNQ8t5E4R04_11T6ghsOutdqwKKrelkuadakoQg&sid=5c8a8e6c615b&sni=www.mozilla.org#%5B206ms%7CEU%7Cj164%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://76713d07-5a6b-49c2-abd8-bc450a2fa7fc@download.spectrum.vu:443?encryption=none&flow=xtls-rprx-vision&fp=&pbk=sXC7sPCzHG_uYfvk3GSUdYQKfHAwirOVWMhO50Y9Pn8&security=reality&sid=d1e9faa1b2c3&sni=download.spectrum.vu&type=tcp#%5B218ms%7CEU%7Cj192%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ@154.205.146.153:990#%5B319ms%7CEU%7Cj52%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpBUmd2R1p5d0ErZ2FjZ0dWMjZCdm11MDUrd1ptUlcvaitBZFUrWjhCdDQ0PQ==@154.205.146.153:990#%5B319ms%7CEU%7Cj52%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
