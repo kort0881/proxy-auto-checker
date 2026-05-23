@@ -510,14 +510,6 @@ def main():
                     send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
                 safe_remove(paid_file)
 
-                paid_file, paid_count = create_paid_file(paid_keys)
-                caption_file = f"📎 Все {count} ключей от alekscloud"
-                if os.path.exists(COVER_PRIVATE):
-                    send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-                else:
-                    send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-                safe_remove(paid_file)
-
         # Подписки (приват) – тоже локальная цитата
         if subscriptions_buttons:
             keyboard = []
