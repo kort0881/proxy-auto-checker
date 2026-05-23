@@ -154,10 +154,11 @@ jobs:
         done
 
     # ========== СКАЧИВАНИЕ ПЛАТНЫХ КЛЮЧЕЙ ЧЕРЕЗ API ==========
-    - name: Download paid keys via GitHub API
-      run: python download_paid_keys.py
-      env:
-        GH_TOKEN: ${{ secrets.FETCH_PAID_KEYS_TOKEN }}
+    # Временно отключено из-за 502 ошибки на сервере alekscloud
+    # - name: Download paid keys via GitHub API
+    #   run: python download_paid_keys.py
+    #   env:
+    #     GH_TOKEN: ${{ secrets.FETCH_PAID_KEYS_TOKEN }}
 
     - name: Run Telegram poster
       run: python post_to_telegram.py
