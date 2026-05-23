@@ -480,7 +480,6 @@ def main():
         if paid_keys:
             count = len(paid_keys)
             if count <= 3:
-                # Формируем каждый ключ в отдельном <code> блоке
                 keys_html = "\n\n".join(f"<code>{k}</code>" for k in paid_keys)
                 caption = (
                     f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
@@ -492,7 +491,6 @@ def main():
                 )
                 send_message(PRIVATE_CHANNEL, caption, BOT_TOKEN_PRIVATE)
             else:
-                # Первые 3 ключа – каждый в отдельном блоке code
                 first_three_html = "\n\n".join(f"<code>{k}</code>" for k in paid_keys[:3])
                 caption_part = (
                     f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
