@@ -2,8 +2,8 @@ name: Auto Proxy Checker
 
 on:
   schedule:
-    - cron: '0 */12 * * *'  # Каждые 12 часов (00:00 и 12:00 UTC)
-  workflow_dispatch:  # Ручной запуск через Actions
+    - cron: '0 0 * * *'   # Каждый день в 00:00 UTC
+  workflow_dispatch:      # Ручной запуск через Actions
 
 concurrency:
   group: proxy-checker-push
@@ -40,7 +40,6 @@ jobs:
         exit_code=${PIPESTATUS[0]}
         echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
         
-        # Проверяем наличие результатов
         if ls results/verified_*.txt 1> /dev/null 2>&1; then
           echo "has_results=true" >> $GITHUB_OUTPUT
           echo "✅ Results files found"
@@ -49,7 +48,6 @@ jobs:
           echo "⚠️ No result files found"
         fi
         
-        # Не останавливаем workflow при exit code 1
         exit 0
     
     - name: 📊 Show checker summary
@@ -105,34 +103,25 @@ jobs:
         retention-days: 7
         if-no-files-found: warn
     
-    # 🔧 ИСПРАВЛЕННЫЙ ШАГ – теперь push не будет отвергнут
     - name: 🚀 Commit to repository
       if: steps.checker.outputs.has_results == 'true'
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
         
-        # Сначала обновляем локальную информацию о remote
         git fetch origin main
-        
-        # Переключаемся на последнюю версию main из remote (без потери локальных изменений)
         git checkout -B temp-branch origin/main
         
-        # Копируем (или создаём) нужный файл
         mkdir -p checked/latest
-        # Файл уже должен быть создан на шаге "Save to repository"
-        # Если его нет – выходим
         if [ ! -f "checked/latest/verified.txt" ]; then
           echo "⚠️ No checked/latest/verified.txt found, skipping commit"
           exit 0
         fi
         
-        # Добавляем файл и коммитим
         git add checked/latest/verified.txt
         
         if ! git diff --cached --quiet; then
           git commit -m "✨ Update verified keys: $(date -u +'%Y-%m-%d %H:%M UTC')"
-          # Теперь наш коммит лежит поверх origin/main → fast-forward push возможен
           git push origin HEAD:main
           echo "✅ Changes committed and pushed"
         else
