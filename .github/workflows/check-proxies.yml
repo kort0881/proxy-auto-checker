@@ -2,8 +2,8 @@ name: Auto Proxy Checker
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # Каждый день в 00:00 UTC
-  workflow_dispatch:      # Ручной запуск через Actions
+    - cron: '0 */6 * * *'   # 00:00, 06:00, 12:00, 18:00 UTC
+  workflow_dispatch:
 
 concurrency:
   group: proxy-checker-push
@@ -82,14 +82,15 @@ jobs:
           echo "⚠️ No verified files found"
         fi
     
-    - name: 📤 Post to Telegram
-      if: steps.checker.outputs.has_results == 'true'
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
-        TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
-      run: |
-        python post_to_telegram.py || echo "⚠️ Telegram posting failed"
+    # ⬇️ Отправка в Telegram ОТКЛЮЧЕНА ⬇️
+    # - name: 📤 Post to Telegram
+    #   if: steps.checker.outputs.has_results == 'true'
+    #   env:
+    #     TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    #     TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
+    #     TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
+    #   run: |
+    #     python post_to_telegram.py || echo "⚠️ Telegram posting failed"
     
     - name: 📁 Upload results as artifact
       if: always()
