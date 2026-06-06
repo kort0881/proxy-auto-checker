@@ -6,7 +6,6 @@ import base64
 from datetime import datetime
 import urllib.parse
 import time
-import random
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -41,9 +40,6 @@ LIGHT_VERIFIED = os.path.join(WORK_DIR, "checked", "latest", "verified.txt")
 
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
-
-# Локальные цитаты
-QUOTES_FILE = os.path.join(WORK_DIR, "data", "quotes_ru.txt")
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def clean_key(k: str) -> str:
@@ -206,16 +202,6 @@ def safe_remove(filepath: str):
             os.remove(filepath)
     except OSError as e:
         print(f"⚠️ Не удалось удалить {filepath}: {e}")
-
-# ---------- ЦИТАТЫ ----------
-def get_local_quote():
-    if not os.path.exists(QUOTES_FILE):
-        return None
-    with open(QUOTES_FILE, "r", encoding="utf-8") as f:
-        quotes = [q.strip() for q in f if q.strip()]
-    if not quotes:
-        return None
-    return random.choice(quotes)
 
 # ---------- ПОДПИСКИ (через GitHub API, без кэша) ----------
 def load_subscriptions():
@@ -433,7 +419,7 @@ def main():
         print("⚠️ Нет картинки для публичного канала")
     safe_remove(public_file)
 
-    # Пост с подписками (публичный)
+    # Пост с подписками (публичный) – без поговорок
     if subscriptions_buttons:
         keyboard = []
         row = []
@@ -445,7 +431,6 @@ def main():
         if row:
             keyboard.append(row)
         subs_text = ("📋 <b>Ссылки на подписки</b>\n\n"
-                     f"💬 <i>{get_local_quote() or 'Лучше один рабочий ключ, чем сто мёртвых.'}</i>\n\n"
                      "💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash")
         send_message(PUBLIC_CHANNEL, subs_text, BOT_TOKEN_PUBLIC, {"inline_keyboard": keyboard})
 
@@ -508,7 +493,7 @@ def main():
                     send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
                 safe_remove(paid_file)
 
-        # Подписки (приват)
+        # Подписки (приват) – без поговорок
         if subscriptions_buttons:
             keyboard = []
             row = []
@@ -520,7 +505,6 @@ def main():
             if row:
                 keyboard.append(row)
             subs_text = ("📋 <b>Ссылки на подписки</b>\n\n"
-                         f"💬 <i>{get_local_quote() or 'Лучше один рабочий ключ, чем сто мёртвых.'}</i>\n\n"
                          "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент")
             send_message(PRIVATE_CHANNEL, subs_text, BOT_TOKEN_PRIVATE, {"inline_keyboard": keyboard})
 
@@ -534,7 +518,5 @@ def main():
     print("\n✅ Скрипт завершил работу")
     return 0
 
-if __name__ == "__main__":
-    sys.exit(main())
 if __name__ == "__main__":
     sys.exit(main())
