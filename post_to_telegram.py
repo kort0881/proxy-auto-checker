@@ -2,6 +2,7 @@
 import os
 import sys
 import requests
+import base64
 from datetime import datetime
 import urllib.parse
 import time
@@ -43,11 +44,6 @@ COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
 # Локальные цитаты
 QUOTES_FILE = os.path.join(WORK_DIR, "data", "quotes_ru.txt")
-
-SUBSCRIPTIONS_URL = (
-    "https://raw.githubusercontent.com/"
-    "kort0881/vpn-checker-backend/refs/heads/main/checked/subscriptions_list.txt"
-)
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def clean_key(k: str) -> str:
@@ -211,7 +207,7 @@ def safe_remove(filepath: str):
     except OSError as e:
         print(f"⚠️ Не удалось удалить {filepath}: {e}")
 
-# ---------- НОВАЯ ФУНКЦИЯ ДЛЯ ЦИТАТ (случайная из файла) ----------
+# ---------- ЦИТАТЫ ----------
 def get_local_quote():
     if not os.path.exists(QUOTES_FILE):
         return None
@@ -221,20 +217,22 @@ def get_local_quote():
         return None
     return random.choice(quotes)
 
-# ---------- ПОДПИСКИ ----------
+# ---------- ПОДПИСКИ (через GitHub API, без кэша) ----------
 def load_subscriptions():
+    API_URL = "https://api.github.com/repos/kort0881/vpn-checker-backend/contents/checked/subscriptions_list.txt"
     try:
-        resp = robust_session.get(SUBSCRIPTIONS_URL, timeout=15)
+        resp = robust_session.get(API_URL, timeout=15)
         if resp.status_code != 200:
-            print(f"⚠️ Не удалось получить подписки: HTTP {resp.status_code}")
+            print(f"⚠️ Не удалось получить подписки через API: HTTP {resp.status_code}")
             return None
-        content = resp.text.strip()
-        if not content:
+        data = resp.json()
+        content = base64.b64decode(data["content"]).decode("utf-8")
+        if not content.strip():
             print("⚠️ Подписки пустые")
             return None
         return content
     except Exception as e:
-        print(f"❌ Ошибка загрузки подписок: {e}")
+        print(f"❌ Ошибка загрузки подписок через API: {e}")
         return None
 
 def parse_subscriptions_for_buttons(subscriptions_text):
@@ -363,7 +361,7 @@ def main():
         return 1
 
     print("\n" + "=" * 70)
-    print(" " * 20 + "📤 TELEGRAM POSTER v2")
+    print(" " * 20 + "📤 TELEGRAM POSTER v2 (API version)")
     print("=" * 70 + "\n")
     if DRY_RUN:
         print("⚙️ Режим DRY_RUN: сообщения в Telegram не отправляются\n")
@@ -435,7 +433,7 @@ def main():
         print("⚠️ Нет картинки для публичного канала")
     safe_remove(public_file)
 
-    # Пост с подписками (публичный) – теперь только локальная цитата
+    # Пост с подписками (публичный)
     if subscriptions_buttons:
         keyboard = []
         row = []
@@ -475,7 +473,7 @@ def main():
                 send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, private_file, caption_priv, BOT_TOKEN_PRIVATE)
             safe_remove(private_file)
 
-        # ---- КЛЮЧИ ОТ ALEKSCLOUD (каждый ключ в отдельном блоке code) ----
+        # ---- КЛЮЧИ ОТ ALEKSCLOUD ----
         paid_keys = load_paid_keys()
         if paid_keys:
             count = len(paid_keys)
@@ -510,7 +508,7 @@ def main():
                     send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
                 safe_remove(paid_file)
 
-        # Подписки (приват) – тоже локальная цитата
+        # Подписки (приват)
         if subscriptions_buttons:
             keyboard = []
             row = []
@@ -536,5 +534,7 @@ def main():
     print("\n✅ Скрипт завершил работу")
     return 0
 
+if __name__ == "__main__":
+    sys.exit(main())
 if __name__ == "__main__":
     sys.exit(main())
