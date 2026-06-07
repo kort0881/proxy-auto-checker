@@ -1,14 +1,16 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-06-06 07:51
+# 2026-06-07 08:28
 # Mode: TCP+HTTP-LITE
-# Keys: 8
+# Keys: 10
 
-vless://f90cc83a-97ce-446d-8f80-30d3eef3351c@144.31.30.69:443?security=reality&type=tcp&packetEncoding=none&allowInsecure=1&sni=eh.vk.com&fp=chrome&flow=xtls-rprx-vision&sid=6ba85179e30d4fc2&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc#%5B98ms%7CEU%7Cj3%7Ctcp80%25%7CVLESS%7C%40vlesstrojan%5D
-vless://2d281503-7a0a-0021-8934-4c94585c87b1@us.musicperec.ru:443?type=tcp&security=reality&sni=ads.x5.ru&fp=chrome&flow=xtls-rprx-vision&pbk=b4n1pcO8ST3JkGtj8YymXVrW17LEe2EHec5wY7hMMR4&sid=0a4b7c3d#%5B119ms%7CRU%7Cj168%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://d78c12c4-6927-40b8-8550-ed9be00334da@franccxc3.twilightparadox.com:443?security=reality&type=tcp&sni=franccxc3.twilightparadox.com&fp=firefox&flow=xtls-rprx-vision&sid=6257e28b6a8c0ad5&pbk=4n-kU4YGN9L_XkDepNtAohIGO15Eaxzw7BDhP1hPPU8&encryption=none#%5B138ms%7CEU%7Cj172%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://35762c02-ff2b-4526-b41b-e96e5d99528b@transparency.cloud-fr.appcore.org:34754?type=tcp&security=reality&sni=yahoo.com&fp=firefox&flow=xtls-rprx-vision&pbk=eMijZKuJlNEciXbhyzdbewk-ot_JLMZVaA42bxKFcBM&sid=c9eb0359fac0c345#%5B174ms%7CEU%7Cj176%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://92ecaa18-1c6d-4eb3-943c-c904571106c5@89.124.78.248:8880?security=none&encryption=none&headerType=none&type=tcp#%5B207ms%7CEU%7Cj249%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206N051QjBZNW0zYU56a0tNS2xGb013a2lhanN1NkYzNmM5b2s0VktFWm5CND0=@de5.taskflowhub.org:2083#%5B219ms%7CEU%7Cj188%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206N051QjBZNW0zYU56a0tNS2xGb013a2lhanN1NkYzNmM5b2s0VktFWm5CND0@de5.taskflowhub.org:2083#%5B219ms%7CEU%7Cj188%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206VEV6amZBWXEySWp0dW9T@141.164.45.187:6679#%5B280ms%7CEU%7Cj164%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://2d281503-7a0a-0021-8934-4c94585c87b1@us.musicperec.ru:443?type=tcp&security=reality&sni=ads.x5.ru&fp=chrome&flow=xtls-rprx-vision&pbk=b4n1pcO8ST3JkGtj8YymXVrW17LEe2EHec5wY7hMMR4&sid=0a4b7c3d#%5B148ms%7CRU%7Cj143%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://2d281503-7a0a-0021-8934-4c94585c87b1@us.musicperec.ru:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=ads.x5.ru&fp=chrome&pbk=b4n1pcO8ST3JkGtj8YymXVrW17LEe2EHec5wY7hMMR4&sid=0a4b7c3d&type=tcp&headerType=none#%5B150ms%7CRU%7Cj226%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://56aaf8cd-d2fb-5211-bc9b-c242ee37d429@194.59.183.234:666?encryption=none&security=#%5B150ms%7CEU%7Cj4%7Ctcp80%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5d8fcd24-9634-4dd7-845c-3dc2d6291942@nid.pink-perfect.ru:443?headerType=none&sid=86b80f1e713a33ad&pbk=2fgsbEAn-ALVpjnE4ZTPrzaZY70vVplYwldCnslInE0&encryption=none&security=reality&fp=chrome&flow=xtls-rprx-vision&sni=www.google.com&type=tcp#%5B178ms%7CRU%7Cj196%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5d8fcd24-9634-4dd7-845c-3dc2d6291942@nid.pink-perfect.ru:443?security=reality&encryption=none&pbk=2fgsbEAn-ALVpjnE4ZTPrzaZY70vVplYwldCnslInE0&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=www.google.com&sid=86b80f1e713a33ad#%5B178ms%7CRU%7Cj196%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5e6cd281-2d03-4e72-9bb2-b38ce2da7cc7@pl.moktana.app:443?mode=gun&security=reality&encryption=none&pbk=zz1etKRzRA4fwe0Te0p6jAlHorNJs4mmcljA3oL520E&fp=chrome&type=grpc&serviceName=moktana.net.v1.StreamService&sni=pl.moktana.app&sid=51e9fd4ba43f64d7#%5B188ms%7CEU%7Cj169%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://c931f737-cafe-4e4f-998a-a65517941256@node-fi.dostup-est.info:8443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=cdnjs.com&fp=chrome&pbk=Ubibgn_MlW_zHo9LwjNH_b6SLNWwTJFwq7wW2ggLtUs&sid=88ce6b586fcaf681&type=tcp&headerType=none#%5B211ms%7CEU%7Cj141%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://92ecaa18-1c6d-4eb3-943c-c904571106c5@89.124.78.248:8880?encryption=none&type=raw&headerType=none&security=none#%5B215ms%7CEU%7Cj231%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://92ecaa18-1c6d-4eb3-943c-c904571106c5@89.124.78.248:8880?security=none&type=tcp&packetEncoding=none#%5B244ms%7CEU%7Cj215%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTptemVNWUJKWXA0Qm83bkExcVlMdnY3UUc3M2lndEFBODVudDRwcjhBOW50eDJxaERmWWdSdGlKN2lIN1ZyY25lUUtObXR2cGJzdnZGS1BhVUFUWUVMaTE4aUg1NlR0cjQ=@download.riferoser.icu:56594#%5B320ms%7CEU%7Cj170%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
