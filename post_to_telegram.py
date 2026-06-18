@@ -493,6 +493,17 @@ def main():
                     send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
                 safe_remove(paid_file)
 
+        # ---- ССЫЛКА НА ПОДПИСКУ ALEKSCLOUD (отдельный маленький блок) ----
+        subs_link = "https://digitalnet.qzz.io/sub/06ea0E1NhbDjd8Qv"
+        caption_link = (
+            f"🔗 <b>Подписка от alekscloud</b>\n\n"
+            f"Перейдите по ссылке, чтобы скопировать ключи вручную:\n"
+            f"<code>{subs_link}</code>\n\n"
+            f"📅 Подписка активна до: <b>21.12.2026</b>\n"
+            f"💡 Откройте в браузере и скопируйте ключи из QR-кода или текста."
+        )
+        send_message(PRIVATE_CHANNEL, caption_link, BOT_TOKEN_PRIVATE)
+
         # Подписки (приват) – без поговорок
         if subscriptions_buttons:
             keyboard = []
