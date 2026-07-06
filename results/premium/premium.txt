@@ -1,8 +1,11 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-07-05 08:09
+# 2026-07-06 09:08
 # Mode: TCP+HTTP-LITE
-# Keys: 2
+# Keys: 5
 
-vless://83c7f81b-4f26-405d-9a55-4e164249cbdd@us.chick-team.ru:443?encryption=none&type=tcp&security=reality&fp=firefox&pbk=yFgGx1ZUXcooJP9L4huwVWUPaQ-ta47nYAU7Puh9LnQ&sni=us.chick-team.ru&sid=ebbb022833814d35&flow=xtls-rprx-vision#%5B121ms%7CRU%7Cj185%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://83c7f81b-4f26-405d-9a55-4e164249cbdd@gb.chick-team.ru:443?encryption=none&type=tcp&security=reality&fp=firefox&pbk=QCA_NBcnkrZywx1OCUQgLEtFjC9jUyUaHYVaicpzkS8&sni=gb.chick-team.ru&sid=cad7ebb239d9f52e&flow=xtls-rprx-vision#%5B144ms%7CRU%7Cj219%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://cf038a28-8f85-41fc-9e86-ba99a3fdd0d9@144.31.216.98:8443?security=reality&encryption=none&pbk=Xb-A55KyH9nwjxKw85wksIUJs9KBGk5B8rLArXGVLiw&headerType=&type=tcp&flow=xtls-rprx-vision&sni=service.mycloudsfere.abrdns.com&sid=d9654598d4415f95#%5B154ms%7CEU%7Cj8%7Ctcp80%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5bb4eea6-7786-44c9-aafa-bd0113c1b800@telegram.private-networks-zk.com:443?type=tcp&security=reality&fp=firefox&sni=ads.x5.ru&flow=xtls-rprx-vision&pbk=-tePObR3oZwGAUOb5kqTYkNWl6rtUKl0RFuzuu06wgw&sid=50#%5B156ms%7CEU%7Cj125%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5bb4eea6-7786-44c9-aafa-bd0113c1b800@telegram.private-networks-zk.com:443?sni=ads.x5.ru&flow=xtls-rprx-vision&sid=50&security=reality&pbk=-tePObR3oZwGAUOb5kqTYkNWl6rtUKl0RFuzuu06wgw&type=tcp#%5B156ms%7CEU%7Cj125%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=chrome&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B181ms%7CEU%7Cj169%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://564397f8-4805-4433-ab5b-a24aa133bac2@hub.oneoknews.com:443?mode=gun&security=reality&encryption=none&authority=v2rayNplus--v2rayNplus--v2rayNplus&pbk=KJoHsAShwQt-FYE2OGEekwDbeeYe-S1A0YBU8W5uYGc&fp=chrome&type=grpc&serviceName=api.v1.StreamService&sni=hub.oneoknews.com&sid=064c2d37308aeeb6#%5B184ms%7CEU%7Cj202%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
