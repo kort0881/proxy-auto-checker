@@ -96,26 +96,26 @@ class Config:
 
     TCP_WORKERS: int = 100
 
-    TCP_TIMEOUT: float = 5.0
-    TCP_ATTEMPTS: int = 5
+    TCP_TIMEOUT: float = 8.0           # было 5.0 – даём больше времени на ответ
+    TCP_ATTEMPTS: int = 8              # было 5 – больше попыток = выше шанс
 
-    ELITE_MAX_LATENCY: float = 300.0
-    ELITE_MAX_JITTER: float = 120.0
-    ELITE_MIN_SUCCESS: float = 0.90
+    ELITE_MAX_LATENCY: float = 500.0   # было 300
+    ELITE_MAX_JITTER: float = 200.0    # было 120
+    ELITE_MIN_SUCCESS: float = 0.80    # было 0.90
 
-    PREMIUM_MAX_LATENCY: float = 600.0
-    PREMIUM_MAX_JITTER: float = 250.0
-    PREMIUM_MIN_SUCCESS: float = 0.70
+    PREMIUM_MAX_LATENCY: float = 1000.0 # было 600
+    PREMIUM_MAX_JITTER: float = 400.0   # было 250
+    PREMIUM_MIN_SUCCESS: float = 0.60   # было 0.70
 
-    GOOD_MAX_LATENCY: float = 2000.0
-    GOOD_MIN_SUCCESS: float = 0.50
+    GOOD_MAX_LATENCY: float = 3000.0    # было 2000
+    GOOD_MIN_SUCCESS: float = 0.40      # было 0.50
 
     GC_EVERY: int = 100
 
     # Вторая ступень: глубокий HTTP(S)-чек
-    SECOND_STAGE_TOP_N: int = 200           # сколько лучших по latency добивать
+    SECOND_STAGE_TOP_N: int = 500       # было 200 – проверяем больше ключей
     SECOND_STAGE_WORKERS: int = 40
-    HTTP_TEST_TIMEOUT: float = 4.0
+    HTTP_TEST_TIMEOUT: float = 6.0      # было 4.0
     HTTP_TEST_URLS: Tuple[str, ...] = (
         "/",                 # просто корень
         "/generate_204",     # иногда прокидывается
@@ -783,5 +783,4 @@ if __name__ == "__main__":
         exit_code = 1
 
     sys.exit(exit_code)
-
 
