@@ -244,7 +244,7 @@ def parse_subscriptions_for_buttons(subscriptions_text):
     return buttons
 
 # ---------- ПРОКСИ ----------
-def load_active_proxies_from_github(url="https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/proxy_all_tme_verified.txt", limit=10):
+def load_active_proxies_from_github(url="https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/proxy_all_tme_verified.txt", limit=20):
     try:
         resp = robust_session.get(url, timeout=30)
         if resp.status_code != 200:
