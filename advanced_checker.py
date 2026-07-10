@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker v5.3 LITE (TCP+HTTP-deep) - МАКСИМАЛЬНО МЯГКАЯ ВЕРСИЯ
-- Вторая ступень (HTTP-тест) ОТКЛЮЧЕНА
-- Очень широкие диапазоны для Elite/Premium/Good
+AI Proxy Checker v5.3 LITE (TCP+HTTP-deep) — мягкая версия
+HTTP-тест не убивает ключи, а понижает качество.
 """
 
 import os
@@ -86,38 +85,40 @@ class Config:
 
     TCP_WORKERS: int = 100
 
-    TCP_TIMEOUT: float = 10.0          # Максимальное время на ответ
-    TCP_ATTEMPTS: int = 5              # Количество попыток
+    TCP_TIMEOUT: float = 8.0
+    TCP_ATTEMPTS: int = 8
 
-    # Очень широкие пороги
-    ELITE_MAX_LATENCY: float = 800.0   
-    ELITE_MAX_JITTER: float = 400.0    
-    ELITE_MIN_SUCCESS: float = 0.60    
+    ELITE_MAX_LATENCY: float = 500.0
+    ELITE_MAX_JITTER: float = 200.0
+    ELITE_MIN_SUCCESS: float = 0.80
 
-    PREMIUM_MAX_LATENCY: float = 1500.0 
-    PREMIUM_MAX_JITTER: float = 600.0   
-    PREMIUM_MIN_SUCCESS: float = 0.40   
+    PREMIUM_MAX_LATENCY: float = 1000.0
+    PREMIUM_MAX_JITTER: float = 400.0
+    PREMIUM_MIN_SUCCESS: float = 0.60
 
-    GOOD_MAX_LATENCY: float = 5000.0    
-    GOOD_MIN_SUCCESS: float = 0.20      
+    GOOD_MAX_LATENCY: float = 3000.0
+    GOOD_MIN_SUCCESS: float = 0.40
 
     GC_EVERY: int = 100
 
-    # Вторая ступень ОТКЛЮЧЕНА (TOP_N = 0)
-    SECOND_STAGE_TOP_N: int = 0          # 0 = не выполнять HTTP-тест
+    # Вторая ступень: HTTP-тест (только понижает качество)
+    SECOND_STAGE_TOP_N: int = 200          # проверяем топ-200
     SECOND_STAGE_WORKERS: int = 40
-    HTTP_TEST_TIMEOUT: float = 6.0
-    HTTP_TEST_URLS: Tuple[str, ...] = ()
+    HTTP_TEST_TIMEOUT: float = 4.0
+    HTTP_TEST_URLS: Tuple[str, ...] = (
+        "/",
+        "/generate_204",
+    )
 
 CONFIG = Config()
 
 # ==================== SMART SERVER SCORING ====================
 
 def compute_server_score(latency: float, jitter: float, success_rate: float, packet_loss: float) -> float:
-    latency_score = max(0, 100 - latency * 0.1)   # Меньше штраф за латентность
-    jitter_penalty = jitter * 0.05
+    latency_score = max(0, 100 - latency * 0.2)
+    jitter_penalty = jitter * 0.1
     reliability_score = success_rate * 100
-    loss_penalty = packet_loss * 80
+    loss_penalty = packet_loss * 120
     score = latency_score + reliability_score - jitter_penalty - loss_penalty
     return max(0, score)
 
@@ -352,12 +353,14 @@ def classify_quality(latency: float, jitter: float, success_rate: float) -> Opti
 
     if (latency <= CONFIG.ELITE_MAX_LATENCY and
             jitter <= CONFIG.ELITE_MAX_JITTER and
-            success_rate >= CONFIG.ELITE_MIN_SUCCESS):
+            success_rate >= CONFIG.ELITE_MIN_SUCCESS and
+            score > 120):
         return Quality.ELITE
 
     if (latency <= CONFIG.PREMIUM_MAX_LATENCY and
             jitter <= CONFIG.PREMIUM_MAX_JITTER and
-            success_rate >= CONFIG.PREMIUM_MIN_SUCCESS):
+            success_rate >= CONFIG.PREMIUM_MIN_SUCCESS and
+            score > 80):
         return Quality.PREMIUM
 
     if (latency <= CONFIG.GOOD_MAX_LATENCY and
@@ -516,12 +519,69 @@ def check_key_simple(key: str) -> CheckResult:
 
     return result
 
-# ==================== SECOND STAGE: ПРОПУСКАЕМ ====================
+# ==================== SECOND STAGE: SOFT HTTP(S) TEST (понижает качество) ====================
+
+def deep_http_test_one(r: CheckResult) -> bool:
+    if not r.host or not r.port:
+        return False
+
+    scheme = "https" if r.security in ("tls", "reality") else "http"
+    base = f"{scheme}://{r.host}:{r.port}"
+
+    for path in CONFIG.HTTP_TEST_URLS:
+        url = base + path
+        try:
+            resp = requests.get(
+                url,
+                timeout=CONFIG.HTTP_TEST_TIMEOUT,
+                allow_redirects=False,
+                verify=(scheme == "https"),
+            )
+            if resp.status_code in (200, 204, 301, 302):
+                return True
+        except Exception:
+            continue
+
+    return False
 
 def second_stage_filter(results: List[CheckResult]) -> None:
-    # Вторая ступень ОТКЛЮЧЕНА — ничего не делаем
-    log("[DEEP] Second stage DISABLED — skipping")
-    return
+    alive_results = [r for r in results if r.alive and r.host and r.port]
+    if not alive_results:
+        return
+
+    alive_results.sort(key=lambda x: x.latency)
+    top_n = alive_results[:CONFIG.SECOND_STAGE_TOP_N]
+
+    log(f"[DEEP] Soft HTTP-check for top {len(top_n)} of {len(alive_results)} alive")
+
+    lock = threading.Lock()
+
+    def worker(r: CheckResult):
+        ok = deep_http_test_one(r)
+        if not ok:
+            with lock:
+                # Не убиваем, а понижаем качество
+                if r.quality == Quality.ELITE:
+                    r.quality = Quality.PREMIUM
+                    r.error = (r.error or "") + "|http_fail_elite→premium"
+                elif r.quality == Quality.PREMIUM:
+                    r.quality = Quality.GOOD
+                    r.error = (r.error or "") + "|http_fail_premium→good"
+                # GOOD остаётся GOOD, можно отметить
+                else:
+                    r.error = (r.error or "") + "|http_fail_good"
+        else:
+            with lock:
+                # Если HTTP прошёл, можно оставить как есть или даже повысить? Не будем.
+                pass
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.SECOND_STAGE_WORKERS) as ex:
+        futures = [ex.submit(worker, r) for r in top_n]
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                f.result()
+            except Exception:
+                record_error("deep_http_exception")
 
 # ==================== SAVE RESULTS ====================
 
@@ -545,7 +605,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
             f.write(f"# {quality.value.upper()}\n")
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"# Mode: TCP+HTTP-LITE (SECOND DISABLED)\n")
+            f.write(f"# Mode: TCP+HTTP-LITE\n")
             f.write(f"# Keys: {len(items)}\n\n")
 
             for r in items:
@@ -568,7 +628,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
     with open(verified_file, 'w', encoding='utf-8') as f:
         f.write(f"# {MY_CHANNEL}\n")
         f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"# Mode: TCP+HTTP-LITE (SECOND DISABLED)\n")
+        f.write(f"# Mode: TCP+HTTP-LITE\n")
         f.write(f"# Working: {len(all_results)}\n\n")
 
         for r in all_results:
@@ -583,7 +643,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
-        "mode": "TCP+HTTP-LITE (SECOND DISABLED)",
+        "mode": "TCP+HTTP-LITE",
         "total_checked": stats.tcp_checked,
         "total_working": len(all_results),
         "by_quality": {q.value: len(by_quality.get(q, [])) for q in Quality},
@@ -644,8 +704,8 @@ def main():
     CONFIG.SECOND_STAGE_TOP_N = args.second_top
 
     print("\n" + "=" * 60)
-    print(" AI Proxy Checker v5.3 LITE (TCP+HTTP) - МЯГКАЯ ВЕРСИЯ")
-    print(" Two-stage: TCP first, HTTP deep on top-N (DISABLED)")
+    print(" AI Proxy Checker v5.3 LITE (TCP+HTTP)")
+    print(" Two-stage: TCP first, HTTP deep on top-N (soft)")
     print(f" Channel: {MY_CHANNEL}")
     print("=" * 60)
 
@@ -688,7 +748,7 @@ def main():
                 stats.tcp_dead += 1
                 record_error("future_exception")
 
-    # Вторая ступень ОТКЛЮЧЕНА
+    # ВТОРАЯ СТУПЕНЬ: мягкая HTTP-проверка (понижает качество)
     second_stage_filter(results)
 
     save_results(results, region="Verified")
