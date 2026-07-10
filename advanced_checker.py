@@ -84,7 +84,7 @@ def read_source_text(url: str) -> str:
 # }
 KEYSOURCES = {
     "Verified": [
-        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/checked/latest/verified.txt",
+        "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/refs/heads/main/checked/latest/verified.txt",
     ],
 }
 
