@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Proxy Checker v5.3 LITE (TCP+HTTP-deep)
-
-Изменения:
-- Оставлен быстрый TCP-чекер как первая ступень.
-- Добавлена "вторая ступень": лёгкий HTTP(S)-тест для топ-N по latency.
-- Жёстче фильтруются сомнительные TLS-коннекты.
-- Сохранён формат вывода (premium/*.txt, verified_*.txt, stats/history).
+AI Proxy Checker v5.3 LITE (TCP+HTTP-deep) - МАКСИМАЛЬНО МЯГКАЯ ВЕРСИЯ
+- Вторая ступень (HTTP-тест) ОТКЛЮЧЕНА
+- Очень широкие диапазоны для Elite/Premium/Good
 """
 
 import os
@@ -76,12 +72,6 @@ def read_source_text(url: str) -> str:
             time.sleep(2)
 
 # ==================== SOURCES ====================
-# Если хочешь читать локальный файл из первого скрипта:
-# KEYSOURCES = {
-#     "Verified": [
-#         str(RESULTS_FOLDER / "verified_2026-03-11_12-00-00.txt"),
-#     ],
-# }
 KEYSOURCES = {
     "Verified": [
         "https://raw.githubusercontent.com/kort0881/proxy-auto-checker/main/checked/latest/verified.txt",
@@ -96,40 +86,38 @@ class Config:
 
     TCP_WORKERS: int = 100
 
-    TCP_TIMEOUT: float = 8.0           # было 5.0 – даём больше времени на ответ
-    TCP_ATTEMPTS: int = 8              # было 5 – больше попыток = выше шанс
+    TCP_TIMEOUT: float = 10.0          # Максимальное время на ответ
+    TCP_ATTEMPTS: int = 5              # Количество попыток
 
-    ELITE_MAX_LATENCY: float = 500.0   # было 300
-    ELITE_MAX_JITTER: float = 200.0    # было 120
-    ELITE_MIN_SUCCESS: float = 0.80    # было 0.90
+    # Очень широкие пороги
+    ELITE_MAX_LATENCY: float = 800.0   
+    ELITE_MAX_JITTER: float = 400.0    
+    ELITE_MIN_SUCCESS: float = 0.60    
 
-    PREMIUM_MAX_LATENCY: float = 1000.0 # было 600
-    PREMIUM_MAX_JITTER: float = 400.0   # было 250
-    PREMIUM_MIN_SUCCESS: float = 0.60   # было 0.70
+    PREMIUM_MAX_LATENCY: float = 1500.0 
+    PREMIUM_MAX_JITTER: float = 600.0   
+    PREMIUM_MIN_SUCCESS: float = 0.40   
 
-    GOOD_MAX_LATENCY: float = 3000.0    # было 2000
-    GOOD_MIN_SUCCESS: float = 0.40      # было 0.50
+    GOOD_MAX_LATENCY: float = 5000.0    
+    GOOD_MIN_SUCCESS: float = 0.20      
 
     GC_EVERY: int = 100
 
-    # Вторая ступень: глубокий HTTP(S)-чек
-    SECOND_STAGE_TOP_N: int = 500       # было 200 – проверяем больше ключей
+    # Вторая ступень ОТКЛЮЧЕНА (TOP_N = 0)
+    SECOND_STAGE_TOP_N: int = 0          # 0 = не выполнять HTTP-тест
     SECOND_STAGE_WORKERS: int = 40
-    HTTP_TEST_TIMEOUT: float = 6.0      # было 4.0
-    HTTP_TEST_URLS: Tuple[str, ...] = (
-        "/",                 # просто корень
-        "/generate_204",     # иногда прокидывается
-    )
+    HTTP_TEST_TIMEOUT: float = 6.0
+    HTTP_TEST_URLS: Tuple[str, ...] = ()
 
 CONFIG = Config()
 
 # ==================== SMART SERVER SCORING ====================
 
 def compute_server_score(latency: float, jitter: float, success_rate: float, packet_loss: float) -> float:
-    latency_score = max(0, 100 - latency * 0.2)
-    jitter_penalty = jitter * 0.1
+    latency_score = max(0, 100 - latency * 0.1)   # Меньше штраф за латентность
+    jitter_penalty = jitter * 0.05
     reliability_score = success_rate * 100
-    loss_penalty = packet_loss * 120
+    loss_penalty = packet_loss * 80
     score = latency_score + reliability_score - jitter_penalty - loss_penalty
     return max(0, score)
 
@@ -274,7 +262,6 @@ def tls_handshake(host: str, port: int, timeout: float) -> bool:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as ssock:
                 cert = ssock.getpeercert()
-                # Простая проверка: CN/SAN содержит host
                 names = []
                 subject = cert.get("subject", [])
                 for tup in subject:
@@ -365,14 +352,12 @@ def classify_quality(latency: float, jitter: float, success_rate: float) -> Opti
 
     if (latency <= CONFIG.ELITE_MAX_LATENCY and
             jitter <= CONFIG.ELITE_MAX_JITTER and
-            success_rate >= CONFIG.ELITE_MIN_SUCCESS and
-            score > 120):
+            success_rate >= CONFIG.ELITE_MIN_SUCCESS):
         return Quality.ELITE
 
     if (latency <= CONFIG.PREMIUM_MAX_LATENCY and
             jitter <= CONFIG.PREMIUM_MAX_JITTER and
-            success_rate >= CONFIG.PREMIUM_MIN_SUCCESS and
-            score > 80):
+            success_rate >= CONFIG.PREMIUM_MIN_SUCCESS):
         return Quality.PREMIUM
 
     if (latency <= CONFIG.GOOD_MAX_LATENCY and
@@ -531,70 +516,12 @@ def check_key_simple(key: str) -> CheckResult:
 
     return result
 
-# ==================== SECOND STAGE: SIMPLE HTTP(S) TEST ====================
-
-def deep_http_test_one(r: CheckResult) -> bool:
-    """
-    Вторая ступень: делаем реальный HTTP(S) запрос на host:port.
-    Не Xray, но отсекает кучу ложных "живых" портов.
-    """
-    if not r.host or not r.port:
-        return False
-
-    scheme = "https" if r.security in ("tls", "reality") else "http"
-    base = f"{scheme}://{r.host}:{r.port}"
-
-    for path in CONFIG.HTTP_TEST_URLS:
-        url = base + path
-        try:
-            resp = requests.get(
-                url,
-                timeout=CONFIG.HTTP_TEST_TIMEOUT,
-                allow_redirects=False,
-                verify=(scheme == "https"),
-            )
-            if resp.status_code in (200, 204, 301, 302):
-                return True
-        except Exception:
-            continue
-
-    return False
+# ==================== SECOND STAGE: ПРОПУСКАЕМ ====================
 
 def second_stage_filter(results: List[CheckResult]) -> None:
-    """
-    Модифицирует список results IN-PLACE:
-    для топ-N по latency подтверждает работу через deep_http_test_one,
-    остальные alive остаются как есть или (опционально) тоже режутся.
-    """
-    alive_results = [r for r in results if r.alive and r.host and r.port]
-    if not alive_results:
-        return
-
-    alive_results.sort(key=lambda x: x.latency)
-    top_n = alive_results[:CONFIG.SECOND_STAGE_TOP_N]
-
-    log(f"[DEEP] Second stage HTTP-check for top {len(top_n)} of {len(alive_results)} alive")
-
-    lock = threading.Lock()
-
-    def worker(r: CheckResult):
-        ok = deep_http_test_one(r)
-        if not ok:
-            with lock:
-                r.alive = False
-                r.error = (r.error or "") + "|deep_http_fail"
-        else:
-            with lock:
-                # можно при желании поднять quality до PREMIUM/ELITE, но не трогаю
-                pass
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.SECOND_STAGE_WORKERS) as ex:
-        futures = [ex.submit(worker, r) for r in top_n]
-        for f in concurrent.futures.as_completed(futures):
-            try:
-                f.result()
-            except Exception:
-                record_error("deep_http_exception")
+    # Вторая ступень ОТКЛЮЧЕНА — ничего не делаем
+    log("[DEEP] Second stage DISABLED — skipping")
+    return
 
 # ==================== SAVE RESULTS ====================
 
@@ -618,7 +545,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
             f.write(f"# {quality.value.upper()}\n")
             f.write(f"# {MY_CHANNEL}\n")
             f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"# Mode: TCP+HTTP-LITE\n")
+            f.write(f"# Mode: TCP+HTTP-LITE (SECOND DISABLED)\n")
             f.write(f"# Keys: {len(items)}\n\n")
 
             for r in items:
@@ -641,7 +568,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
     with open(verified_file, 'w', encoding='utf-8') as f:
         f.write(f"# {MY_CHANNEL}\n")
         f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"# Mode: TCP+HTTP-LITE\n")
+        f.write(f"# Mode: TCP+HTTP-LITE (SECOND DISABLED)\n")
         f.write(f"# Working: {len(all_results)}\n\n")
 
         for r in all_results:
@@ -656,7 +583,7 @@ def save_results(results: List[CheckResult], region: str = "Verified"):
     stats_data = {
         "timestamp": datetime.now().isoformat(),
         "region": region,
-        "mode": "TCP+HTTP-LITE",
+        "mode": "TCP+HTTP-LITE (SECOND DISABLED)",
         "total_checked": stats.tcp_checked,
         "total_working": len(all_results),
         "by_quality": {q.value: len(by_quality.get(q, [])) for q in Quality},
@@ -717,8 +644,8 @@ def main():
     CONFIG.SECOND_STAGE_TOP_N = args.second_top
 
     print("\n" + "=" * 60)
-    print(" AI Proxy Checker v5.3 LITE (TCP+HTTP)")
-    print(" Two-stage: TCP first, HTTP deep on top-N")
+    print(" AI Proxy Checker v5.3 LITE (TCP+HTTP) - МЯГКАЯ ВЕРСИЯ")
+    print(" Two-stage: TCP first, HTTP deep on top-N (DISABLED)")
     print(f" Channel: {MY_CHANNEL}")
     print("=" * 60)
 
@@ -761,7 +688,7 @@ def main():
                 stats.tcp_dead += 1
                 record_error("future_exception")
 
-    # ВТОРАЯ СТУПЕНЬ: HTTP(S)-проверка топ-N по latency
+    # Вторая ступень ОТКЛЮЧЕНА
     second_stage_filter(results)
 
     save_results(results, region="Verified")
@@ -783,4 +710,3 @@ if __name__ == "__main__":
         exit_code = 1
 
     sys.exit(exit_code)
-
