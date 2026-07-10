@@ -1,9 +1,8 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-07-10 08:30
-# Mode: TCP+HTTP-LITE
-# Keys: 3
+# 2026-07-10 09:17
+# Mode: TCP+HTTP-LITE (SECOND DISABLED)
+# Keys: 2
 
-vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?encryption=none&fp=&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&security=reality&serviceName=data-sync&sid=d5c7f84e37e0c12d&sni=google.com&type=grpc#%5B106ms%7CEU%7Cj228%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=random&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B118ms%7CEU%7Cj211%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=chrome&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B152ms%7CEU%7Cj226%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.189:8080#%5B101ms%7CEU%7Cj0%7Ctcp40%25%7CSS%7C%40vlesstrojan%5D
+vless://356ccb34-22cc-4446-a137-072bc60d65ca@bypass.fr-gt-01.com:8443?type=tcp&headerType=none&security=reality&encryption=none&sni=storage.yandex.net&fp=firefox&pbk=1oUeBtHH4DskTM_jCh-6enWRkFMDX9l1OU5kWYl4kxA&sid=f34818a561dfd1fe&flow=xtls-rprx-vision#%5B339ms%7CEU%7Cj530%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
