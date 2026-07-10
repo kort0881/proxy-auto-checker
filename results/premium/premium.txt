@@ -1,11 +1,9 @@
 # PREMIUM
 # @vlesstrojan
-# 2026-07-09 10:15
+# 2026-07-10 08:30
 # Mode: TCP+HTTP-LITE
-# Keys: 5
+# Keys: 3
 
-vless://f6431ff1-dec0-4a6c-be4a-ce917913b589@bc-ua-hn.ray-balance.space:4443?mode=gun&security=none&encryption=none&type=grpc&descriptions=СвободуИнтернету205#%5B97ms%7CEU%7Cj156%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTp2U3VzQUJwZ1V6bk5rbGpIVWoxdjV3@188.245.87.3:2096#%5B98ms%7CEU%7Cj7%7Ctcp80%25%7CSS%7C%40vlesstrojan%5D
-vless://f6431ff1-dec0-4a6c-be4a-ce917913b589@bc-pl-hn.ray-balance.space:4443?type=grpc&mode=gun#%5B116ms%7CEU%7Cj143%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f8cae104-2eaa-4b16-b258-65be28281b70@usa-efddr-343e-3rder-4r-4f4r-2-d2e-5f-tg-4eee.codesystem.ir:2026?security=reality&type=tcp&headerType=&path=&host=&sni=yahoo.com&fp=chrome&pbk=1pZz4shnro2xyuXc7MMSFseBbbuy1weo2QLclTDJ8Fo&sid=db4a993c8bb355ba#%5B129ms%7CEU%7Cj179%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTptZHA2NWc2bGZ3cGh6Mnc2@0709-mr.kovira2.ir:1010#%5B190ms%7CEU%7Cj185%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?encryption=none&fp=&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&security=reality&serviceName=data-sync&sid=d5c7f84e37e0c12d&sni=google.com&type=grpc#%5B106ms%7CEU%7Cj228%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=random&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B118ms%7CEU%7Cj211%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=chrome&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B152ms%7CEU%7Cj226%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
