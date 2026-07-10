@@ -1,8 +1,9 @@
 # ELITE
 # @vlesstrojan
-# 2026-07-10 08:30
+# 2026-07-10 08:59
 # Mode: TCP+HTTP-LITE
-# Keys: 2
+# Keys: 3
 
-vless://7499f0a0-3670-4cf6-a31c-ad4cd943cf18@us.hagrid-connected.com:443?flow=xtls-rprx-vision&encryption=none&security=reality&sni=us.hagrid-connected.com&fp=edge&pbk=nfkwd9xJCoNuWrvvieBB9VfpcDldsARAdFPL0dF5A1Q&sid=305570274c0c72cc&allowinsecure=0&type=tcp&headerType=none#%5B80ms%7CEU%7Cj160%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://729a43e6-6926-4c27-92f6-b70a67471afc@hub.oneoknews.com:443?encryption=none&type=grpc&serviceName=api.v1.StreamService&security=reality&fp=firefox&pbk=KJoHsAShwQt-FYE2OGEekwDbeeYe-S1A0YBU8W5uYGc&sni=hub.oneoknews.com&sid=064c2d37308aeeb6#%5B101ms%7CEU%7Cj160%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=chrome&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B151ms%7CEU%7Cj76%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://729a43e6-6926-4c27-92f6-b70a67471afc@hub.oneoknews.com:443?encryption=none&type=grpc&serviceName=api.v1.StreamService&security=reality&fp=firefox&pbk=KJoHsAShwQt-FYE2OGEekwDbeeYe-S1A0YBU8W5uYGc&sni=hub.oneoknews.com&sid=064c2d37308aeeb6#%5B159ms%7CEU%7Cj62%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b0f08ae1-7cf9-4612-ad61-72681e0b92da@de-3.coinbridge.nl:443?mode=gun&security=reality&encryption=none&pbk=kPBXTe2KCp55GrHS_qU_sF7ohUcT8Vu-e8i6Yd9MERI&fp=random&type=grpc&serviceName=data-sync&sni=google.com&sid=d5c7f84e37e0c12d#%5B162ms%7CEU%7Cj94%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
