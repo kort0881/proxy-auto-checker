@@ -82,15 +82,14 @@ jobs:
           echo "⚠️ No verified files found"
         fi
     
-    # ⬇️ Отправка в Telegram ОТКЛЮЧЕНА ⬇️
-    # - name: 📤 Post to Telegram
-    #   if: steps.checker.outputs.has_results == 'true'
-    #   env:
-    #     TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-    #     TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
-    #     TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
-    #   run: |
-    #     python post_to_telegram.py || echo "⚠️ Telegram posting failed"
+    - name: 📤 Post to Telegram
+      if: steps.checker.outputs.has_results == 'true'
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
+        TELEGRAM_PRIVATE_CHANNEL: ${{ secrets.TELEGRAM_PRIVATE_CHANNEL }}
+      run: |
+        python post_to_telegram.py || echo "⚠️ Telegram posting failed"
     
     - name: 📁 Upload results as artifact
       if: always()
