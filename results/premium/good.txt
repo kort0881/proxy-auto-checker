@@ -1,39 +1,21 @@
 # GOOD
 # @vlesstrojan
-# 2026-08-12 06:21
+# 2026-08-13 06:22
 # Mode: TCP+HTTP-LITE
-# Keys: 33
+# Keys: 15
 
-vless://e4514801-0d5a-42ba-869f-39bd605aef9e@3.71.241.48:22222?encryption=none&security=none&type=tcp#%5B91ms%7CEU%7Cj4%7Ctcp50%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo3ZTczMWVjMy1mOGUxLTQzZjYtOTJjZi0zOTc4ZDE0NzA1YzQ=@r3mrcg001286ek2.cybervena.com:50099#%5B188ms%7CEU%7Cj39%7Ctcp50%25%7CSS%7C%40vlesstrojan%5D
-vless://7e8f7489-e65f-4be6-93ed-867a74ec6759@185.39.204.155:8443?encryption=none&security=none&serviceName=grpc&type=grpc#%5B211ms%7CEU%7Cj690%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://6bfcc22f-c80f-481b-b82b-bf28ed3e9f82@91.107.148.158:8080?encryption=none&type=tcp&headerType=none#%5B223ms%7CEU%7Cj1029%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://6bfcc22f-c80f-481b-b82b-bf28ed3e9f82@91.107.148.158:8080?encryption=none&security=none&type=tcp#%5B226ms%7CEU%7Cj1048%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://b3eed393-e990-40a0-978c-689d40be9da4@86.107.178.66:448?encryption=none&fp=&pbk=i3cJbIu8AN7qCD7xQTVfCN7de9RkxVohk_PGQgHqRl8&security=reality&sid=52a74e01683e9173&sni=www.samsung.com&type=tcp#%5B226ms%7CEU%7Cj1062%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://YWVzLTEyOC1nY206c2hhZG93c29ja3M=@141.98.101.181:443#%5B235ms%7CEU%7Cj1020%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://bfa91d79-049c-41e1-be94-029397377150@87.242.85.201:35412?&type=tcp&headerType=none&path=/#%5B254ms%7CEU%7Cj1005%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://eb77be10-9d9e-527b-a78d-8caaf58992d6@45.13.119.219:8888?encryption=none&type=tcp&headerType=none&host=/?BIA_TELEGRAM@MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI#%5B276ms%7CEU%7Cj1069%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://eb77be10-9d9e-527b-a78d-8caaf58992d6@45.13.119.219:8888?security=none&encryption=none&headerType=none&type=tcp#%5B276ms%7CEU%7Cj1069%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://5ed7b151-b781-4dba-800d-e3f824f1416f@193.124.204.145:49853?security=none&encryption=none&headerType=none&type=tcp#%5B293ms%7CEU%7Cj1035%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a1ac8747-4fd7-486b-b099-19fbb45610be@154.19.184.40:52535?encryption=none&type=raw&headerType=none&security=none#%5B326ms%7CEU%7Cj1021%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a1ac8747-4fd7-486b-b099-19fbb45610be@154.19.184.40:52535?encryption=none&type=raw&headerType=none&security=none&freeinternet=kizyak_vpn1786261586382#%5B334ms%7CEU%7Cj1019%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpFdkxmV0dlMEFLdks=@70.39.198.35:54166#%5B336ms%7CEU%7Cj2076%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://8fb65472-5957-4f64-ba2d-b5812b2f155a@84.235.175.201:62145?security=none&type=tcp&encryption=none#%5B340ms%7CEU%7Cj2037%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwRk5OOWpLZThqd0Q@38.180.92.242:32245#%5B346ms%7CEU%7Cj1062%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwRk5OOWpLZThqd0Q=@38.180.92.242:32245#%5B346ms%7CEU%7Cj1062%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpFdkxmV0dlMEFLdks@70.39.198.35:54166#%5B346ms%7CEU%7Cj2252%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://8fb65472-5957-4f64-ba2d-b5812b2f155a@143.47.188.131:62145?#%5B347ms%7CEU%7Cj1064%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://adce7c2a-3191-49ae-b61c-9b8258ea1b0e@89.208.113.16:443?security=&encryption=none&headerType=&type=tcp#%5B350ms%7CEU%7Cj2031%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://adce7c2a-3191-49ae-b61c-9b8258ea1b0e@89.208.113.16:443?encryption=none&type=raw&headerType=none&security=none#%5B350ms%7CEU%7Cj2031%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://adce7c2a-3191-49ae-b61c-9b8258ea1b0e@89.208.113.16:443?&type=tcp&headerType=none&path=/#%5B350ms%7CEU%7Cj2031%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://adce7c2a-3191-49ae-b61c-9b8258ea1b0e@89.208.113.16:443?Telegram=@GozargahAzad,@GozargahAzad,@GozargahAzad,@GozargahAzad,@GozargahAzad,@GozargahAzad,@GozargahAzad&security=none&encryption=none&host=/?BIA_TELEGRAM@MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI&headerType=none&type=tcp#%5B350ms%7CEU%7Cj2031%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://adce7c2a-3191-49ae-b61c-9b8258ea1b0e@89.208.113.16:443?encryption=none&type=tcp&sni=%252F%253FBIA_TELEGRAM%2540MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI#%5B350ms%7CEU%7Cj2031%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://adce7c2a-3191-49ae-b61c-9b8258ea1b0e@89.208.113.16:443?host=%2F%3Fbia_telegram%40marambashi_marambashi_marambashi_marambashi&security=none&type=tcp#%5B350ms%7CEU%7Cj2031%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://9f0285ee-20ca-4953-bcdb-86a920652923@204.216.216.23:10086?security=none&encryption=none&headerType=none&type=tcp#%5B353ms%7CEU%7Cj2065%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://0c97c970-41be-47dd-80d6-06c9a5c9c458@47.236.106.241:40480?security=none&encryption=none&headerType=none&type=tcp#%5B354ms%7CEU%7Cj1047%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f0169b08-43fd-4dc3-8195-18f6ad2fe39d@120.227.1.43:12528?type=tcp&encryption=none&security=none&headerType=none#%5B400ms%7CEU%7Cj1002%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206WTZSOXBBdHZ4eHptR0M=@103.106.229.69:9090#%5B420ms%7CEU%7Cj1010%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTo4Y211dnphOWd5ZXR4MHo4@93.123.13.7:25783#%5B422ms%7CEU%7Cj1076%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://9f0285ee-20ca-4953-bcdb-86a920652923@204.216.216.23:10086?security=none&type=tcp&sni=/?BIA_TELEGRAM@MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI&encryption=none#%5B486ms%7CEU%7Cj1061%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://eb8613e3-8393-4cff-a3ad-6501fd4adc63@152.69.195.67:47878?type=raw&encryption=none&security=none#%5B683ms%7CEU%7Cj3118%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://eb8613e3-8393-4cff-a3ad-6501fd4adc63@152.69.195.67:47878?security=none&type=raw&encryption=none#%5B1961ms%7CEU%7Cj7182%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://b98d4c6e-6770-4a31-8256-a4750cdea0e7@186.241.106.97:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&pbk=0i_xAxYgSNx5NMpK2lOaWGS-CvAiD_LneYPO0MF0owo&sid=1a&sni=www.amazon.com&burmalda=3c85865e#%5B96ms%7CEU%7Cj363%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://d9eb8369-fb69-4258-b18a-57e85907d3a6@tcb.beisu88.top:8448?security=reality&encryption=none&pbk=td64UUWr9hSZbGe7MS2OaBQTTpOnDO97CmALbUtKi1A&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=www.cloudflare.com&sid=24fc055a#%5B115ms%7CEU%7Cj251%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpiMWFlMGZjZS05MzQwLTRmMmUtODgyZC1mZGIyMjE4ZTJlMmI@36.224.162.2:50099#%5B128ms%7CEU%7Cj1%7Ctcp62%25%7CSS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpiMWFlMGZjZS05MzQwLTRmMmUtODgyZC1mZGIyMjE4ZTJlMmI=@36.224.162.2:50099#%5B132ms%7CEU%7Cj21%7Ctcp75%25%7CSS%7C%40vlesstrojan%5D
+vless://431fe973-a43a-4fac-bf83-2a772e0d0625@182.16.61.3:45647?encryption=none&security=none&type=tcp#%5B232ms%7CEU%7Cj1015%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://a1ac8747-4fd7-486b-b099-19fbb45610be@154.19.184.40:52535?security=none&headerType=none&encryption=none&type=raw&seq=you_are_beautiful7054#%5B293ms%7CEU%7Cj2065%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://a1ac8747-4fd7-486b-b099-19fbb45610be@154.19.184.40:52535?encryption=none&type=raw&headerType=none&security=none#%5B293ms%7CEU%7Cj2065%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpvWklvQTY5UTh5aGNRVjhrYTNQYTNB@193.29.139.151:8080#%5B301ms%7CEU%7Cj1012%7Ctcp88%25%7CSS%7C%40vlesstrojan%5D
+vless://bfa91d79-049c-41e1-be94-029397377150@87.242.85.201:35412?encryption=none&security=none&type=tcp#%5B317ms%7CEU%7Cj1018%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://5ed7b151-b781-4dba-800d-e3f824f1416f@193.124.204.145:49853?security=&encryption=none&headerType=none&type=tcp#%5B348ms%7CEU%7Cj1062%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpzOExiSkNnVWlHWGVDS1ZjNjN0SEpQ@94.198.220.183:64674#%5B408ms%7CEU%7Cj520%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+ss://YWVzLTI1Ni1nY206ZmFCQW9ENTRrODdVSkc3@185.123.101.64:2376#%5B494ms%7CEU%7Cj1094%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://eb8613e3-8393-4cff-a3ad-6501fd4adc63@152.69.195.67:47878?security=none&type=raw&encryption=none#%5B517ms%7CEU%7Cj2060%7Ctcp62%25%7CVLESS%7C%40vlesstrojan%5D
+vless://8eeda009-fe56-442f-b3b1-b6bbf65fea1e@195.123.217.26:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=JLTetzK1Axw8MhHYk_GYfA0M5-OjZ9Frd1hR2hCkxno&sid=6eda1031a2d1a3fa&sni=www.cloudflare.com#%5B929ms%7CEU%7Cj2082%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://9f61cdf4-810d-4052-bbc7-2da0c8e20104@83.147.18.3:443?type=tcp&headerType=none&security=reality&encryption=none&sni=www.cloudflare.com&fp=chrome&pbk=3iVJAIGPx6JMlhlRmfpGrHkSmLpHJ4CPvBBH7KsFrFA&sid=fd8cf7e1173f0edb&flow=xtls-rprx-vision&nonce=curLggON#%5B2412ms%7CEU%7Cj5154%7Ctcp62%25%7CVLESS%7C%40vlesstrojan%5D
