@@ -29,8 +29,6 @@ robust_session = get_robust_session()
 DRY_RUN = os.environ.get("TELEGRAM_DRY_RUN", "0") == "1"
 
 BOT_TOKEN_PUBLIC = os.environ.get('TELEGRAM_BOT_TOKEN_PUBLIC')
-BOT_TOKEN_PRIVATE = os.environ.get('TELEGRAM_BOT_TOKEN')
-PRIVATE_CHANNEL = os.environ.get('TELEGRAM_PRIVATE_CHANNEL')
 PUBLIC_CHANNEL = "@vlesstrojan"
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,7 +37,6 @@ PREMIUM_FOLDER = os.path.join(RESULTS_FOLDER, "premium")
 LIGHT_VERIFIED = os.path.join(WORK_DIR, "checked", "latest", "verified.txt")
 
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
-COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def clean_key(k: str) -> str:
@@ -145,16 +142,6 @@ def load_light_verified_keys():
                     keys.append(key)
     return keys
 
-def load_paid_keys():
-    paid_file = os.path.join(RESULTS_FOLDER, "paid.txt")
-    if not os.path.exists(paid_file):
-        print("ℹ️ Файл с ключами alekscloud не найден, пропускаем.")
-        return []
-    with open(paid_file, "r", encoding="utf-8") as f:
-        keys = [clean_key(line) for line in f if line.strip() and not line.startswith("#")]
-    print(f"🔒 Загружено ключей от alekscloud: {len(keys)}")
-    return keys
-
 # ---------- ФУНКЦИИ ДЛЯ ФАЙЛОВ ----------
 def create_public_file(all_keys, stats=None):
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
@@ -169,32 +156,6 @@ def create_public_file(all_keys, stats=None):
         for key in top_keys:
             f.write(key + "\n")
     return filepath, len(top_keys)
-
-def create_private_file(all_keys, stats=None):
-    date_str = datetime.now().strftime("%Y%m%d_%H%M")
-    filename = f"private_all_{date_str}.txt"
-    filepath = os.path.join(RESULTS_FOLDER, filename)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
-        f.write("# Verified: Triple-check (TCP + XRAY + Categories)\n")
-        f.write(f"# Keys in file: {len(all_keys)}\n")
-        f.write(f"# Total: {len(all_keys)}\n\n")
-        for key in all_keys:
-            f.write(key + "\n")
-    return filepath, len(all_keys)
-
-def create_paid_file(keys):
-    date_str = datetime.now().strftime("%Y%m%d_%H%M")
-    filename = f"alekscloud_keys_{date_str}.txt"
-    filepath = os.path.join(RESULTS_FOLDER, filename)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(f"# Ключи от alekscloud (AuraVPN)\n")
-        f.write(f"# Дата: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n")
-        f.write(f"# Предоставлены нашим подписчиком\n")
-        f.write(f"# Всего ключей: {len(keys)}\n\n")
-        for key in keys:
-            f.write(key + "\n")
-    return filepath, len(keys)
 
 def safe_remove(filepath: str):
     try:
@@ -242,41 +203,6 @@ def parse_subscriptions_for_buttons(subscriptions_text):
             btn_text = btn_text[:32]
             buttons.append({"text": btn_text, "url": line})
     return buttons
-
-# ---------- ПРОКСИ ----------
-def load_active_proxies_from_github(url="https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/proxy_all_tme_verified.txt", limit=20):
-    try:
-        resp = robust_session.get(url, timeout=30)
-        if resp.status_code != 200:
-            print(f"⚠️ Не удалось загрузить активные прокси: HTTP {resp.status_code}")
-            return []
-        lines = resp.text.strip().split('\n')
-        proxies = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                proxies.append(line)
-                if len(proxies) >= limit:
-                    break
-        print(f"✅ Загружено {len(proxies)} активных прокси из {url}")
-        return proxies
-    except Exception as e:
-        print(f"❌ Ошибка загрузки активных прокси: {e}")
-        return []
-
-def build_proxies_keyboard(proxies):
-    keyboard = []
-    row = []
-    for i, proxy in enumerate(proxies, start=1):
-        btn_text = f"🔑 Прокси {i}"
-        button = {"text": btn_text, "copy_text": {"text": proxy}}
-        row.append(button)
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
-    return keyboard
 
 # ---------- ОТПРАВКА В TELEGRAM ----------
 def send_photo_with_file(channel_id, photo_path, file_path, caption="", bot_token=None):
@@ -342,8 +268,8 @@ def send_message(channel_id, text, bot_token, reply_markup=None):
 
 # --- ОСНОВНАЯ ЛОГИКА ---
 def main():
-    if not BOT_TOKEN_PUBLIC or not BOT_TOKEN_PRIVATE:
-        print("❌ Ошибка: не установлены TELEGRAM_BOT_TOKEN_PUBLIC или TELEGRAM_BOT_TOKEN")
+    if not BOT_TOKEN_PUBLIC:
+        print("❌ Ошибка: не установлена TELEGRAM_BOT_TOKEN_PUBLIC")
         return 1
 
     print("\n" + "=" * 70)
@@ -389,11 +315,9 @@ def main():
     print(f"\n📦 Всего ключей: {total_keys}")
     print(f"📂 Источник: {source_info}\n")
 
-    # 2. ПОДПИСКИ И ПРОКСИ
+    # 2. ПОДПИСКИ
     subscriptions_raw = load_subscriptions()
     subscriptions_buttons = parse_subscriptions_for_buttons(subscriptions_raw)
-    proxies = load_active_proxies_from_github(limit=10)
-    proxies_keyboard = build_proxies_keyboard(proxies) if proxies else None
 
     # 3. ПУБЛИЧНЫЙ КАНАЛ
     print("=" * 70)
@@ -419,7 +343,7 @@ def main():
         print("⚠️ Нет картинки для публичного канала")
     safe_remove(public_file)
 
-    # Пост с подписками (публичный) – без поговорок
+    # Пост с подписками (публичный)
     if subscriptions_buttons:
         keyboard = []
         row = []
@@ -440,110 +364,6 @@ def main():
                    "Не указывайте за что перевод. ✨\n"
                    "Спасибо за любую помощь! ❗️")
     send_message(PUBLIC_CHANNEL, donate_text, BOT_TOKEN_PUBLIC)
-
-    # 4. ПРИВАТНЫЙ КАНАЛ
-    if PRIVATE_CHANNEL:
-        print("\n" + "=" * 70)
-        print(f"🔒 ПРИВАТНЫЙ КАНАЛ: {PRIVATE_CHANNEL}")
-        print("=" * 70 + "\n")
-
-        if total_keys > 10:
-            private_file, private_count = create_private_file(all_keys, key_stats)
-            caption_priv = (f"🔐 <b>Полный список ключей</b>\n\n"
-                            f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>\n"
-                            f"📦 В файле: <b>{private_count}</b> ключей\n"
-                            f"📊 Всего ключей: <b>{total_keys}</b>\n\n"
-                            f"📡 VLESS | VMess | Trojan | SS")
-            if os.path.exists(COVER_PRIVATE):
-                send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, private_file, caption_priv, BOT_TOKEN_PRIVATE)
-            safe_remove(private_file)
-
-        # ---- КЛЮЧИ ОТ ALEKSCLOUD ----
-        paid_keys = load_paid_keys()
-        if paid_keys:
-            count = len(paid_keys)
-            if count <= 3:
-                keys_html = "\n\n".join(f"<code>{k}</code>" for k in paid_keys)
-                caption = (
-                    f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
-                    f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
-                    f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-                    f"📦 Ключей: {count}\n\n"
-                    f"{keys_html}\n\n"
-                    f"Спасибо alekscloud!"
-                )
-                send_message(PRIVATE_CHANNEL, caption, BOT_TOKEN_PRIVATE)
-            else:
-                first_three_html = "\n\n".join(f"<code>{k}</code>" for k in paid_keys[:3])
-                caption_part = (
-                    f"✨ <b>Ключи от alekscloud (AuraVPN)</b>\n\n"
-                    f"🤝 <i>Предоставлены нашим подписчиком</i>\n"
-                    f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-                    f"📦 Всего ключей: {count}\n\n"
-                    f"<b>Первые 3 ключа:</b>\n\n{first_three_html}\n\n"
-                    f"🔽 Полный список – в приложенном файле."
-                )
-                send_message(PRIVATE_CHANNEL, caption_part, BOT_TOKEN_PRIVATE)
-
-                paid_file, paid_count = create_paid_file(paid_keys)
-                caption_file = f"📎 Все {count} ключей от alekscloud"
-                if os.path.exists(COVER_PRIVATE):
-                    send_photo_with_file(PRIVATE_CHANNEL, COVER_PRIVATE, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-                else:
-                    send_document(PRIVATE_CHANNEL, paid_file, caption_file, BOT_TOKEN_PRIVATE)
-                safe_remove(paid_file)
-
-        # ---- ССЫЛКА НА ПОДПИСКУ ALEKSCLOUD ----
-        subs_link = "https://digitalnet.qzz.io/sub/06ea0E1NhbDjd8Qv"
-        caption_link = (
-            f"🔗 <b>Подписка от alekscloud</b>\n\n"
-            f"Перейдите по ссылке, чтобы скопировать ключи вручную:\n"
-            f"<code>{subs_link}</code>\n\n"
-            f"📅 Подписка активна до: <b>21.12.2026</b>\n"
-            f"💡 Откройте в браузере и скопируйте ключи из QR-кода или текста."
-        )
-        send_message(PRIVATE_CHANNEL, caption_link, BOT_TOKEN_PRIVATE)
-
-        # ---- ПАМЯТКА ПО ПОДПИСКЕ (ДОБАВЛЕНО) ----
-        memo_text = (
-            "📌 <b>Памятка по использованию подписки VPN</b>\n\n"
-            "⚠️ <b>Важно:</b> не копируйте отдельные ключи вручную.\n\n"
-            "Если вы переходите по ссылке и добавляете ключи по одному, они не будут обновляться. "
-            "В таком случае при изменении или добавлении серверов вам придётся всё делать заново вручную.\n\n"
-            "✅ <b>Правильный способ</b> — добавить ссылку подписки в VPN-клиент.\n\n"
-            "🔹 <b>Как это работает:</b>\n"
-            "• Вы вставляете ссылку подписки в приложение (например, V2Ray, Shadowrocket, Clash и т.д.)\n"
-            "• Клиент автоматически загружает все доступные ключи\n"
-            "• При обновлении серверов новые ключи подтягиваются сами, без ваших действий\n\n"
-            "📌 <b>Это удобно, потому что:</b>\n"
-            "• Не нужно копировать ключи вручную\n"
-            "• Все обновления приходят автоматически\n"
-            "• Меньше ошибок при настройке\n\n"
-            "Рекомендуется всегда использовать именно подписку, а не отдельные ключи."
-        )
-        send_message(PRIVATE_CHANNEL, memo_text, BOT_TOKEN_PRIVATE)
-
-        # Подписки (приват) – без поговорок
-        if subscriptions_buttons:
-            keyboard = []
-            row = []
-            for btn in subscriptions_buttons:
-                row.append({"text": btn["text"], "copy_text": {"text": btn["url"]}})
-                if len(row) == 2:
-                    keyboard.append(row)
-                    row = []
-            if row:
-                keyboard.append(row)
-            subs_text = ("📋 <b>Ссылки на подписки</b>\n\n"
-                         "🎯 Нажми на кнопку ниже — ссылка скопируется в буфер, импортируй в клиент")
-            send_message(PRIVATE_CHANNEL, subs_text, BOT_TOKEN_PRIVATE, {"inline_keyboard": keyboard})
-
-        # Активные прокси кнопками (приват)
-        if proxies_keyboard:
-            text = ("📋 <b>Активные прокси для Telegram</b>\n\n"
-                    "Нажмите на кнопку, чтобы скопировать ссылку на прокси и вставить её в настройках Telegram.\n\n"
-                    "Все прокси проверены и активны.")
-            send_message(PRIVATE_CHANNEL, text, BOT_TOKEN_PRIVATE, {"inline_keyboard": proxies_keyboard})
 
     print("\n✅ Скрипт завершил работу")
     return 0
