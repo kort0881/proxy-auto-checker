@@ -1,39 +1,20 @@
 # GOOD
 # @vlesstrojan
-# 2026-08-19 05:38
+# 2026-08-20 05:38
 # Mode: TCP+HTTP-LITE
-# Keys: 33
+# Keys: 14
 
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpFdkxmV0dlMEFLdks@70.39.198.35:54166#%5B91ms%7CEU%7Cj304%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://11af1c47-865a-47c6-92ff-118013655d78@40.160.69.112:8080?path=/?ed&security=none&encryption=none&type=ws#%5B175ms%7CEU%7Cj1023%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTprMWRCT21PQjRvcWk3VW1wMzdhMWJR@82.38.31.190:8080#%5B254ms%7CEU%7Cj1014%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://b5ca5ab3-8cbc-4ac3-89da-9cd360589ecb@162.35.231.70:443?encryption=none&flow=xtls-rprx-vision&pbk=6z3YcVP0f2pK3iANKIkBUZOgNeErDjxY83mHZG5jrnI&security=reality&sid=f63805c3ecc7a483&sni=savesafe.co&type=tcp&fp=ios#%5B272ms%7CEU%7Cj1018%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@103.112.71.84:443?encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=cbb0a5c1dc905505&sni=test.bridge.anti-zapret.com&type=tcp&fp=edge#%5B277ms%7CEU%7Cj1014%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://bc155a59-a4db-45e7-addf-db634b79757b@103.118.252.45:13131?headerType=none&type=tcp&encryption=none&security=none#%5B353ms%7CEU%7Cj1023%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://bc155a59-a4db-45e7-addf-db634b79757b@103.118.252.45:13131?encryption=none&security=none&type=tcp&headerType=none#%5B354ms%7CEU%7Cj1052%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://7e8f7489-e65f-4be6-93ed-867a74ec6759@95.85.228.161:8443?mode=gun&security=none&encryption=none&type=grpc&serviceName=grpc#%5B374ms%7CEU%7Cj1019%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpXMG9tdmN1eWV6aG5SaG4zeHRMSlJV@130.49.189.158:10792#%5B419ms%7CEU%7Cj2070%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://16ab4d4a-fd81-4535-9b7b-346677226ce8@177.3.213.91:8443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&pbk=K28I3JdleSg0t7keUUZrS1CgtyC37WA32ViMkSXywHw&sid=0c22c11e7224&sni=b2.cryptoofarm.com#%5B423ms%7CEU%7Cj2088%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://7e8f7489-e65f-4be6-93ed-867a74ec6759@95.85.228.161:8443?encryption=none&security=none&serviceName=grpc&type=grpc#%5B500ms%7CEU%7Cj1036%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@test.api.anti-zapret.com:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&sid=17faf32cb516c9cb&sni=cdnjs.com&fp=safari#%5B500ms%7CEU%7Cj1309%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.39:443?encryption=none&flow=xtls-rprx-vision&fp=firefox&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp#%5B513ms%7CEU%7Cj1108%7Ctcp88%25%7CVLESS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206ZDFmYTJmNGI5OGEzOGJjOA==@194.87.47.204:10901#%5B582ms%7CEU%7Cj2083%7Ctcp88%25%7CSS%7C%40vlesstrojan%5D
-vless://My-chanel-ATOVPN@138.124.29.81:57020?security=none&encryption=none&headerType=none&type=tcp#%5B584ms%7CEU%7Cj3128%7Ctcp88%25%7CVLESS%7C%40vlesstrojan%5D
-vless://8b0067a9-8cc8-555a-b4c3-e742bb716980@138.124.29.81:57020?security=&encryption=none&headerType=&type=tcp#%5B590ms%7CEU%7Cj2064%7Ctcp88%25%7CVLESS%7C%40vlesstrojan%5D
-ss://MjAyMi1ibGFrZTMtY2hhY2hhMjAtcG9seTEzMDU6NVhuMnFIb1ZkdTZhSmpwNlIyS2pLcmsxMCtxRm5pTmg1T2pLVzkzVGRXaz0@92.5.228.26:45819#%5B626ms%7CEU%7Cj3125%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.30:443?encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp&fp=edge#%5B642ms%7CEU%7Cj1062%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.35:443?encryption=none&flow=xtls-rprx-vision&fp=firefox&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp#%5B651ms%7CEU%7Cj1058%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://a1ac8747-4fd7-486b-b099-19fbb45610be@154.19.184.40:52535?encryption=none&type=raw&headerType=none&security=none#%5B694ms%7CEU%7Cj2034%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@test.api.anti-zapret.com:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&sid=17faf32cb516c9cb&sni=cdnjs.com&fp=chrome#%5B712ms%7CEU%7Cj1317%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.38:443?encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp&fp=edge#%5B745ms%7CEU%7Cj2291%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.38:443?encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp&fp=qq#%5B868ms%7CEU%7Cj1082%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://9a85fe34-213a-43ef-acbd-bb84552302f3@168.222.49.215:16089?security=&encryption=none&headerType=&type=tcp#%5B876ms%7CEU%7Cj3099%7Ctcp88%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.30:443?encryption=none&flow=xtls-rprx-vision&fp=firefox&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp#%5B909ms%7CEU%7Cj2150%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@test.api.anti-zapret.com:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&sid=17faf32cb516c9cb&sni=cdnjs.com&fp=edge#%5B983ms%7CEU%7Cj2328%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.36:443?encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp&fp=edge#%5B1013ms%7CEU%7Cj3074%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://9a85fe34-213a-43ef-acbd-bb84552302f3@168.222.49.215:16089?security=none&encryption=none&headerType=none&type=tcp#%5B1164ms%7CEU%7Cj5143%7Ctcp88%25%7CVLESS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.36:443?encryption=none&flow=xtls-rprx-vision&fp=firefox&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp#%5B1175ms%7CEU%7Cj3226%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-ss://YWVzLTI1Ni1nY206ZDFmYTJmNGI5OGEzOGJjOA@194.87.47.204:10901#%5B1176ms%7CEU%7Cj3127%7Ctcp88%25%7CSS%7C%40vlesstrojan%5D
-vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.36:443?encryption=none&flow=xtls-rprx-vision&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&security=reality&sid=17faf32cb516c9cb&sni=cdnjs.com&type=tcp&fp=firefox#%5B1536ms%7CEU%7Cj5175%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
-vless://eb8613e3-8393-4cff-a3ad-6501fd4adc63@152.69.195.67:47878?security=none&type=raw&encryption=none#%5B1581ms%7CEU%7Cj5146%7Ctcp62%25%7CVLESS%7C%40vlesstrojan%5D
-vless://eb8613e3-8393-4cff-a3ad-6501fd4adc63@152.69.195.67:47878?encryption=none&security=none&type=raw&__rand=171e6218#%5B1598ms%7CEU%7Cj4088%7Ctcp88%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpGRDNyQ3VPc3hPYXk@ca4.levikogjgfdd.ir:8388#%5B110ms%7CEU%7Cj230%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://d65cc14c-f53f-4fe2-b262-97856601319c@us3.levikogjgfdd.ir:443?security=reality&encryption=none&pbk=e2RLf57Li_-MDZGE9ss1BWPgP54mqRb5PfXhW2jcVVg&host=Telegram-Leviko_v2ray&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=yahoo.com&sid=c39cc7310a#%5B137ms%7CEU%7Cj224%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://28007472-a4e9-4881-984a-2bf6b3d35917@80.66.72.179:2053?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=random&pbk=Yed352UFUwRyZWPyVYM_0OvLkxvCjOB7160DdAxKsWE&sid=bc5e336f8fdb&sni=teamdocs.su#%5B206ms%7CEU%7Cj462%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://11af1c47-865a-47c6-92ff-118013655d78@40.160.69.214:8080?encryption=none&security=&sni=&type=ws&alpn=&host=&path=/?ed=2048#%5B230ms%7CEU%7Cj1046%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://11af1c47-865a-47c6-92ff-118013655d78@40.160.68.186:8080?encryption=none&security=&sni=&type=ws&alpn=&host=&path=/?ed=2048#%5B245ms%7CEU%7Cj1075%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTp5dHcyYXdu@54.36.174.140:443#%5B294ms%7CEU%7Cj1016%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://bd99da97-265e-0021-82cc-4ec009fe9ce2@5.61.91.206:443?type=tcp&headerType=none&security=reality&encryption=none&sni=www.amd.com&fp=firefox&pbk=b4n1pcO8ST3JkGtj8YymXVrW17LEe2EHec5wY7hMMR4&sid=0a4b7c3d&flow=xtls-rprx-vision#%5B297ms%7CEU%7Cj1049%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://fe0138b5-ca60-4a67-91aa-b5a49266eeb5@nl.chick-team.ru:443?type=tcp&security=reality&sni=nl.chick-team.ru&pbk=aLdyGbloIzzeClW7_SPWL0IZpcaUWsA7rlmbNieggWk&sid=0894e51863b5c395&encryption=none&flow=xtls-rprx-vision&fp=safari#%5B367ms%7CRU%7Cj1266%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpFeUd5MTFCTWZlUC02VUhqc2dhald3@64.188.77.159:8390#%5B408ms%7CEU%7Cj2093%7Ctcp100%25%7CSS%7C%40vlesstrojan%5D
+vless://f82332b2-dc8c-4196-ac12-f276e37e278a@194.93.61.30:443?security=reality&encryption=none&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=cdnjs.com&sid=17faf32cb516c9cb#%5B469ms%7CEU%7Cj1069%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://7e8f7489-e65f-4be6-93ed-867a74ec6759@185.39.204.155:8443?encryption=none&security=none&serviceName=grpc&type=grpc#%5B472ms%7CEU%7Cj2304%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://eb8613e3-8393-4cff-a3ad-6501fd4adc63@152.69.195.67:47878?security=none&type=raw&encryption=none#%5B881ms%7CEU%7Cj3091%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://8fb65472-5957-4f64-ba2d-b5812b2f155a@157.137.234.223:62145?&type=tcp&headerType=none&path=/#%5B1518ms%7CEU%7Cj5109%7Ctcp100%25%7CVLESS%7C%40vlesstrojan%5D
+vless://f82332b2-dc8c-eac4-ac12-f276e37e278a@45.155.70.123:8443?type=tcp&security=reality&encryption=none&fp=firefox&pbk=0AVsyS7udTbxKRdSyQ2rtFC63icDQOVWq8FvAhhU-WY&sid=58fbcddfaae3ade9&sni=s1.test.anti-zapret.com#%5B2976ms%7CEU%7Cj7186%7Ctcp50%25%7CVLESS%7C%40vlesstrojan%5D
