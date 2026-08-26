@@ -358,12 +358,7 @@ def main():
                      "💡 Нажми на кнопку ниже — ссылка скопируется в буфер, вставь её в Hiddify, v2rayNG или Clash")
         send_message(PUBLIC_CHANNEL, subs_text, BOT_TOKEN_PUBLIC, {"inline_keyboard": keyboard})
 
-    # Донат-пост (публичный)
-    donate_text = ("Если хочешь поддержать автора — можно перевести:\n"
-                   "Сбербанк: <code>4276 3801 7277 1425</code>\n"
-                   "Не указывайте за что перевод. ✨\n"
-                   "Спасибо за любую помощь! ❗️")
-    send_message(PUBLIC_CHANNEL, donate_text, BOT_TOKEN_PUBLIC)
+    # ❌ Блок доната удалён по требованию
 
     print("\n✅ Скрипт завершил работу")
     return 0
