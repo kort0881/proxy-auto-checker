@@ -3,7 +3,7 @@
 """
 Proxy Checker v6.0 FINAL
 TCP pre-filter + Xray two-phase + parallel categories
-One output: results/verified.txt (all passed keys)
+Output: checked/latest/verified.txt
 """
 
 import os
@@ -26,7 +26,7 @@ import logging
 import zipfile
 import platform
 from datetime import datetime
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -37,10 +37,12 @@ from logging.handlers import RotatingFileHandler
 WORK_DIR = Path(__file__).parent.absolute()
 XRAY_FOLDER = WORK_DIR / "xray"
 RESULTS_FOLDER = WORK_DIR / "results"
-VERIFIED_FILE = RESULTS_FOLDER / "verified.txt"
+CHECKED_FOLDER = WORK_DIR / "checked" / "latest"
+VERIFIED_FILE = CHECKED_FOLDER / "verified.txt"
+STATS_FILE = RESULTS_FOLDER / "stats_latest.json"
 LOG_FILE = RESULTS_FOLDER / "checker.log"
 
-for d in [XRAY_FOLDER, RESULTS_FOLDER]:
+for d in [XRAY_FOLDER, RESULTS_FOLDER, CHECKED_FOLDER]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ==================== SOURCES ====================
@@ -72,13 +74,13 @@ class Config:
 
     # --- Stage 2: Xray ---
     XRAY_WORKERS: int = 8
-    XRAY_STARTUP: float = 4.0          # макс. ожидание порта
-    XRAY_QUICK_TIMEOUT: int = 6        # quick check (1 запрос)
-    XRAY_LATENCY_TIMEOUT: int = 8      # latency samples
+    XRAY_STARTUP: float = 4.0
+    XRAY_QUICK_TIMEOUT: int = 6
+    XRAY_LATENCY_TIMEOUT: int = 8
     LATENCY_SAMPLES: int = 3
     MIN_LATENCY_SUCCESS: int = 2
 
-    # --- Categories (parallel) ---
+    # --- Categories ---
     CATEGORY_URLS: List[Tuple[str, str]] = field(default_factory=lambda: [
         ("https://www.google.com", "google"),
         ("https://web.telegram.org", "telegram"),
@@ -89,11 +91,11 @@ class Config:
         ("https://www.tiktok.com", "tiktok"),
     ])
     CATEGORY_TIMEOUT: int = 5
-    CATEGORY_PARALLEL: int = 7  # все сразу
-    MIN_CATEGORIES: int = 5     # мин. 5 из 7
-    REQUIRE_TELEGRAM: bool = True  # Telegram обязателен
+    CATEGORY_PARALLEL: int = 7
+    MIN_CATEGORIES: int = 5
+    REQUIRE_TELEGRAM: bool = True
 
-    # --- Reconnect (в той же сессии) ---
+    # --- Reconnect ---
     RECONNECT_TESTS: int = 1
     MIN_RECONNECT_SUCCESS: int = 1
 
@@ -102,7 +104,7 @@ class Config:
 
     # --- Misc ---
     GC_EVERY: int = 50
-    MAX_RUNTIME_MIN: int = 55  # стоп за 5 мин до лимита GitHub
+    MAX_RUNTIME_MIN: int = 55
 
 
 CONFIG = Config()
@@ -226,7 +228,6 @@ def setup_xray() -> Optional[Path]:
     exe_name = "xray.exe" if os.name == 'nt' else "xray"
     exe_path = XRAY_FOLDER / exe_name
 
-    # Приоритет: локальный бинарник
     if exe_path.exists():
         log(f"[OK] Local Xray found")
         if os.name != 'nt':
@@ -236,7 +237,6 @@ def setup_xray() -> Optional[Path]:
                 pass
         return exe_path
 
-    # Fallback: скачать
     log("[DL] Downloading xray-core...")
     try:
         system = platform.system().lower()
@@ -310,25 +310,6 @@ def extract_host_port(key: str) -> Tuple[Optional[str], Optional[int]]:
         return None, None
     except Exception:
         return None, None
-
-
-def detect_protocol(key: str) -> Tuple[str, str]:
-    key_lower = key.lower()
-    security = "none"
-    if "security=reality" in key_lower:
-        security = "reality"
-    elif "security=tls" in key_lower:
-        security = "tls"
-
-    if key_lower.startswith("vless://"):
-        return "VLESS", security
-    elif key_lower.startswith("vmess://"):
-        return "VMess", security
-    elif key_lower.startswith("trojan://"):
-        return "Trojan", "tls"
-    elif key_lower.startswith("ss://"):
-        return "SS", security
-    return "Unknown", security
 
 
 def parse_key_to_config(key: str) -> Tuple[Optional[Dict], str, str]:
@@ -839,7 +820,6 @@ def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
     if result.alive:
         return result
 
-    # 1 мутация, если quick-фаза прошла
     if CONFIG.MAX_MUTATIONS >= 1 and result.error != "quick_fail":
         mutated_config, mutation_name = safe_mutate(proxy_config)
         if mutation_name:
@@ -872,7 +852,7 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # --- PHASE A: quick check ---
+        # PHASE A: quick check
         quick_ok = False
         try:
             t1 = time.time()
@@ -895,7 +875,7 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # --- PHASE B: latency samples ---
+        # PHASE B: latency samples
         urls = [
             "https://cp.cloudflare.com/generate_204",
             "http://www.gstatic.com/generate_204",
@@ -919,14 +899,13 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # --- PHASE C: parallel categories ---
+        # PHASE C: parallel categories
         categories_passed, telegram_works = check_categories_parallel(session)
 
     avg_latency = sum(latencies) / len(latencies)
     jitter = max(latencies) - min(latencies)
 
-    # --- PHASE D: reconnect test (в той же сессии) ---
-    # Проверяем, что соединение стабильно: делаем ещё 1 запрос после паузы
+    # PHASE D: reconnect test
     reconnect_success = 0
     with XraySession(xray_exe, proxy_config, CONFIG.XRAY_STARTUP) as rs:
         if rs.ok:
@@ -944,7 +923,6 @@ def _two_phase_test(
             categories=categories_passed, telegram=telegram_works
         )
 
-    # --- ФИНАЛЬНЫЙ ФИЛЬТР ---
     if categories_passed < CONFIG.MIN_CATEGORIES:
         return CheckResult(
             key=key, alive=False, error=f"only_{categories_passed}_cats",
@@ -997,7 +975,7 @@ def save_results(results: List[CheckResult]):
             )
             f.write(f"{r.key.split('#')[0]}#{quote(comment)}\n")
 
-    log(f"[SAVE] {len(alive)} keys -> {VERIFIED_FILE.name}")
+    log(f"[SAVE] {len(alive)} keys -> {VERIFIED_FILE}")
 
     stats_data = {
         "timestamp": datetime.now().isoformat(),
@@ -1006,7 +984,7 @@ def save_results(results: List[CheckResult]):
         "by_error": dict(stats.errors),
         "processing_time_min": round((time.time() - stats.start_time) / 60, 1),
     }
-    with open(RESULTS_FOLDER / "stats_latest.json", 'w', encoding='utf-8') as f:
+    with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats_data, f, indent=2)
 
     return len(alive)
@@ -1042,7 +1020,7 @@ def main():
         log("[ERR] No keys")
         return 1
 
-    # === STAGE 1: TCP ===
+    # STAGE 1: TCP
     print("\n" + "=" * 60)
     log(f"[TCP] Stage 1: {len(all_keys)} keys, {CONFIG.TCP_WORKERS} workers")
     print("=" * 60 + "\n")
@@ -1077,7 +1055,7 @@ def main():
         log("[WARN] Time exceeded after TCP, stopping")
         return 0
 
-    # === STAGE 2: XRAY ===
+    # STAGE 2: XRAY
     print("\n" + "=" * 60)
     log(f"[XRAY] Stage 2: {len(tcp_passed)} keys, {CONFIG.XRAY_WORKERS} workers")
     print("=" * 60 + "\n")
@@ -1124,9 +1102,9 @@ def main():
     total_time = time.time() - stats.start_time
 
     if results:
-        n = save_results(results)
+        save_results(results)
 
-    # === SUMMARY ===
+    # SUMMARY
     print("\n" + "=" * 60)
     print("  RESULTS")
     print("=" * 60)
