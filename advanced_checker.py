@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Proxy Checker v6.0 FINAL
-TCP pre-filter + Xray two-phase + parallel categories
+Proxy Checker v6.1 FINAL
+TCP pre-filter + Xray + REAL site checks (Google/Telegram/YouTube/...)
 Output: checked/latest/verified.txt
 """
 
@@ -80,20 +80,23 @@ class Config:
     LATENCY_SAMPLES: int = 3
     MIN_LATENCY_SUCCESS: int = 2
 
-    # --- Categories ---
-    CATEGORY_URLS: List[Tuple[str, str]] = field(default_factory=lambda: [
-        ("https://www.google.com", "google"),
-        ("https://web.telegram.org", "telegram"),
-        ("https://www.youtube.com", "youtube"),
-        ("https://vk.com", "vk"),
-        ("https://www.instagram.com", "instagram"),
-        ("https://twitter.com", "twitter"),
-        ("https://www.tiktok.com", "tiktok"),
+    # --- Categories: РЕАЛЬНАЯ проверка сайтов ---
+    # (url, name, keyword) — keyword ищем в HTML для подтверждения
+    CATEGORY_URLS: List[Tuple[str, str, str]] = field(default_factory=lambda: [
+        ("https://www.google.com", "google", "google"),
+        ("https://web.telegram.org", "telegram", "telegram"),
+        ("https://www.youtube.com", "youtube", "youtube"),
+        ("https://vk.com", "vk", "vk"),
+        ("https://www.instagram.com", "instagram", "instagram"),
+        ("https://twitter.com", "twitter", "twitter"),
+        ("https://www.tiktok.com", "tiktok", "tiktok"),
     ])
-    CATEGORY_TIMEOUT: int = 5
-    CATEGORY_PARALLEL: int = 7
-    MIN_CATEGORIES: int = 5
-    REQUIRE_TELEGRAM: bool = True
+    CATEGORY_TIMEOUT: int = 10               # было 5 → 10 (не режем медленные)
+    CATEGORY_PARALLEL: int = 7                # все сразу
+    CATEGORY_AS_COMPLETED_TIMEOUT: int = 15   # было 9 → 15
+    MIN_CATEGORIES: int = 5                   # минимум 5 из 7
+    REQUIRE_TELEGRAM: bool = True             # Telegram обязателен
+    VERIFY_CONTENT: bool = False              # проверять ключевое слово в HTML (может давать ложные срабатывания)
 
     # --- Reconnect ---
     RECONNECT_TESTS: int = 1
@@ -755,30 +758,56 @@ class XraySession:
                 time.sleep(0.1)
 
 
-# ==================== CATEGORIES ====================
-def check_one_category(session: XraySession, url: str, name: str) -> Tuple[str, bool]:
-    resp = session.get(url, timeout=CONFIG.CATEGORY_TIMEOUT, allow_redirects=True)
-    if resp and resp.status_code < 500:
+# ==================== CATEGORIES: РЕАЛЬНАЯ ПРОВЕРКА ====================
+def check_one_category(session: XraySession, url: str, name: str, keyword: str) -> Tuple[str, bool]:
+    """
+    РЕАЛЬНАЯ проверка: открываем сайт через Xray.
+    Успех: статус 2xx/3xx + (опционально) ключевое слово в контенте.
+    Провал: 4xx (403 = блокировка), 5xx, timeout.
+    """
+    try:
+        resp = session.get(url, timeout=CONFIG.CATEGORY_TIMEOUT, allow_redirects=True)
+        if not resp:
+            return (name, False)
+
+        # 1. Статус: только 2xx и 3xx. 4xx (403/404) = блокировка
+        if not (200 <= resp.status_code < 400):
+            return (name, False)
+
+        # 2. Контент: проверяем ключевое слово
+        if CONFIG.VERIFY_CONTENT:
+            try:
+                content = resp.text[:50000].lower()
+                if keyword.lower() not in content:
+                    return (name, False)
+            except Exception:
+                pass
+
         return (name, True)
-    return (name, False)
+    except Exception:
+        return (name, False)
 
 
 def check_categories_parallel(session: XraySession) -> Tuple[int, bool]:
+    """
+    Параллельная проверка всех 7 категорий.
+    Увеличенные таймауты — не режем медленные прокси.
+    """
     passed = 0
     telegram_ok = False
     futures_map = {}
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=CONFIG.CATEGORY_PARALLEL)
     try:
-        for url, name in CONFIG.CATEGORY_URLS:
-            futures_map[executor.submit(check_one_category, session, url, name)] = name
+        for url, name, keyword in CONFIG.CATEGORY_URLS:
+            futures_map[executor.submit(check_one_category, session, url, name, keyword)] = name
 
         try:
             for future in concurrent.futures.as_completed(
-                futures_map, timeout=CONFIG.CATEGORY_TIMEOUT + 4
+                futures_map, timeout=CONFIG.CATEGORY_AS_COMPLETED_TIMEOUT
             ):
                 try:
-                    name, success = future.result(timeout=0.5)
+                    name, success = future.result(timeout=1)
                     if success:
                         passed += 1
                         if name == "telegram":
@@ -852,7 +881,7 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # PHASE A: quick check
+        # PHASE A: quick check (generate_204)
         quick_ok = False
         try:
             t1 = time.time()
@@ -899,7 +928,7 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # PHASE C: parallel categories
+        # PHASE C: РЕАЛЬНАЯ проверка категорий (Google/Telegram/YouTube/...)
         categories_passed, telegram_works = check_categories_parallel(session)
 
     avg_latency = sum(latencies) / len(latencies)
@@ -962,7 +991,7 @@ def save_results(results: List[CheckResult]):
     with open(VERIFIED_FILE, 'w', encoding='utf-8') as f:
         f.write(f"# {MY_CHANNEL}\n")
         f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n")
-        f.write(f"# Passed: TCP + Xray + Categories(>={CONFIG.MIN_CATEGORIES}/7) + Reconnect\n")
+        f.write(f"# Passed: TCP + Xray + {CONFIG.MIN_CATEGORIES}/7 sites + Reconnect\n")
         f.write(f"# Total: {len(alive)}\n\n")
 
         for r in alive:
@@ -1006,8 +1035,13 @@ def main():
     CONFIG.MIN_CATEGORIES = args.min_cats
 
     print("\n" + "=" * 60)
-    print("  Proxy Checker v6.0 FINAL")
+    print("  Proxy Checker v6.1 FINAL (REAL site checks)")
     print(f"  Channel: {MY_CHANNEL}")
+    print("=" * 60)
+    print(f"  Category timeout: {CONFIG.CATEGORY_TIMEOUT}s")
+    print(f"  Categories needed: {CONFIG.MIN_CATEGORIES}/7")
+    print(f"  Telegram required: {CONFIG.REQUIRE_TELEGRAM}")
+    print(f"  Content verify: {CONFIG.VERIFY_CONTENT}")
     print("=" * 60)
 
     xray_exe = setup_xray()
@@ -1055,9 +1089,10 @@ def main():
         log("[WARN] Time exceeded after TCP, stopping")
         return 0
 
-    # STAGE 2: XRAY
+    # STAGE 2: XRAY (с реальной проверкой сайтов)
     print("\n" + "=" * 60)
     log(f"[XRAY] Stage 2: {len(tcp_passed)} keys, {CONFIG.XRAY_WORKERS} workers")
+    log(f"[XRAY] Real check: {len(CONFIG.CATEGORY_URLS)} sites, min {CONFIG.MIN_CATEGORIES}")
     print("=" * 60 + "\n")
 
     results = []
@@ -1076,7 +1111,7 @@ def main():
                 break
 
             try:
-                result = fut.result(timeout=120)
+                result = fut.result(timeout=180)
                 results.append(result)
                 if result.alive:
                     mut = f" [{result.mutation_used}]" if result.mutation_used else ""
