@@ -1,24 +1,43 @@
-# Python
+# ==================== Python ====================
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
 venv/
 .venv/
 env/
 ENV/
 .pytest_cache/
+.mypy_cache/
 
-# IDE / OS
+# ==================== IDE ====================
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# ==================== OS ====================
 .DS_Store
 Thumbs.db
 
-# Логи и временные
+# ==================== Логи ====================
 *.log
 checker.log
+
+# ==================== Временные файлы Xray ====================
 xray/cfg_*.json
 xray/config_*.json
 xray/xray.zip
+xray/selftest_*.json
 
-# Кеш
+# ==================== Кеш ====================
 cache/
+
+# ==================== ВАЖНО ====================
+# checked/latest/verified.txt — НЕ игнорируем (это главный файл!)
+# results/stats_latest.json    — НЕ игнорируем (для README)
+# xray/xray                    — НЕ игнорируем (бинарник нужен в CI)
+# cover_private.jpg            — НЕ игнорируем
+# cover_public.jpg             — НЕ игнорируем
+# гифка.gif                    — НЕ игнорируем
