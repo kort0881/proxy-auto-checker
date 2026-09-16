@@ -1,8 +1,24 @@
-# Временные результаты (не коммитим)
-results/
-xray/
-cache/
-
-# Сохраняем только премиум ключи
-!checked/premium/
+# Python
+__pycache__/
+*.py[cod]
 venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Логи и временные
+*.log
+checker.log
+xray/cfg_*.json
+xray/config_*.json
+xray/xray.zip
+
+# Кеш
+cache/
