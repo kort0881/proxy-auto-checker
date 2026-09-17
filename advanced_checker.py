@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Proxy Checker v6.2 FINAL
-TCP pre-filter + Xray + REAL site checks + quality filters
+Proxy Checker v6.3 FINAL
+TCP pre-filter + Xray + REAL site checks + quality filters + validation
 Output: checked/latest/verified.txt
 """
 
@@ -73,14 +73,14 @@ class Config:
     TCP_ATTEMPTS: int = 2
 
     # --- Stage 2: Xray ---
-    XRAY_WORKERS: int = 8
-    XRAY_STARTUP: float = 4.0
+    XRAY_WORKERS: int = 6              # было 8 — снижаем нагрузку
+    XRAY_STARTUP: float = 6.0          # было 4.0 — ждём медленные
     XRAY_QUICK_TIMEOUT: int = 6
     XRAY_LATENCY_TIMEOUT: int = 8
     LATENCY_SAMPLES: int = 3
     MIN_LATENCY_SUCCESS: int = 2
 
-    # --- Categories: РЕАЛЬНАЯ проверка сайтов ---
+    # --- Categories ---
     CATEGORY_URLS: List[Tuple[str, str, str]] = field(default_factory=lambda: [
         ("https://www.google.com", "google", "google"),
         ("https://web.telegram.org", "telegram", "telegram"),
@@ -97,12 +97,12 @@ class Config:
     REQUIRE_TELEGRAM: bool = True
     VERIFY_CONTENT: bool = False
 
-    # --- Quality filters (НОВОЕ) ---
-    MAX_JITTER: float = 500.0      # мс — если больше, дропаем (отсеивает j2573)
-    MAX_LATENCY: float = 2000.0    # мс — если больше, дропаем (медленные)
+    # --- Quality filters ---
+    MAX_JITTER: float = 500.0
+    MAX_LATENCY: float = 2000.0
 
-    # --- Защита от таймаута (НОВОЕ) ---
-    MAX_KEYS: int = 3000           # макс. ключей на входе
+    # --- Защита от таймаута ---
+    MAX_KEYS: int = 3000
 
     # --- Reconnect ---
     RECONNECT_TESTS: int = 1
@@ -575,6 +575,72 @@ def parse_shadowsocks(key: str) -> Optional[Dict]:
         return None
 
 
+# ==================== VALIDATION ====================
+def validate_config(proxy_config: Dict, protocol: str, security: str) -> Tuple[bool, str]:
+    """
+    Проверяет конфиг ДО запуска Xray.
+    Экономит 4-6 сек на каждом мёртвом конфиге.
+    """
+    if not proxy_config:
+        return False, "empty_config"
+
+    stream = proxy_config.get("streamSettings", {})
+    net = stream.get("network", "tcp")
+    sec = stream.get("security", "none")
+
+    if protocol == "VLESS":
+        vnext = proxy_config.get("settings", {}).get("vnext", [])
+        if not vnext:
+            return False, "vless_no_vnext"
+        users = vnext[0].get("users", [])
+        if not users:
+            return False, "vless_no_user"
+        user = users[0]
+        if not user.get("id"):
+            return False, "vless_no_uuid"
+        if len(user["id"]) < 32:
+            return False, "vless_bad_uuid"
+
+        if sec == "reality":
+            rs = stream.get("realitySettings", {})
+            if not rs.get("publicKey"):
+                return False, "reality_no_pbk"
+            if not rs.get("serverName"):
+                return False, "reality_no_sni"
+
+        if user.get("flow") == "xtls-rprx-vision" and sec not in ("tls", "reality"):
+            return False, "vision_without_tls"
+
+    elif protocol == "VMess":
+        vnext = proxy_config.get("settings", {}).get("vnext", [])
+        if not vnext:
+            return False, "vmess_no_vnext"
+        users = vnext[0].get("users", [])
+        if not users or not users[0].get("id"):
+            return False, "vmess_no_id"
+
+    elif protocol == "Trojan":
+        servers = proxy_config.get("settings", {}).get("servers", [])
+        if not servers:
+            return False, "trojan_no_server"
+        if not servers[0].get("password"):
+            return False, "trojan_no_password"
+
+    elif protocol == "SS":
+        servers = proxy_config.get("settings", {}).get("servers", [])
+        if not servers:
+            return False, "ss_no_server"
+        if not servers[0].get("method") or not servers[0].get("password"):
+            return False, "ss_no_auth"
+
+    if net == "ws":
+        ws = stream.get("wsSettings", {})
+        if not ws.get("path"):
+            return False, "ws_no_path"
+
+    return True, ""
+
+
 # ==================== DOWNLOAD ====================
 def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
     if sources is None:
@@ -615,7 +681,6 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
 
     stats.duplicates = duplicates
 
-    # ⬇️ НОВОЕ: защита от таймаута
     if len(all_keys) > CONFIG.MAX_KEYS:
         log(f"[WARN] Too many keys ({len(all_keys)}), limiting to {CONFIG.MAX_KEYS}")
         random.shuffle(all_keys)
@@ -710,10 +775,11 @@ class XraySession:
             with open(self.config_file, 'w') as f:
                 json.dump(create_xray_config(self.proxy_config, self.port), f)
 
+            # ⬇️ ИЗМЕНЕНО: PIPE вместо DEVNULL для диагностики
             self.process = subprocess.Popen(
                 [str(self.xray_exe), "run", "-c", str(self.config_file)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
             register_process(self.process)
 
@@ -732,6 +798,19 @@ class XraySession:
                 self.http_session.mount('http://', adapter)
                 self.http_session.mount('https://', adapter)
                 self.ok = True
+            else:
+                # ⬇️ НОВОЕ: логируем первые 5 ошибок старта
+                try:
+                    if self.process.poll() is not None and self.process.stderr:
+                        err_bytes = self.process.stderr.read(500)
+                        if err_bytes:
+                            err_msg = err_bytes.decode('utf-8', errors='ignore')
+                            with stats_lock:
+                                stats.errors["xray_startup_logged"] += 1
+                                if stats.errors["xray_startup_logged"] <= 5:
+                                    log(f"[XRAY-ERR] {err_msg.strip()[:150]}")
+                except Exception:
+                    pass
         except Exception:
             pass
         return self
@@ -771,7 +850,7 @@ class XraySession:
                 time.sleep(0.1)
 
 
-# ==================== CATEGORIES: РЕАЛЬНАЯ ПРОВЕРКА ====================
+# ==================== CATEGORIES ====================
 def check_one_category(session: XraySession, url: str, name: str, keyword: str) -> Tuple[str, bool]:
     try:
         resp = session.get(url, timeout=CONFIG.CATEGORY_TIMEOUT, allow_redirects=True)
@@ -844,6 +923,16 @@ def xray_full_check(key: str, xray_exe: Path) -> CheckResult:
     proxy_config, protocol, security = parse_key_to_config(key)
     if not proxy_config:
         return CheckResult(key=key, alive=False, error="parse_error")
+
+    # ⬇️ НОВОЕ: валидация конфига
+    is_valid, validation_error = validate_config(proxy_config, protocol, security)
+    if not is_valid:
+        with stats_lock:
+            stats.errors[f"invalid_{validation_error}"] += 1
+        return CheckResult(
+            key=key, alive=False, error=f"invalid_{validation_error}",
+            protocol=protocol, security=security
+        )
 
     host, port = extract_host_port(key)
 
@@ -936,7 +1025,6 @@ def _two_phase_test(
     avg_latency = sum(latencies) / len(latencies)
     jitter = max(latencies) - min(latencies)
 
-    # ⬇️ НОВОЕ: фильтр по latency и jitter
     if avg_latency > CONFIG.MAX_LATENCY:
         return CheckResult(
             key=key, alive=False, error=f"latency_{avg_latency:.0f}",
@@ -953,7 +1041,7 @@ def _two_phase_test(
             categories=categories_passed, telegram=telegram_works
         )
 
-    # PHASE D: reconnect test
+    # PHASE D: reconnect
     reconnect_success = 0
     with XraySession(xray_exe, proxy_config, CONFIG.XRAY_STARTUP) as rs:
         if rs.ok:
@@ -1059,7 +1147,7 @@ def main():
     CONFIG.MAX_LATENCY = args.max_latency
 
     print("\n" + "=" * 60)
-    print("  Proxy Checker v6.2 FINAL (REAL site checks + quality filters)")
+    print("  Proxy Checker v6.3 FINAL")
     print(f"  Channel: {MY_CHANNEL}")
     print("=" * 60)
     print(f"  Category timeout: {CONFIG.CATEGORY_TIMEOUT}s")
@@ -1068,6 +1156,8 @@ def main():
     print(f"  Max jitter: {CONFIG.MAX_JITTER}ms")
     print(f"  Max latency: {CONFIG.MAX_LATENCY}ms")
     print(f"  Max keys: {CONFIG.MAX_KEYS}")
+    print(f"  Xray workers: {CONFIG.XRAY_WORKERS}")
+    print(f"  Xray startup: {CONFIG.XRAY_STARTUP}s")
     print("=" * 60)
 
     xray_exe = setup_xray()
@@ -1185,7 +1275,7 @@ def main():
 
     if stats.errors:
         print("\n  Errors:")
-        for err, cnt in sorted(stats.errors.items(), key=lambda x: -x[1])[:10]:
+        for err, cnt in sorted(stats.errors.items(), key=lambda x: -x[1])[:15]:
             print(f"    {err}: {cnt}")
 
     print("=" * 60)
