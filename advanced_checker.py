@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Proxy Checker v6.1 FINAL
-TCP pre-filter + Xray + REAL site checks (Google/Telegram/YouTube/...)
+Proxy Checker v6.2 FINAL
+TCP pre-filter + Xray + REAL site checks + quality filters
 Output: checked/latest/verified.txt
 """
 
@@ -81,7 +81,6 @@ class Config:
     MIN_LATENCY_SUCCESS: int = 2
 
     # --- Categories: РЕАЛЬНАЯ проверка сайтов ---
-    # (url, name, keyword) — keyword ищем в HTML для подтверждения
     CATEGORY_URLS: List[Tuple[str, str, str]] = field(default_factory=lambda: [
         ("https://www.google.com", "google", "google"),
         ("https://web.telegram.org", "telegram", "telegram"),
@@ -91,12 +90,19 @@ class Config:
         ("https://twitter.com", "twitter", "twitter"),
         ("https://www.tiktok.com", "tiktok", "tiktok"),
     ])
-    CATEGORY_TIMEOUT: int = 10               # было 5 → 10 (не режем медленные)
-    CATEGORY_PARALLEL: int = 7                # все сразу
-    CATEGORY_AS_COMPLETED_TIMEOUT: int = 15   # было 9 → 15
-    MIN_CATEGORIES: int = 5                   # минимум 5 из 7
-    REQUIRE_TELEGRAM: bool = True             # Telegram обязателен
-    VERIFY_CONTENT: bool = False              # проверять ключевое слово в HTML (может давать ложные срабатывания)
+    CATEGORY_TIMEOUT: int = 10
+    CATEGORY_PARALLEL: int = 7
+    CATEGORY_AS_COMPLETED_TIMEOUT: int = 15
+    MIN_CATEGORIES: int = 5
+    REQUIRE_TELEGRAM: bool = True
+    VERIFY_CONTENT: bool = False
+
+    # --- Quality filters (НОВОЕ) ---
+    MAX_JITTER: float = 500.0      # мс — если больше, дропаем (отсеивает j2573)
+    MAX_LATENCY: float = 2000.0    # мс — если больше, дропаем (медленные)
+
+    # --- Защита от таймаута (НОВОЕ) ---
+    MAX_KEYS: int = 3000           # макс. ключей на входе
 
     # --- Reconnect ---
     RECONNECT_TESTS: int = 1
@@ -608,6 +614,13 @@ def download_and_deduplicate(sources: Dict[str, List[str]] = None) -> List[str]:
             log(f"    {url.split('/')[-1]}: {count}")
 
     stats.duplicates = duplicates
+
+    # ⬇️ НОВОЕ: защита от таймаута
+    if len(all_keys) > CONFIG.MAX_KEYS:
+        log(f"[WARN] Too many keys ({len(all_keys)}), limiting to {CONFIG.MAX_KEYS}")
+        random.shuffle(all_keys)
+        all_keys = all_keys[:CONFIG.MAX_KEYS]
+
     stats.unique = len(all_keys)
     log(f"  Total: {stats.total_downloaded + duplicates} | Dupes: {duplicates} | Unique: {len(all_keys)}")
     return all_keys
@@ -760,21 +773,14 @@ class XraySession:
 
 # ==================== CATEGORIES: РЕАЛЬНАЯ ПРОВЕРКА ====================
 def check_one_category(session: XraySession, url: str, name: str, keyword: str) -> Tuple[str, bool]:
-    """
-    РЕАЛЬНАЯ проверка: открываем сайт через Xray.
-    Успех: статус 2xx/3xx + (опционально) ключевое слово в контенте.
-    Провал: 4xx (403 = блокировка), 5xx, timeout.
-    """
     try:
         resp = session.get(url, timeout=CONFIG.CATEGORY_TIMEOUT, allow_redirects=True)
         if not resp:
             return (name, False)
 
-        # 1. Статус: только 2xx и 3xx. 4xx (403/404) = блокировка
         if not (200 <= resp.status_code < 400):
             return (name, False)
 
-        # 2. Контент: проверяем ключевое слово
         if CONFIG.VERIFY_CONTENT:
             try:
                 content = resp.text[:50000].lower()
@@ -789,10 +795,6 @@ def check_one_category(session: XraySession, url: str, name: str, keyword: str) 
 
 
 def check_categories_parallel(session: XraySession) -> Tuple[int, bool]:
-    """
-    Параллельная проверка всех 7 категорий.
-    Увеличенные таймауты — не режем медленные прокси.
-    """
     passed = 0
     telegram_ok = False
     futures_map = {}
@@ -881,7 +883,7 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # PHASE A: quick check (generate_204)
+        # PHASE A: quick check
         quick_ok = False
         try:
             t1 = time.time()
@@ -928,11 +930,28 @@ def _two_phase_test(
                 protocol=protocol, host=host, port=port, security=security
             )
 
-        # PHASE C: РЕАЛЬНАЯ проверка категорий (Google/Telegram/YouTube/...)
+        # PHASE C: РЕАЛЬНАЯ проверка категорий
         categories_passed, telegram_works = check_categories_parallel(session)
 
     avg_latency = sum(latencies) / len(latencies)
     jitter = max(latencies) - min(latencies)
+
+    # ⬇️ НОВОЕ: фильтр по latency и jitter
+    if avg_latency > CONFIG.MAX_LATENCY:
+        return CheckResult(
+            key=key, alive=False, error=f"latency_{avg_latency:.0f}",
+            protocol=protocol, host=host, port=port, security=security,
+            latency=round(avg_latency, 1), jitter=round(jitter, 1),
+            categories=categories_passed, telegram=telegram_works
+        )
+
+    if jitter > CONFIG.MAX_JITTER:
+        return CheckResult(
+            key=key, alive=False, error=f"jitter_{jitter:.0f}",
+            protocol=protocol, host=host, port=port, security=security,
+            latency=round(avg_latency, 1), jitter=round(jitter, 1),
+            categories=categories_passed, telegram=telegram_works
+        )
 
     # PHASE D: reconnect test
     reconnect_success = 0
@@ -992,6 +1011,7 @@ def save_results(results: List[CheckResult]):
         f.write(f"# {MY_CHANNEL}\n")
         f.write(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n")
         f.write(f"# Passed: TCP + Xray + {CONFIG.MIN_CATEGORIES}/7 sites + Reconnect\n")
+        f.write(f"# Quality: latency<={CONFIG.MAX_LATENCY:.0f}ms, jitter<={CONFIG.MAX_JITTER:.0f}ms\n")
         f.write(f"# Total: {len(alive)}\n\n")
 
         for r in alive:
@@ -1025,6 +1045,8 @@ def parse_args():
     parser.add_argument('--workers', type=int, default=CONFIG.XRAY_WORKERS)
     parser.add_argument('--tcp-workers', type=int, default=CONFIG.TCP_WORKERS)
     parser.add_argument('--min-cats', type=int, default=CONFIG.MIN_CATEGORIES)
+    parser.add_argument('--max-jitter', type=float, default=CONFIG.MAX_JITTER)
+    parser.add_argument('--max-latency', type=float, default=CONFIG.MAX_LATENCY)
     return parser.parse_args()
 
 
@@ -1033,15 +1055,19 @@ def main():
     CONFIG.XRAY_WORKERS = args.workers
     CONFIG.TCP_WORKERS = args.tcp_workers
     CONFIG.MIN_CATEGORIES = args.min_cats
+    CONFIG.MAX_JITTER = args.max_jitter
+    CONFIG.MAX_LATENCY = args.max_latency
 
     print("\n" + "=" * 60)
-    print("  Proxy Checker v6.1 FINAL (REAL site checks)")
+    print("  Proxy Checker v6.2 FINAL (REAL site checks + quality filters)")
     print(f"  Channel: {MY_CHANNEL}")
     print("=" * 60)
     print(f"  Category timeout: {CONFIG.CATEGORY_TIMEOUT}s")
     print(f"  Categories needed: {CONFIG.MIN_CATEGORIES}/7")
     print(f"  Telegram required: {CONFIG.REQUIRE_TELEGRAM}")
-    print(f"  Content verify: {CONFIG.VERIFY_CONTENT}")
+    print(f"  Max jitter: {CONFIG.MAX_JITTER}ms")
+    print(f"  Max latency: {CONFIG.MAX_LATENCY}ms")
+    print(f"  Max keys: {CONFIG.MAX_KEYS}")
     print("=" * 60)
 
     xray_exe = setup_xray()
@@ -1079,7 +1105,8 @@ def main():
             except Exception:
                 stats.tcp_failed += 1
 
-    log(f"[TCP] Passed: {len(tcp_passed)}/{len(all_keys)} in {time.time() - tcp_start:.1f}s")
+    tcp_time = time.time() - tcp_start
+    log(f"[TCP] Passed: {len(tcp_passed)}/{len(all_keys)} in {tcp_time:.1f}s")
 
     if not tcp_passed:
         log("[ERR] No TCP-alive keys")
@@ -1089,7 +1116,7 @@ def main():
         log("[WARN] Time exceeded after TCP, stopping")
         return 0
 
-    # STAGE 2: XRAY (с реальной проверкой сайтов)
+    # STAGE 2: XRAY
     print("\n" + "=" * 60)
     log(f"[XRAY] Stage 2: {len(tcp_passed)} keys, {CONFIG.XRAY_WORKERS} workers")
     log(f"[XRAY] Real check: {len(CONFIG.CATEGORY_URLS)} sites, min {CONFIG.MIN_CATEGORIES}")
