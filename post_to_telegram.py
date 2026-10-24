@@ -1,31 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram Poster v3.0 FINAL
-Один источник: checked/latest/verified.txt
-Один закрытый канал: -1002926041814
+Telegram Poster v3.1
+Источник: checked/latest/verified.txt
+Каналы: приватный (обязателен) + публичный (опционален)
 Cover: cover_private.jpg (fallback → cover_public.jpg)
 """
 
 import os
 import sys
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ==================== НАСТРОЙКИ ====================
 DRY_RUN = os.environ.get("TELEGRAM_DRY_RUN", "0") == "1"
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-CHANNEL = os.environ.get("TELEGRAM_PRIVATE_CHANNEL", "-1002926041814")
+BOT_TOKEN_PRIVATE = os.environ.get("TELEGRAM_BOT_TOKEN")
+PRIVATE_CHANNEL = os.environ.get("TELEGRAM_PRIVATE_CHANNEL", "-1002926041814")
+
+BOT_TOKEN_PUBLIC = os.environ.get("TELEGRAM_BOT_TOKEN_PUBLIC")
+PUBLIC_CHANNEL = os.environ.get("TELEGRAM_PUBLIC_CHANNEL", "-1002287416438")
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
 CHECKED_FOLDER = os.path.join(WORK_DIR, "checked", "latest")
 VERIFIED_FILE = os.path.join(CHECKED_FOLDER, "verified.txt")
 
-# Обложка: приватная приоритет, публичная fallback
 COVER_PRIVATE = os.path.join(WORK_DIR, "cover_private.jpg")
 COVER_PUBLIC = os.path.join(WORK_DIR, "cover_public.jpg")
 if os.path.exists(COVER_PRIVATE):
@@ -109,7 +111,6 @@ def send_photo_document(channel, photo_path, doc_path, caption, token):
         print(f"Caption:\n{caption}\n")
         return {"ok": True}
 
-    # 1. sendPhoto с caption
     try:
         with open(photo_path, "rb") as photo:
             r = session.post(
@@ -129,7 +130,6 @@ def send_photo_document(channel, photo_path, doc_path, caption, token):
 
     msg_id = photo_res["result"]["message_id"]
 
-    # 2. sendDocument ответом
     try:
         with open(doc_path, "rb") as doc:
             r = session.post(
@@ -185,61 +185,51 @@ def send_message(channel, text, token, reply_markup=None):
         return None
 
 
-# ==================== MAIN ====================
-def main():
-    if not BOT_TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN не задан")
-        return 1
-
-    print("\n" + "=" * 60)
-    print("  Telegram Poster v3.0 FINAL")
-    print(f"  Channel: {CHANNEL}")
-    print(f"  Cover: {COVER or 'NO COVER'}")
-    print(f"  Source: {VERIFIED_FILE}")
-    print("=" * 60 + "\n")
-
-    if DRY_RUN:
-        print("⚙️ DRY_RUN режим — сообщения не отправляются\n")
-
-    # 1. Загрузка ключей
-    keys = load_verified()
-    if not keys:
-        print("❌ Нет ключей — пропускаем публикацию")
-        return 0  # не ошибка, просто нечего публиковать
-
-    print(f"✅ Ключей: {len(keys)}")
-
-    # 2. Подписки
-    subs_text = load_subscriptions()
-    subs_buttons = parse_subscription_buttons(subs_text)
-    print(f"✅ Кнопок подписок: {len(subs_buttons)}")
-
-    # 3. Пост: обложка + файл
-    caption = (
+# ==================== CAPTION ====================
+def build_caption(num_keys, is_public=False):
+    ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
+    base = (
         f"🔥 <b>Проверенные прокси-ключи</b>\n\n"
-        f"📅 <code>{datetime.now().strftime('%Y-%m-%d %H:%M')} UTC</code>\n"
-        f"📦 В файле: <b>{len(keys)}</b>\n"
+        f"📅 <code>{ts} UTC</code>\n"
+        f"📦 В файле: <b>{num_keys}</b>\n"
         f"✅ TCP → Xray → 5/7 категорий → Reconnect\n\n"
         f"📡 VLESS | VMess | Trojan | SS"
     )
+    if is_public:
+        base += (
+            f"\n\n⚠️ Материал собран из открытых источников сети Интернет, "
+            f"предоставляется в ознакомительных целях.\n"
+            f"Клиенты: v2rayNG · Clash · Hiddify · Shadowrocket"
+        )
+    return base
+
+
+# ==================== PUBLISH ====================
+def publish_to(channel, token, keys, subs_buttons, label, is_public=False):
+    """Публикует пост (фото+файл+кнопки) в указанный канал. True если всё ок."""
+    if not token:
+        print(f"⚠️ [{label}] токен не задан — пропускаю канал {channel}")
+        return False
+    if not channel:
+        print(f"⚠️ [{label}] chat_id не задан — пропускаю")
+        return False
+
+    print(f"\n[{label}] → {channel}")
+
+    caption = build_caption(len(keys), is_public=is_public)
 
     if COVER:
-        result = send_photo_document(CHANNEL, COVER, VERIFIED_FILE, caption, BOT_TOKEN)
-        if result and result.get("ok"):
-            print("✅ Пост с обложкой и файлом отправлен")
-        else:
-            print(f"❌ Ошибка публикации: {result}")
-            return 1
+        result = send_photo_document(channel, COVER, VERIFIED_FILE, caption, token)
     else:
-        print("⚠️ Обложка не найдена, отправляю только документ")
-        result = send_document_only(CHANNEL, VERIFIED_FILE, caption, BOT_TOKEN)
-        if result and result.get("ok"):
-            print("✅ Документ отправлен")
-        else:
-            print(f"❌ Ошибка: {result}")
-            return 1
+        print(f"⚠️ [{label}] обложка не найдена, шлю только документ")
+        result = send_document_only(channel, VERIFIED_FILE, caption, token)
 
-    # 4. Кнопки подписок (10 штук, 2 колонки)
+    if not result or not result.get("ok"):
+        print(f"❌ [{label}] ошибка публикации файла: {result}")
+        return False
+
+    print(f"✅ [{label}] пост с обложкой и файлом отправлен")
+
     if subs_buttons:
         keyboard = []
         row = []
@@ -252,12 +242,63 @@ def main():
             keyboard.append(row)
 
         send_message(
-            CHANNEL,
+            channel,
             "📋 <b>Ссылки на подписки</b>\n\n💡 Нажми на кнопку — ссылка скопируется в буфер, вставь в Hiddify / v2rayNG / Clash",
-            BOT_TOKEN,
+            token,
             {"inline_keyboard": keyboard}
         )
-        print(f"✅ Кнопки подписок: {len(subs_buttons)}")
+        print(f"✅ [{label}] кнопки подписок: {len(subs_buttons)}")
+
+    return True
+
+
+# ==================== MAIN ====================
+def main():
+    if not BOT_TOKEN_PRIVATE:
+        print("❌ TELEGRAM_BOT_TOKEN (приватный) не задан")
+        return 1
+
+    print("\n" + "=" * 60)
+    print("  Telegram Poster v3.1")
+    print(f"  Private: {PRIVATE_CHANNEL}")
+    print(f"  Public : {PUBLIC_CHANNEL if BOT_TOKEN_PUBLIC else '— (нет токена)'}")
+    print(f"  Cover  : {COVER or 'NO COVER'}")
+    print(f"  Source : {VERIFIED_FILE}")
+    print("=" * 60 + "\n")
+
+    if DRY_RUN:
+        print("⚙️ DRY_RUN режим — сообщения не отправляются\n")
+
+    keys = load_verified()
+    if not keys:
+        print("❌ Нет ключей — пропускаем публикацию")
+        return 0
+
+    print(f"✅ Ключей: {len(keys)}")
+
+    subs_text = load_subscriptions()
+    subs_buttons = parse_subscription_buttons(subs_text)
+    print(f"✅ Кнопок подписок: {len(subs_buttons)}")
+
+    # 1. Приватный канал (обязателен)
+    ok_private = publish_to(
+        PRIVATE_CHANNEL, BOT_TOKEN_PRIVATE,
+        keys, subs_buttons, label="PRIVATE", is_public=False
+    )
+    if not ok_private:
+        print("❌ Приватная публикация провалилась")
+        return 1
+
+    # 2. Публичный канал (опционален)
+    if BOT_TOKEN_PUBLIC:
+        ok_public = publish_to(
+            PUBLIC_CHANNEL, BOT_TOKEN_PUBLIC,
+            keys, subs_buttons, label="PUBLIC", is_public=True
+        )
+        if not ok_public:
+            print("⚠️ Публичная публикация не удалась (приват прошёл)")
+    else:
+        print("\nℹ️ TELEGRAM_BOT_TOKEN_PUBLIC не задан — публичный канал пропущен")
 
     print("\n✅ Готово")
     return 0
