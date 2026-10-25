@@ -43,7 +43,7 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_PRIVATE_CHANNEL: '-1002926041814'
         TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
-        TELEGRAM_PUBLIC_CHANNEL: '-1002287416438'
+        TELEGRAM_PUBLIC_CHANNEL: '@vlesstrojan'
       run: python post_to_telegram.py
 
     - name: Commit results
