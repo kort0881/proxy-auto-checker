@@ -2,8 +2,13 @@ name: Proxy Checker
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '0 */4 * * *'   # проверка каждые 4 часа
   workflow_dispatch:
+    inputs:
+      force_post:
+        description: 'Force post (ignore 48h interval)'
+        required: false
+        default: 'false'
 
 concurrency:
   group: proxy-checker
@@ -37,14 +42,63 @@ jobs:
       run: |
         python advanced_checker.py --workers 8 --tcp-workers 100 --min-cats 5
 
+    - name: Check if should post (every 2 days)
+      id: should_post
+      env:
+        FORCE_POST: ${{ github.event.inputs.force_post }}
+      run: |
+        python - <<'PYEOF'
+        import json, os, datetime
+
+        force = (os.environ.get('FORCE_POST') or 'false').lower() == 'true'
+        out = os.environ['GITHUB_OUTPUT']
+
+        def set_out(val, reason):
+            print(reason)
+            with open(out, 'a') as f:
+                f.write(f"should_post={val}\n")
+
+        if force:
+            set_out('true', 'Force post enabled')
+            raise SystemExit
+
+        state_file = 'results/last_post.json'
+        if not os.path.exists(state_file):
+            set_out('true', 'No state file — first post')
+            raise SystemExit
+
+        last = json.load(open(state_file))['timestamp']
+        last_dt = datetime.datetime.fromisoformat(last.replace('Z', '+00:00'))
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        diff_h = (now - last_dt).total_seconds() / 3600.0
+
+        print(f"Last post: {last} ({diff_h:.1f}h ago)")
+
+        if diff_h >= 47:
+            set_out('true', 'Interval elapsed — will post')
+        else:
+            set_out('false', f"Skipping post (next in {48 - diff_h:.1f}h)")
+        PYEOF
+
     - name: Post to Telegram
-      if: success()
+      if: success() && steps.should_post.outputs.should_post == 'true'
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_PRIVATE_CHANNEL: '-1002926041814'
         TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
         TELEGRAM_PUBLIC_CHANNEL: '@vlesstrojan'
       run: python post_to_telegram.py
+
+    - name: Update last post timestamp
+      if: success() && steps.should_post.outputs.should_post == 'true'
+      run: |
+        mkdir -p results
+        python -c "import json, datetime; json.dump({'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()}, open('results/last_post.json','w'), indent=2)"
+        echo "last_post.json updated:"
+        cat results/last_post.json
 
     - name: Commit results
       if: success()
@@ -54,6 +108,7 @@ jobs:
 
         git add -f checked/latest/verified.txt
         git add -f results/stats_latest.json
+        git add -f results/last_post.json 2>/dev/null || true
 
         if git diff --cached --quiet; then
           echo "No changes"
@@ -78,4 +133,5 @@ jobs:
           checked/latest/verified.txt
           results/stats_latest.json
           results/checker.log
+          results/last_post.json
         retention-days: 3
