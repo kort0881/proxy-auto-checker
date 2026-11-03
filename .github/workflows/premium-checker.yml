@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       force_post:
-        description: 'Force post (ignore 48h interval)'
+        description: 'Force post (ignore intervals)'
         required: false
         default: 'false'
 
@@ -42,80 +42,109 @@ jobs:
       run: |
         python advanced_checker.py --workers 8 --tcp-workers 100 --min-cats 5
 
-    - name: Check if should post (every 2 days)
+    - name: Check if should post
       id: should_post
       env:
         FORCE_POST: ${{ github.event.inputs.force_post }}
       run: |
         python - <<'PYEOF'
-        import json, os, datetime
+        import json, os, datetime, shutil
 
         force = (os.environ.get('FORCE_POST') or 'false').lower() == 'true'
         out = os.environ['GITHUB_OUTPUT']
 
-        def set_out(val, reason):
-            print(reason)
+        def write(k, v):
             with open(out, 'a') as f:
-                f.write(f"should_post={val}\n")
+                f.write(f"{k}={v}\n")
+
+        # Миграция старого last_post.json → last_post_private.json
+        if os.path.exists('results/last_post.json') and not os.path.exists('results/last_post_private.json'):
+            shutil.copy('results/last_post.json', 'results/last_post_private.json')
+            print("Migrated last_post.json → last_post_private.json")
+
+        def check(state_file, threshold_h, name):
+            if not os.path.exists(state_file):
+                print(f"{name}: no state → will post")
+                return True
+            last = json.load(open(state_file))['timestamp']
+            last_dt = datetime.datetime.fromisoformat(last.replace('Z', '+00:00'))
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
+            diff_h = (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds() / 3600.0
+            if diff_h >= threshold_h:
+                print(f"{name}: {diff_h:.1f}h ago (>= {threshold_h}h) → post")
+                return True
+            print(f"{name}: {diff_h:.1f}h ago (< {threshold_h}h) → skip (next in {threshold_h - diff_h:.1f}h)")
+            return False
 
         if force:
-            set_out('true', 'Force post enabled')
-            raise SystemExit
-
-        state_file = 'results/last_post.json'
-        if not os.path.exists(state_file):
-            set_out('true', 'No state file — first post')
-            raise SystemExit
-
-        last = json.load(open(state_file))['timestamp']
-        last_dt = datetime.datetime.fromisoformat(last.replace('Z', '+00:00'))
-        if last_dt.tzinfo is None:
-            last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
-
-        now = datetime.datetime.now(datetime.timezone.utc)
-        diff_h = (now - last_dt).total_seconds() / 3600.0
-
-        print(f"Last post: {last} ({diff_h:.1f}h ago)")
-
-        if diff_h >= 47:
-            set_out('true', 'Interval elapsed — will post')
+            print("Force post enabled")
+            sp, su = True, True
         else:
-            set_out('false', f"Skipping post (next in {48 - diff_h:.1f}h)")
+            sp = check('results/last_post_private.json', 47, 'private')   # 48h
+            su = check('results/last_post_public.json', 23, 'public')     # 24h
+
+        write('should_post_private', 'true' if sp else 'false')
+        write('should_post_public', 'true' if su else 'false')
         PYEOF
 
     - name: Post to Telegram
-      if: success() && steps.should_post.outputs.should_post == 'true'
+      if: success() && (steps.should_post.outputs.should_post_private == 'true' || steps.should_post.outputs.should_post_public == 'true')
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_PRIVATE_CHANNEL: '-1002926041814'
         TELEGRAM_BOT_TOKEN_PUBLIC: ${{ secrets.TELEGRAM_BOT_TOKEN_PUBLIC }}
         TELEGRAM_PUBLIC_CHANNEL: '@vlesstrojan'
+        POST_PRIVATE: ${{ steps.should_post.outputs.should_post_private }}
+        POST_PUBLIC: ${{ steps.should_post.outputs.should_post_public }}
       run: python post_to_telegram.py
 
-    - name: Update last post timestamp
-      if: success() && steps.should_post.outputs.should_post == 'true'
+    - name: Update last post timestamps
+      if: always() && (steps.should_post.outputs.should_post_private == 'true' || steps.should_post.outputs.should_post_public == 'true')
       run: |
-        mkdir -p results
-        python -c "import json, datetime; json.dump({'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()}, open('results/last_post.json','w'), indent=2)"
-        echo "last_post.json updated:"
-        cat results/last_post.json
+        python - <<'PYEOF'
+        import json
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        rf = Path('results/last_post_result.json')
+        if not rf.exists():
+            print("No result file — nothing to update")
+            raise SystemExit(0)
+
+        result = json.loads(rf.read_text())
+        now = datetime.now(timezone.utc).isoformat()
+
+        if result.get('private_ok'):
+            Path('results/last_post_private.json').write_text(
+                json.dumps({'timestamp': now}, indent=2))
+            print(f"✓ last_post_private.json = {now}")
+
+        if result.get('public_ok'):
+            Path('results/last_post_public.json').write_text(
+                json.dumps({'timestamp': now}, indent=2))
+            print(f"✓ last_post_public.json = {now}")
+        PYEOF
 
     - name: Commit results
-      if: success()
+      if: always()
       run: |
         git config user.name "Proxy Bot"
         git config user.email "bot@github.actions"
 
-        git add -f checked/latest/verified.txt
-        git add -f results/stats_latest.json
+        git add -f checked/latest/verified.txt 2>/dev/null || true
+        git add -f results/stats_latest.json 2>/dev/null || true
         git add -f results/last_post.json 2>/dev/null || true
+        git add -f results/last_post_private.json 2>/dev/null || true
+        git add -f results/last_post_public.json 2>/dev/null || true
+        git add -f results/last_post_result.json 2>/dev/null || true
 
         if git diff --cached --quiet; then
           echo "No changes"
           exit 0
         fi
 
-        TOTAL=$(python -c "import json; print(json.load(open('results/stats_latest.json'))['total_working'])")
+        TOTAL=$(python -c "import json; print(json.load(open('results/stats_latest.json'))['total_working'])" 2>/dev/null || echo "?")
         git commit -m "✨ Verified: ${TOTAL} keys [$(date -u +'%Y-%m-%d %H:%M UTC')]"
 
         for i in 1 2 3; do
@@ -133,5 +162,7 @@ jobs:
           checked/latest/verified.txt
           results/stats_latest.json
           results/checker.log
-          results/last_post.json
+          results/last_post_private.json
+          results/last_post_public.json
+          results/last_post_result.json
         retention-days: 3
