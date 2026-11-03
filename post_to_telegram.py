@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram Poster v3.1
+Telegram Poster v3.2
 Источник: checked/latest/verified.txt
 Каналы: приватный (обязателен) + публичный (опционален)
 Cover: cover_private.jpg (fallback → cover_public.jpg)
+
+Поддержка независимых флагов POST_PRIVATE / POST_PUBLIC —
+workflow сам решает, в какой канал постить (интервалы 48ч/24ч).
 """
 
 import os
 import sys
+import json
 import requests
 from datetime import datetime, timezone
 from requests.adapters import HTTPAdapter
@@ -22,6 +26,10 @@ PRIVATE_CHANNEL = os.environ.get("TELEGRAM_PRIVATE_CHANNEL", "-1002926041814")
 
 BOT_TOKEN_PUBLIC = os.environ.get("TELEGRAM_BOT_TOKEN_PUBLIC")
 PUBLIC_CHANNEL = os.environ.get("TELEGRAM_PUBLIC_CHANNEL", "-1002287416438")
+
+# Флаги публикации по каналам (по умолчанию — оба)
+POST_PRIVATE = os.environ.get("POST_PRIVATE", "true").lower() == "true"
+POST_PUBLIC = os.environ.get("POST_PUBLIC", "true").lower() == "true"
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FOLDER = os.path.join(WORK_DIR, "results")
@@ -252,6 +260,23 @@ def publish_to(channel, token, keys, subs_buttons, label, is_public=False):
     return True
 
 
+# ==================== RESULT FILE ====================
+def save_result(private_ok, public_ok):
+    """Пишет results/last_post_result.json — workflow по нему обновляет таймстемпы."""
+    try:
+        os.makedirs(RESULTS_FOLDER, exist_ok=True)
+        path = os.path.join(RESULTS_FOLDER, "last_post_result.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({
+                "private_ok": bool(private_ok),
+                "public_ok": bool(public_ok),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }, f, indent=2)
+        print(f"\n📝 Результат записан: {path}")
+    except Exception as e:
+        print(f"⚠️ Не удалось записать last_post_result.json: {e}")
+
+
 # ==================== MAIN ====================
 def main():
     if not BOT_TOKEN_PRIVATE:
@@ -259,9 +284,9 @@ def main():
         return 1
 
     print("\n" + "=" * 60)
-    print("  Telegram Poster v3.1")
-    print(f"  Private: {PRIVATE_CHANNEL}")
-    print(f"  Public : {PUBLIC_CHANNEL if BOT_TOKEN_PUBLIC else '— (нет токена)'}")
+    print("  Telegram Poster v3.2")
+    print(f"  Private: {PRIVATE_CHANNEL} (POST_PRIVATE={POST_PRIVATE})")
+    print(f"  Public : {PUBLIC_CHANNEL if BOT_TOKEN_PUBLIC else '— (нет токена)'} (POST_PUBLIC={POST_PUBLIC})")
     print(f"  Cover  : {COVER or 'NO COVER'}")
     print(f"  Source : {VERIFIED_FILE}")
     print("=" * 60 + "\n")
@@ -269,9 +294,16 @@ def main():
     if DRY_RUN:
         print("⚙️ DRY_RUN режим — сообщения не отправляются\n")
 
+    # Ничего не постим — выходим
+    if not POST_PRIVATE and not POST_PUBLIC:
+        print("⏭ Оба канала отключены (POST_PRIVATE=false, POST_PUBLIC=false) — выходим")
+        save_result(private_ok=False, public_ok=False)
+        return 0
+
     keys = load_verified()
     if not keys:
         print("❌ Нет ключей — пропускаем публикацию")
+        save_result(private_ok=False, public_ok=False)
         return 0
 
     print(f"✅ Ключей: {len(keys)}")
@@ -280,25 +312,49 @@ def main():
     subs_buttons = parse_subscription_buttons(subs_text)
     print(f"✅ Кнопок подписок: {len(subs_buttons)}")
 
-    # 1. Приватный канал (обязателен)
-    ok_private = publish_to(
-        PRIVATE_CHANNEL, BOT_TOKEN_PRIVATE,
-        keys, subs_buttons, label="PRIVATE", is_public=False
-    )
-    if not ok_private:
-        print("❌ Приватная публикация провалилась")
-        return 1
+    private_ok = False
+    public_ok = False
+    private_attempted = False
+    public_attempted = False
 
-    # 2. Публичный канал (опционален)
-    if BOT_TOKEN_PUBLIC:
-        ok_public = publish_to(
+    # 1. Приватный канал
+    if not POST_PRIVATE:
+        print("\n⏭ Приватный канал пропущен (POST_PRIVATE=false)")
+    elif not BOT_TOKEN_PRIVATE:
+        print("\n❌ Приватный канал включён, но TELEGRAM_BOT_TOKEN не задан")
+    else:
+        private_attempted = True
+        private_ok = publish_to(
+            PRIVATE_CHANNEL, BOT_TOKEN_PRIVATE,
+            keys, subs_buttons, label="PRIVATE", is_public=False
+        )
+        if not private_ok:
+            print("❌ Приватная публикация провалилась")
+
+    # 2. Публичный канал
+    if not BOT_TOKEN_PUBLIC:
+        print("\nℹ️ TELEGRAM_BOT_TOKEN_PUBLIC не задан — публичный пропущен")
+    elif not POST_PUBLIC:
+        print("\n⏭ Публичный канал пропущен (POST_PUBLIC=false)")
+    else:
+        public_attempted = True
+        public_ok = publish_to(
             PUBLIC_CHANNEL, BOT_TOKEN_PUBLIC,
             keys, subs_buttons, label="PUBLIC", is_public=True
         )
-        if not ok_public:
-            print("⚠️ Публичная публикация не удалась (приват прошёл)")
-    else:
-        print("\nℹ️ TELEGRAM_BOT_TOKEN_PUBLIC не задан — публичный канал пропущен")
+        if not public_ok:
+            print("⚠️ Публичная публикация не удалась")
+
+    # 3. Записываем результат для workflow
+    save_result(private_ok=private_ok, public_ok=public_ok)
+
+    # 4. Exit code: успех, если все запланированные каналы прошли
+    if private_attempted and not private_ok:
+        print("\n❌ Приватная публикация провалилась")
+        return 1
+    if public_attempted and not public_ok:
+        print("\n❌ Публичная публикация провалилась")
+        return 1
 
     print("\n✅ Готово")
     return 0
